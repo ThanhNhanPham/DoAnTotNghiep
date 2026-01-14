@@ -1,0 +1,92 @@
+package com.example.smartgarage.controller;
+
+import com.example.smartgarage.dto.JwtResponse;
+import com.example.smartgarage.dto.LoginRequest;
+import com.example.smartgarage.entity.User;
+import com.example.smartgarage.repository.UserRepository;
+import com.example.smartgarage.security.JwtTokenProvider;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.HashMap;
+import java.util.Map;
+
+@Tag(name = "Auth", description = "Quản lý đăng ký và đăng nhập")
+@RestController
+@RequestMapping("/api/v1/auth")
+public class AuthController {
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
+
+    @Autowired
+    private JwtTokenProvider jwtTokenProvider;
+
+    // 1. API ĐĂNG KÝ (Dùng cái này để tạo user mới, tránh lỗi isMatch: false)
+    @PostMapping("/register")
+    public ResponseEntity<?> register(@RequestBody User user) {
+        if (userRepository.findByEmail(user.getEmail()).isPresent()) {
+            return ResponseEntity.badRequest().body("Lỗi: Email đã tồn tại!");
+        }
+
+        // Mã hóa mật khẩu trước khi lưu
+        user.setPassword(passwordEncoder.encode(user.getPassword()));
+
+        // Gán role mặc định nếu không có
+        if (user.getRole() == null) user.setRole("USER");
+
+        userRepository.save(user);
+        return ResponseEntity.ok("Đăng ký thành công tài khoản: " + user.getEmail());
+    }
+
+    // 2. API ĐĂNG NHẬP (Đã sửa lỗi ResponseEntity)
+    @PostMapping("/login")
+    public ResponseEntity<?> login(@Valid @RequestBody LoginRequest loginRequest) {
+        // Tìm user theo email
+        var userOptional = userRepository.findByEmail(loginRequest.getEmail());
+        if (userOptional.isPresent()) {
+            User user = userOptional.get();
+
+            // Kiểm tra mật khẩu
+            if (passwordEncoder.matches(loginRequest.getPassword(), user.getPassword())) {
+                // Tạo token
+                String token = jwtTokenProvider.generateToken(user.getEmail());
+
+                // Trả về DTO JwtResponse (token, email, role)
+                return ResponseEntity.ok(new JwtResponse(token, user.getEmail(), user.getRole()));
+            }
+        }
+        // Nếu không khớp email hoặc mật khẩu
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body("Email hoặc mật khẩu không chính xác!");
+    }
+
+    // 3. API TEST MẬT KHẨU (Dành riêng cho bạn debug trên Postman)
+    @PostMapping("/debug-password")
+    public ResponseEntity<?> debugPassword(@RequestBody LoginRequest request) {
+        Map<String, Object> result = new HashMap<>();
+
+        userRepository.findByEmail(request.getEmail()).ifPresentOrElse(user -> {
+            boolean isMatch = passwordEncoder.matches(request.getPassword(), user.getPassword());
+
+            result.put("email", user.getEmail());
+            result.put("inputPassword", request.getPassword());
+            result.put("dbEncodedPassword", user.getPassword());
+            result.put("dbPasswordLength", user.getPassword().length());
+            result.put("isMatch", isMatch);
+
+            if (!isMatch && user.getPassword().length() < 60) {
+                result.put("error_hint", "Cảnh báo: Độ dài mật khẩu trong DB < 60 ký tự. Có thể cột bị cắt!");
+            }
+        }, () -> result.put("error", "Không tìm thấy User này trong database"));
+        return ResponseEntity.ok(result);
+    }
+}
