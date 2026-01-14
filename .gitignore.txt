@@ -1,2 +1,0 @@
-# Chặn file cấu hình nhạy cảm của Backend từ thư mục gốc
-smartgarage/src/main/resources/application.properties
