@@ -4,11 +4,13 @@ import com.example.smartgarage.entity.Branch;
 import com.example.smartgarage.entity.Service;
 import com.example.smartgarage.repository.ServiceRepository;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -16,6 +18,7 @@ import java.util.List;
 @Tag(name = "Service", description = "Quản lý dịch vụ sửa chữa")
 @RestController
 @RequestMapping("/api/v1/services")
+@PreAuthorize("hasRole('ADMIN')")
 public class ServiceController {
     @Autowired
     private ServiceRepository serviceRepository;
@@ -24,9 +27,9 @@ public class ServiceController {
         return serviceRepository.findAll();
     }
 
-    // cập nhật dịch vụ
+    // thêm dịch vụ
     @PostMapping
-    public ResponseEntity<Service> createBranch(@RequestBody Service service) {
+    public ResponseEntity<Service> createService(@Valid @RequestBody Service service) {
         try {
             Service savedService = serviceRepository.save(service);
             return new ResponseEntity<>(savedService, HttpStatus.CREATED);
@@ -37,7 +40,7 @@ public class ServiceController {
 
     // chỉnh sửa dịch vụ
     @PutMapping("/{id}")
-    public ResponseEntity<Service> updateService(@PathVariable Long id, @RequestBody Service service){
+    public ResponseEntity<Service> updateService(@PathVariable Long id,@Valid @RequestBody Service service){
         try {
             // 1. Tìm dịch vụ cũ trong Database
             return serviceRepository.findById(id).map(existingService -> {

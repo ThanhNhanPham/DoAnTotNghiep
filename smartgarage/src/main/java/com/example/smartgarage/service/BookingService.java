@@ -3,6 +3,7 @@ package com.example.smartgarage.service;
 import com.example.smartgarage.dto.*;
 import com.example.smartgarage.entity.*;
 import com.example.smartgarage.exception.GlobalExceptionHandler;
+import com.example.smartgarage.exception.ResourceNotFoundException;
 import com.example.smartgarage.repository.*;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
@@ -302,7 +303,7 @@ public class BookingService {
     public BookingResponse completeBooking(Long id) {
         // 1. Tìm đơn hàng và Kiểm tra trạng thái
         Booking booking = bookingRepository.findById(id)
-                .orElseThrow(() -> new GlobalExceptionHandler.ResourceNotFoundException("Không tìm thấy đơn hàng ID: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy đơn hàng ID: " + id));
 
         if ("COMPLETED".equals(booking.getStatus()) || "CANCELLED".equals(booking.getStatus())) {
             throw new RuntimeException("Đơn hàng đã kết thúc hoặc đã hủy!");
@@ -439,9 +440,9 @@ public class BookingService {
     @Transactional
     public void addPartToBooking(Long bookingId, Long partId) {
         Booking booking = bookingRepository.findById(bookingId)
-                .orElseThrow(() -> new GlobalExceptionHandler.ResourceNotFoundException("Không tìm thấy đơn hàng"));
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy đơn hàng"));
         Part part = partRepository.findById(partId)
-                .orElseThrow(() -> new GlobalExceptionHandler.ResourceNotFoundException("Không tìm thấy linh kiện"));
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy linh kiện"));
 
         // Kiểm tra xem linh kiện còn hàng không trước khi thêm vào đơn
         if (part.getQuantity() <= 0) {

@@ -2,6 +2,7 @@ package com.example.smartgarage.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
+import jakarta.validation.constraints.*;
 import lombok.AllArgsConstructor;
 import lombok.NoArgsConstructor;
 
@@ -18,13 +19,18 @@ public class Service {
     @GeneratedValue(strategy = jakarta.persistence.GenerationType.IDENTITY)
     private Long id;
     @Column(nullable = false)
+    @NotBlank(message = "Tên dịch vụ không được để trống")
     private String name;
-
+    @Size(max = 1000, message = "Mô tả không được vượt quá 1000 ký tự")
     private String description;
 
+    @NotNull(message = "Giá dịch vụ không được để trống")
+    @DecimalMin(value = "0.0", inclusive = false, message = "Giá dịch vụ phải lớn hơn 0")
     @Column(nullable = false)
     private BigDecimal price;
 
+    @Min(value = 1, message = "Thời gian thực hiện phải tối thiểu 1 phút")
+    @Max(value = 10080, message = "Thời gian không hợp lệ (tối đa 7 ngày)")
     @Column(name = "duration_minutes")
     private Integer durationMinutes; // Thời gian dự kiến (phút)
 

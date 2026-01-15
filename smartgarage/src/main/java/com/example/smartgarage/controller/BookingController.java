@@ -10,6 +10,7 @@ import com.example.smartgarage.repository.UserRepository;
 import com.example.smartgarage.service.BookingService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -34,7 +35,7 @@ public class BookingController {
     // 1. API Đặt lịch mới: Lấy danh tính từ Token, không truyền userId qua URL
     @Operation(summary = "Đặt lịch sửa xe mới", description = "Khách hàng gửi thông tin xe và dịch vụ để đặt lịch")
     @PostMapping
-    public ResponseEntity<?> createBooking(@RequestBody BookingRequest bookingRequest,
+    public ResponseEntity<?> createBooking(@Valid @RequestBody BookingRequest bookingRequest,
                                            Authentication authentication) {
         String currentEmail = authentication.getName();
         Booking createdBooking = bookingService.createBooking(currentEmail, bookingRequest);

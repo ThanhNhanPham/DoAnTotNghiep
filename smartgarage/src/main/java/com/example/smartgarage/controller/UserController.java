@@ -3,6 +3,7 @@ package com.example.smartgarage.controller;
 import com.example.smartgarage.entity.User;
 import com.example.smartgarage.repository.UserRepository;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -23,7 +24,7 @@ public class UserController {
     }
     // sửa thông tin cá nhân người dùng
     @PutMapping("/{id}")
-    public ResponseEntity<User> updateUser(@PathVariable Long id, @RequestBody User userDetails) {
+    public ResponseEntity<User> updateUser(@PathVariable Long id,@Valid @RequestBody User userDetails) {
         return userRepository.findById(id).map(user -> {
             user.setFullName(userDetails.getFullName());
             user.setPhone(userDetails.getPhone());

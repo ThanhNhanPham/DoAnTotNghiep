@@ -4,6 +4,7 @@ import com.example.smartgarage.entity.Mechanic;
 import com.example.smartgarage.repository.BranchRepository;
 import com.example.smartgarage.repository.MechanicRepository;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -31,7 +32,7 @@ public class MechanicController {
 
     // 3. Thêm mới một thợ sửa xe vào chi nhánh cụ thể
     @PostMapping("/branch/{branchId}")
-    public ResponseEntity<?> createMechanic(@PathVariable Long branchId, @RequestBody Mechanic mechanic) {
+    public ResponseEntity<?> createMechanic(@PathVariable Long branchId,@Valid @RequestBody Mechanic mechanic) {
         return branchRepository.findById(branchId).map(branch -> {
             mechanic.setBranch(branch);
             return ResponseEntity.ok(mechanicRepository.save(mechanic));

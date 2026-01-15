@@ -3,6 +3,7 @@ package com.example.smartgarage.controller;
 import com.example.smartgarage.entity.Branch;
 import com.example.smartgarage.repository.BranchRepository;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -24,7 +25,7 @@ public class BranchController {
 
     // Thêm chi nhánh cuả hàng
     @PostMapping
-    public ResponseEntity<Branch> createBranch(@RequestBody Branch branch) {
+    public ResponseEntity<Branch> createBranch(@Valid @RequestBody Branch branch) {
         try {
             Branch savedBranch = branchRepository.save(branch);
             return new ResponseEntity<>(savedBranch, HttpStatus.CREATED);
@@ -35,7 +36,7 @@ public class BranchController {
 
     // sửa chi nhánh cửa hàng
     @PutMapping("/{id}")
-    public ResponseEntity<Branch> updateBranch(@PathVariable Long id, @RequestBody Branch branchDetails) {
+    public ResponseEntity<Branch> updateBranch(@PathVariable Long id,@Valid @RequestBody Branch branchDetails) {
         try {
             // 1. Tìm chi nhánh cũ trong Database
             return branchRepository.findById(id).map(existingBranch -> {

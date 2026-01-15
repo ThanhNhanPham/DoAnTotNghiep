@@ -9,62 +9,70 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.Map;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
-    @ResponseStatus(value = HttpStatus.NOT_FOUND)
-    public static class ResourceNotFoundException extends RuntimeException {
-        public ResourceNotFoundException(String message) {
-            super(message);
-        }
-    }
 
-    // 1. Bắt lỗi Resource Not Found (404)
+    // 1. Bắt lỗi Resource Not Found
     @ExceptionHandler(ResourceNotFoundException.class)
     @ResponseStatus(value = HttpStatus.NOT_FOUND)
     public ErrorMessage handleResourceNotFoundException(ResourceNotFoundException ex, WebRequest request) {
-        return new ErrorMessage(
-                HttpStatus.NOT_FOUND.value(),
-                LocalDateTime.now(),
-                ex.getMessage(),
-                request.getDescription(false)
-        );
+        return new ErrorMessage(HttpStatus.NOT_FOUND.value(), LocalDateTime.now(), ex.getMessage(), request.getDescription(false));
     }
 
-    // 2. Bắt lỗi Validation (Khi dùng @Valid ở Controller)
+    // 2. CẢI TIẾN: Bắt TOÀN BỘ lỗi Validation
     @ExceptionHandler(MethodArgumentNotValidException.class)
     @ResponseStatus(value = HttpStatus.BAD_REQUEST)
     public ErrorMessage handleValidationException(MethodArgumentNotValidException ex, WebRequest request) {
-        String error = ex.getBindingResult().getAllErrors().get(0).getDefaultMessage();
+        Map<String, String> errors = new HashMap<>();
+        ex.getBindingResult().getFieldErrors().forEach(error ->
+                errors.put(error.getField(), error.getDefaultMessage())
+        );
+
         return new ErrorMessage(
                 HttpStatus.BAD_REQUEST.value(),
                 LocalDateTime.now(),
-                "Lỗi nhập liệu: " + error,
+                "Dữ liệu không hợp lệ: " + errors.toString(), // Hoặc tùy biến hiển thị
                 request.getDescription(false)
         );
     }
 
-    // 3. Xử lý các lỗi Runtime chung (Lỗi logic nghiệp vụ)
+    // 3. THÊM MỚI: Bắt lỗi sai kiểu dữ liệu trên URL (Ví dụ: /parts/chu_khong_phai_so)
+    @ExceptionHandler(org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class)
+    @ResponseStatus(value = HttpStatus.BAD_REQUEST)
+    public ErrorMessage handleTypeMismatch(org.springframework.web.method.annotation.MethodArgumentTypeMismatchException ex, WebRequest request) {
+        return new ErrorMessage(
+                HttpStatus.BAD_REQUEST.value(),
+                LocalDateTime.now(),
+                String.format("Tham số '%s' phải có kiểu dữ liệu là %s", ex.getName(), ex.getRequiredType().getSimpleName()),
+                request.getDescription(false)
+        );
+    }
+
+    // 4. THÊM MỚI: Bắt lỗi JSON sai cú pháp
+    @ExceptionHandler(org.springframework.http.converter.HttpMessageNotReadableException.class)
+    @ResponseStatus(value = HttpStatus.BAD_REQUEST)
+    public ErrorMessage handleInvalidJson(org.springframework.http.converter.HttpMessageNotReadableException ex, WebRequest request) {
+        return new ErrorMessage(
+                HttpStatus.BAD_REQUEST.value(),
+                LocalDateTime.now(),
+                "Cấu trúc JSON không hợp lệ hoặc sai định dạng dữ liệu!",
+                request.getDescription(false)
+        );
+    }
+
+    // 5. Xử lý logic nghiệp vụ và lỗi hệ thống (Giữ nguyên như của bạn)
     @ExceptionHandler(RuntimeException.class)
     @ResponseStatus(value = HttpStatus.BAD_REQUEST)
     public ErrorMessage handleRuntimeException(RuntimeException ex, WebRequest request) {
-        return new ErrorMessage(
-                HttpStatus.BAD_REQUEST.value(),
-                LocalDateTime.now(),
-                ex.getMessage(),
-                request.getDescription(false)
-        );
+        return new ErrorMessage(HttpStatus.BAD_REQUEST.value(), LocalDateTime.now(), ex.getMessage(), request.getDescription(false));
     }
 
-    // 4. "Lưới an toàn" cuối cùng cho các lỗi không xác định (500)
     @ExceptionHandler(Exception.class)
     @ResponseStatus(value = HttpStatus.INTERNAL_SERVER_ERROR)
     public ErrorMessage handleGlobalException(Exception ex, WebRequest request) {
-        return new ErrorMessage(
-                HttpStatus.INTERNAL_SERVER_ERROR.value(),
-                LocalDateTime.now(),
-                "Đã xảy ra lỗi hệ thống nghiêm trọng!",
-                request.getDescription(false)
-        );
+        return new ErrorMessage(HttpStatus.INTERNAL_SERVER_ERROR.value(), LocalDateTime.now(), "Lỗi hệ thống!", request.getDescription(false));
     }
 }

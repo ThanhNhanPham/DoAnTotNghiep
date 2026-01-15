@@ -1,71 +1,37 @@
 package com.example.smartgarage.entity;
 
 import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.NoArgsConstructor;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
+import lombok.*;
 
 @Entity
 @Table(name = "branches")
 @NoArgsConstructor
 @AllArgsConstructor
+@Builder
+@Setter
+@Getter
 public class Branch {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+    @NotBlank(message = "Tên chi nhánh không được để trống")
     private String name;
+    @NotBlank(message = "Địa chỉ không được để trống")
     private String address;
+
+    @NotBlank(message = "Số điện thoại chi nhánh không được để trống")
+    @Pattern(regexp = "^(0|\\+84)[3|5|7|8|9][0-9]{8}$", message = "Số điện thoại thợ không hợp lệ")
     private String phone;
 
     @Column(name = "image_url")
+    @Size(max = 255, message = "Đường dẫn ảnh quá dài")
     private String imageUrl;
 
     @Column(name = "is_active")
     private Boolean isActive = true;
 
-    public Long getId() {
-        return id;
-    }
 
-    public void setId(Long id) {
-        this.id = id;
-    }
-
-    public String getName() {
-        return name;
-    }
-
-    public void setName(String name) {
-        this.name = name;
-    }
-
-    public String getAddress() {
-        return address;
-    }
-
-    public void setAddress(String address) {
-        this.address = address;
-    }
-
-    public String getPhone() {
-        return phone;
-    }
-
-    public void setPhone(String phone) {
-        this.phone = phone;
-    }
-
-    public String getImageUrl() {
-        return imageUrl;
-    }
-
-    public void setImageUrl(String imageUrl) {
-        this.imageUrl = imageUrl;
-    }
-
-    public Boolean getActive() {
-        return isActive;
-    }
-    public void setActive(Boolean active) {
-        isActive = active;
-    }
 }

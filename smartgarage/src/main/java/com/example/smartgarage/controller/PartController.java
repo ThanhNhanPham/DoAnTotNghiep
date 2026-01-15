@@ -2,6 +2,7 @@ package com.example.smartgarage.controller;
 
 import com.example.smartgarage.entity.Part;
 import com.example.smartgarage.repository.PartRepository;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -29,12 +30,12 @@ public class PartController {
 
     //3. Thêm mới linh kiện vào hệ thống
     @PostMapping
-    public ResponseEntity<Part> addPart(@RequestBody Part part) {
+    public ResponseEntity<Part> addPart(@Valid @RequestBody Part part) {
         return ResponseEntity.ok(partRepository.save(part));
     }
     //4.Cập nhật thông tin linh kiện(Giá, tên, mô tả)
     @PutMapping("/{id}")
-    public ResponseEntity<Part> updatePart(@PathVariable Long id, @RequestBody Part partDetails) {
+    public ResponseEntity<Part> updatePart(@PathVariable Long id,@Valid @RequestBody Part partDetails) {
         Part part = partRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy linh kiện ID: " + id));
 

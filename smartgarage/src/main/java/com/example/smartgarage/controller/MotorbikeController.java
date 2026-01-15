@@ -5,6 +5,7 @@ import com.example.smartgarage.entity.User;
 import com.example.smartgarage.repository.MotorbikeRepository;
 import com.example.smartgarage.repository.UserRepository;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -29,7 +30,7 @@ public class MotorbikeController {
     }
     // 2. Thêm xe mới cho User
     @PostMapping("/user/{userId}")
-    public ResponseEntity<?> addMotorbike(@PathVariable Long userId, @RequestBody Motorbike motorbike) {
+    public ResponseEntity<?> addMotorbike(@PathVariable Long userId,@Valid @RequestBody Motorbike motorbike) {
         Optional<User> userOptional = userRepository.findById(userId);
 
         if (userOptional.isPresent()) {
