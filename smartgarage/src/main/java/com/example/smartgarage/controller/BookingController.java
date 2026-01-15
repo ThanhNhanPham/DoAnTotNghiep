@@ -97,4 +97,14 @@ public class BookingController {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
+    // 6. API Thêm linh kiện vào đơn hàng (Dành cho ADMIN/Nhân viên)
+    @PostMapping("/{bookingId}/addPart/{partId}")
+    public ResponseEntity<String> addPartToBooking(@PathVariable Long bookingId, @PathVariable Long partId) {
+        try {
+            bookingService.addPartToBooking(bookingId, partId);
+            return ResponseEntity.ok("Đã thêm linh kiện vào đơn hàng thành công.");
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
 }

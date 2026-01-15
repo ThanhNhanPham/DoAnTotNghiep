@@ -1,10 +1,13 @@
 package com.example.smartgarage.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "services")
@@ -30,7 +33,16 @@ public class Service {
 
     @Column(name = "is_active")
     private Boolean isActive = true;
-
+    // Ngăn không cho Part gọi ngược lại Booking khi trả về JSON của Service
+    @ManyToMany
+    @JoinTable(
+            name = "service_suggested_parts",
+            joinColumns = @JoinColumn(name = "service_id"),
+            inverseJoinColumns = @JoinColumn(name = "part_id")
+    )
+    // Ngăn không cho Part gọi ngược lại Booking khi trả về JSON của Service
+    @JsonIgnoreProperties("bookings")
+    private List<Part> suggestedParts = new ArrayList<>();
     public Long getId() {
         return id;
     }
@@ -81,6 +93,14 @@ public class Service {
 
     public Boolean getActive() {
         return isActive;
+    }
+
+    public List<Part> getSuggestedParts() {
+        return suggestedParts;
+    }
+
+    public void setSuggestedParts(List<Part> suggestedParts) {
+        this.suggestedParts = suggestedParts;
     }
 
     public void setActive(Boolean active) {

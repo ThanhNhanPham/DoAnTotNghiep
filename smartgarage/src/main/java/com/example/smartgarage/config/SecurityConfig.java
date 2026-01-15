@@ -37,6 +37,7 @@ public class SecurityConfig {
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         // 2. Dùng hasAuthority để khớp chính xác chuỗi "ADMIN" trong DB
                         .requestMatchers("/api/v1/admin/**").hasAuthority("ADMIN")
+                        .requestMatchers("/api/v1/parts/**").hasAuthority("ADMIN")
                         .anyRequest().authenticated()
                 );
         // QUAN TRỌNG: Thêm filter JWT vào trước UsernamePasswordAuthenticationFilter

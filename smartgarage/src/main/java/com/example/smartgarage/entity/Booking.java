@@ -8,7 +8,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 @Entity
@@ -57,4 +59,14 @@ public class Booking {
             inverseJoinColumns = @JoinColumn(name = "service_id")
     )
     private List<Service> services;
+
+    @ManyToMany(cascade = {CascadeType.PERSIST, CascadeType.MERGE})
+    @JoinTable(
+            name = "booking_parts",
+            joinColumns = @JoinColumn(name = "booking_id"),
+            inverseJoinColumns = @JoinColumn(name = "part_id")
+    )
+    private List<Part> parts = new ArrayList<>();
+    @Column(name = "total_amount")
+    private BigDecimal totalAmount;
 }

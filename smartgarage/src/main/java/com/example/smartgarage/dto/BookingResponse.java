@@ -24,5 +24,6 @@ public class BookingResponse {
     private String branchName;
     private String mechanicName;
     private List<String> serviceNames;
+    private List<String> partNames;
     private BigDecimal totalAmount;
 }
