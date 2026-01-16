@@ -3,8 +3,7 @@ package com.example.smartgarage.entity;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.*;
-import lombok.AllArgsConstructor;
-import lombok.NoArgsConstructor;
+import lombok.*;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -14,6 +13,9 @@ import java.util.List;
 @Table(name = "services")
 @NoArgsConstructor
 @AllArgsConstructor
+@Builder
+@Getter
+@Setter
 public class Service {
     @Id
     @GeneratedValue(strategy = jakarta.persistence.GenerationType.IDENTITY)
@@ -49,67 +51,4 @@ public class Service {
     // Ngăn không cho Part gọi ngược lại Booking khi trả về JSON của Service
     @JsonIgnoreProperties("bookings")
     private List<Part> suggestedParts = new ArrayList<>();
-    public Long getId() {
-        return id;
-    }
-
-    public void setId(Long id) {
-        this.id = id;
-    }
-
-    public String getName() {
-        return name;
-    }
-
-    public void setName(String name) {
-        this.name = name;
-    }
-
-    public String getDescription() {
-        return description;
-    }
-
-    public void setDescription(String description) {
-        this.description = description;
-    }
-
-    public BigDecimal getPrice() {
-        return price;
-    }
-
-    public void setPrice(BigDecimal price) {
-        this.price = price;
-    }
-
-    public Integer getDurationMinutes() {
-        return durationMinutes;
-    }
-
-    public void setDurationMinutes(Integer durationMinutes) {
-        this.durationMinutes = durationMinutes;
-    }
-
-    public String getImageUrl() {
-        return imageUrl;
-    }
-
-    public void setImageUrl(String imageUrl) {
-        this.imageUrl = imageUrl;
-    }
-
-    public Boolean getActive() {
-        return isActive;
-    }
-
-    public List<Part> getSuggestedParts() {
-        return suggestedParts;
-    }
-
-    public void setSuggestedParts(List<Part> suggestedParts) {
-        this.suggestedParts = suggestedParts;
-    }
-
-    public void setActive(Boolean active) {
-        isActive = active;
-    }
 }

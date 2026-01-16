@@ -50,7 +50,7 @@ public class ServiceController {
                 existingService.setDescription(service.getDescription());
                 existingService.setPrice(service.getPrice());
                 existingService.setDurationMinutes(service.getDurationMinutes());
-                existingService.setActive(service.getActive());
+                existingService.setIsActive(service.getIsActive());
 
                 // 3. Lưu lại vào DB
                 Service updatedService = serviceRepository.save(existingService);

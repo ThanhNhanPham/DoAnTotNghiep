@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.*;
 import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
@@ -13,6 +14,7 @@ import java.util.List;
 @Table(name="parts")
 @NoArgsConstructor
 @AllArgsConstructor
+@Builder
 public class Part {
     @Id
     @GeneratedValue(strategy = jakarta.persistence.GenerationType.IDENTITY)

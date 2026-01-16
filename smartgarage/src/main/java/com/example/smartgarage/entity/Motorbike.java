@@ -24,7 +24,7 @@ public class Motorbike {
     private Long id;
 
     @NotNull(message = "Biển số xe không được để trống")
-    @Size(min = 7, max = 11, message = "Biển số xe có độ dài không hợp lệ")
+    @Size(min = 7, max = 20, message = "Biển số xe có độ dài không hợp lệ")
     @Pattern(regexp = "^[0-9]{2}[A-Z0-9]{1,2}-[0-9]{4,5}$",
             message = "Biển số xe không đúng định dạng (VD: 29A-123.45 hoặc 29A1-123.45)")
     @Column(name = "license_plate", unique = true, nullable = false)

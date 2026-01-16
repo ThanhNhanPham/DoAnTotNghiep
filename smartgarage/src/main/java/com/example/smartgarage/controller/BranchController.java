@@ -46,7 +46,7 @@ public class BranchController {
                 existingBranch.setAddress(branchDetails.getAddress());
                 existingBranch.setPhone(branchDetails.getPhone());
                 existingBranch.setImageUrl(branchDetails.getImageUrl());
-                existingBranch.setActive(branchDetails.getActive());
+                existingBranch.setIsActive(branchDetails.getIsActive());
 
                 // 3. Lưu lại vào DB
                 Branch updatedBranch = branchRepository.save(existingBranch);
