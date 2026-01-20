@@ -1,5 +1,6 @@
 package com.example.smartgarage.entity;
 
+import com.example.smartgarage.enums.BookingStatus;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
@@ -48,9 +49,8 @@ public class Booking {
     private LocalDateTime bookingTime;
 
     @NotBlank(message = "Trạng thái đơn hàng không được để trống")
-    @Pattern(regexp = "^(PENDING|CONFIRMED|PROCESSING|COMPLETED|CANCELLED)$",
-            message = "Trạng thái không hợp lệ")
-    private String status = "PENDING"; // Trạng thái: PENDING, CONFIRMED, COMPLETED, CANCELLED
+    @Enumerated(EnumType.STRING)
+    private BookingStatus status; // Trạng thái: PENDING, CONFIRMED, COMPLETED, CANCELLED
 
     @Size(max = 1000, message = "Ghi chú không được quá 1000 ký tự")
     @Column(columnDefinition = "TEXT")

@@ -1,5 +1,6 @@
 package com.example.smartgarage.entity;
 
+import com.example.smartgarage.enums.MechanicStatus;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
@@ -35,9 +36,9 @@ public class Mechanic {
     @Column(columnDefinition = "TEXT")
     private String address;
     @NotBlank(message = "Trạng thái không được để trống")
-    @Pattern(regexp = "^(ACTIVE|INACTIVE|BUSY)$", message = "Trạng thái thợ phải là: ACTIVE, INACTIVE hoặc BUSY")
+    @Enumerated(EnumType.STRING)
     @Column(length = 20)
-    private String status = "ACTIVE"; // Trạng thái: ACTIVE, INACTIVE, BUSY
+    private MechanicStatus status; // Trạng thái: ACTIVE, INACTIVE, BUSY
 
     @Column(name = "created_at")
     private LocalDateTime createdAt = LocalDateTime.now();

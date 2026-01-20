@@ -13,7 +13,9 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -68,6 +70,7 @@ public class BookingController {
 
     // 4. API Xác nhận lịch hẹn (Dành cho ADMIN/Nhân viên)
     @PatchMapping("/{bookingId}/confirm")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<?> confirm(@PathVariable Long bookingId, @RequestParam Long mechanicId) {
         try {
             BookingResponse confirmedBooking = bookingService.confirmBooking(bookingId, mechanicId);
@@ -79,6 +82,7 @@ public class BookingController {
 
     // 5. API Hoàn thành việc sửa chữa (Dành cho ADMIN/Nhân viên)
     @GetMapping("/admin/all")
+    @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Admin xem toàn bộ lịch hẹn", description = "Có thể lọc theo status (PENDING, CONFIRMED...)")
     public ResponseEntity<?> getAllBookings(@RequestParam(required = false) String status) {
         return ResponseEntity.ok(bookingService.getAllBookings(status));
@@ -100,6 +104,7 @@ public class BookingController {
     }
     // 6. API Thêm linh kiện vào đơn hàng (Dành cho ADMIN/Nhân viên)
     @PostMapping("/{bookingId}/addPart/{partId}")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<String> addPartToBooking(@PathVariable Long bookingId, @PathVariable Long partId) {
         try {
             bookingService.addPartToBooking(bookingId, partId);

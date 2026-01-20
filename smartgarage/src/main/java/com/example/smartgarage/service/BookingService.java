@@ -2,6 +2,8 @@ package com.example.smartgarage.service;
 
 import com.example.smartgarage.dto.*;
 import com.example.smartgarage.entity.*;
+import com.example.smartgarage.enums.BookingStatus;
+import com.example.smartgarage.enums.MechanicStatus;
 import com.example.smartgarage.exception.GlobalExceptionHandler;
 import com.example.smartgarage.exception.ResourceNotFoundException;
 import com.example.smartgarage.repository.*;
@@ -62,7 +64,7 @@ public class BookingService {
         booking.setBranch(branch);
         booking.setBookingTime(request.getBookingTime());
         booking.setNote(request.getNote());
-        booking.setStatus("PENDING");
+        booking.setStatus(BookingStatus.PENDING);
 
         // 4. Lấy danh sách dịch vụ và tính sơ bộ tổng tiền (nếu cần)
         List<com.example.smartgarage.entity.Service> services = serviceRepository.findAllById(request.getServiceIds());
@@ -135,20 +137,43 @@ public class BookingService {
         if (!"PENDING".equals(booking.getStatus())) {
             throw new RuntimeException("Chỉ có thể hủy lịch hẹn đang ở trạng thái PENDING.");
         }
-        booking.setStatus("CANCELLED");
+        booking.setStatus(BookingStatus.CANCELLED);
         bookingRepository.save(booking);
     }
     @Transactional
     public BookingResponse confirmBooking(Long bookingId, Long mechanicId) {
-        // 1. Tìm và cập nhật Entity trong DB
-        Booking booking = bookingRepository.findById(bookingId).orElseThrow();
-        Mechanic mechanic = mechanicRepository.findById(mechanicId).orElseThrow();
+        // 1. Tìm đơn hàng (Booking)
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy đơn hàng ID: " + bookingId));
 
+        // Kiểm tra nếu đơn hàng đã được xác nhận hoặc đã hoàn thành trước đó
+        if (!"PENDING".equals(booking.getStatus())) {
+            throw new RuntimeException("Đơn hàng này không ở trạng thái chờ (PENDING) để xác nhận.");
+        }
+
+        // 2. Tìm Thợ sửa xe (Mechanic)
+        Mechanic mechanic = mechanicRepository.findById(mechanicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy thợ ID: " + mechanicId));
+
+        // 3. KIỂM TRA TRẠNG THÁI THỢ (Tối ưu quan trọng)
+        // Giả sử trạng thái sẵn sàng của bạn là "AVAILABLE" hoặc "ACTIVE"
+        if (!"AVAILABLE".equals(mechanic.getStatus())) {
+            throw new RuntimeException("Thợ " + mechanic.getFullName() + " hiện đang bận hoặc không sẵn sàng làm việc!");
+        }
+
+        // 4. CẬP NHẬT TRẠNG THÁI
+        // Gán thợ cho đơn hàng
         booking.setMechanic(mechanic);
-        booking.setStatus("CONFIRMED");
-        bookingRepository.save(booking);
+        booking.setStatus(BookingStatus.CONFIRMED);
 
-        // 2. SỬ DỤNG HÀM MAPPER: Chuyển đổi Entity vừa lưu sang DTO
+        // Chuyển trạng thái thợ sang "BUSY" để các Admin khác không gán thợ này vào đơn khác
+        mechanic.setStatus(MechanicStatus.BUSY);
+
+        // 5. LƯU THAY ĐỔI
+        bookingRepository.save(booking);
+        mechanicRepository.save(mechanic); // Cần lưu lại trạng thái mới của thợ
+
+        // 6. TRẢ VỀ DTO (Sử dụng hàm mapper bạn đã viết)
         return mapToResponse(booking);
     }
 
@@ -187,10 +212,10 @@ public class BookingService {
     public DashboardStatusDTO getDashboardStatus() {
         // 1. Đếm số lượng theo từng trạng thái
         long total = bookingRepository.count();
-        long pending = bookingRepository.countByStatus("PENDING");
-        long confirmed = bookingRepository.countByStatus("CONFIRMED");
-        long completed = bookingRepository.countByStatus("COMPLETED");
-        long cancelled = bookingRepository.countByStatus("CANCELLED");
+        long pending = bookingRepository.countByStatus(BookingStatus.PENDING);
+        long confirmed = bookingRepository.countByStatus(BookingStatus.CONFIRMED);
+        long completed = bookingRepository.countByStatus(BookingStatus.COMPLETED);
+        long cancelled = bookingRepository.countByStatus(BookingStatus.CANCELLED);
 
         // 2. Tính tổng doanh thu
         BigDecimal revenue = bookingRepository.calculateTotalRevenue();
@@ -243,11 +268,11 @@ public class BookingService {
                 row.createCell(2).setCellValue(booking.getUser() != null ? booking.getUser().getPhone() : "N/A");
                 row.createCell(3).setCellValue(booking.getMotorbike() != null ? booking.getMotorbike().getLicensePlate() : "N/A");
                 row.createCell(4).setCellValue(booking.getBookingTime().toString());
-                row.createCell(5).setCellValue(booking.getStatus());
+                row.createCell(5).setCellValue(booking.getStatus().toString());
 
                 // Tính tổng tiền (Sử dụng logic BigDecimal chúng ta đã sửa)
                 double total = booking.getServices().stream().mapToDouble(s -> s.getPrice().doubleValue()).sum();
-                row.createCell(5).setCellValue(total);
+                row.createCell(6).setCellValue(total);
             }
 
             // Tự động căn chỉnh độ rộng cột
@@ -333,9 +358,9 @@ public class BookingService {
         booking.setTotalAmount(finalTotal);
 
         // 4. Cập nhật trạng thái Booking và Giải phóng thợ
-        booking.setStatus("COMPLETED");
+        booking.setStatus(BookingStatus.COMPLETED);
         if (booking.getMechanic() != null) {
-            booking.getMechanic().setStatus("AVAILABLE");
+            booking.getMechanic().setStatus(MechanicStatus.ACTIVE);
         }
 
         bookingRepository.save(booking);

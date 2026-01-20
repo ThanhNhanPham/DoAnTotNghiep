@@ -1,5 +1,6 @@
 package com.example.smartgarage.dto;
 
+import com.example.smartgarage.enums.BookingStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -15,7 +16,7 @@ import java.util.List;
 @AllArgsConstructor
 public class BookingResponse {
     private Long id;
-    private String status;
+    private BookingStatus status;
     private LocalDateTime bookingTime;
     private String customerName;
     private String customerPhone;

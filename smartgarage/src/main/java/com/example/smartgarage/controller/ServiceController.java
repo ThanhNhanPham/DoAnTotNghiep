@@ -18,7 +18,6 @@ import java.util.List;
 @Tag(name = "Service", description = "Quản lý dịch vụ sửa chữa")
 @RestController
 @RequestMapping("/api/v1/services")
-@PreAuthorize("hasRole('ADMIN')")
 public class ServiceController {
     @Autowired
     private ServiceRepository serviceRepository;
@@ -29,6 +28,7 @@ public class ServiceController {
 
     // thêm dịch vụ
     @PostMapping
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Service> createService(@Valid @RequestBody Service service) {
         try {
             Service savedService = serviceRepository.save(service);
@@ -40,6 +40,7 @@ public class ServiceController {
 
     // chỉnh sửa dịch vụ
     @PutMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Service> updateService(@PathVariable Long id,@Valid @RequestBody Service service){
         try {
             // 1. Tìm dịch vụ cũ trong Database
@@ -65,6 +66,7 @@ public class ServiceController {
 
     // xóa dịch vụ
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<String> deleteService(@PathVariable Long id) {
         try {
             // 1. Kiểm tra xem chi nhánh có tồn tại trong DB không

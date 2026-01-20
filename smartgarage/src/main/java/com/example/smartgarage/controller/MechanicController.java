@@ -1,6 +1,7 @@
 package com.example.smartgarage.controller;
 
 import com.example.smartgarage.entity.Mechanic;
+import com.example.smartgarage.enums.MechanicStatus;
 import com.example.smartgarage.repository.BranchRepository;
 import com.example.smartgarage.repository.MechanicRepository;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -40,7 +41,7 @@ public class MechanicController {
     }
     // 4. Cập nhật trạng thái thợ (Ví dụ: Chuyển sang BUSY khi đang sửa xe)
     @PatchMapping("/{id}/status")
-    public ResponseEntity<?> updateStatus(@PathVariable Long id, @RequestParam String status) {
+    public ResponseEntity<?> updateStatus(@PathVariable Long id, @RequestParam MechanicStatus status) {
         return mechanicRepository.findById(id).map(m -> {
             m.setStatus(status);
             return ResponseEntity.ok(mechanicRepository.save(m));
@@ -51,7 +52,7 @@ public class MechanicController {
     public ResponseEntity<?> softDeleteMechanic(@PathVariable Long id) {
         return mechanicRepository.findById(id).map(mechanic -> {
             // Chuyển trạng thái để thợ không xuất hiện trong danh sách phân công nữa
-            mechanic.setStatus("INACTIVE");
+            mechanic.setStatus(MechanicStatus.INACTIVE);
             mechanicRepository.save(mechanic);
             return ResponseEntity.ok("Đã chuyển trạng thái thợ sang nghỉ việc (INACTIVE).");
         }).orElse(ResponseEntity.notFound().build());

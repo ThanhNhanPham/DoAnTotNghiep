@@ -1,6 +1,7 @@
 package com.example.smartgarage.service;
 
 import com.example.smartgarage.entity.Mechanic;
+import com.example.smartgarage.enums.MechanicStatus;
 import com.example.smartgarage.repository.MechanicRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -26,7 +27,7 @@ public class MechanicService {
         return mechanicRepository.findAll();
     }
     // Cập nhật trạng thái thợ (ACTIVE <-> BUSY)
-    public void updateMechanicStatus(Long id, String status) {
+    public void updateMechanicStatus(Long id, MechanicStatus status) {
         Mechanic mechanic = getById(id);
         mechanic.setStatus(status);
         mechanicRepository.save(mechanic);
