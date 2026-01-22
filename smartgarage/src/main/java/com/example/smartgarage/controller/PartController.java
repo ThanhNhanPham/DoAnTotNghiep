@@ -50,10 +50,13 @@ public class PartController {
     //5.Api nhap linh kien vao kho
     @PatchMapping("/{id}/add-stock")
     public ResponseEntity<Part> addStock(@PathVariable Long id, @RequestParam Integer amount) {
+        if(amount <= 0) {
+            throw new RuntimeException("Số lượng nhập phải lớn hơn 0");
+        }
         Part part = partRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy linh kiện"));
 
-        part.setQuantity(part.getQuantity() + amount);
+        part.setQuantity(Integer.valueOf(part.getQuantity() + amount));
         return ResponseEntity.ok(partRepository.save(part));
     }
     // 6. API Cảnh báo hàng sắp hết (Dành cho Dashboard)

@@ -11,6 +11,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 @Entity
 @Table(name = "bookings")
@@ -28,7 +29,6 @@ public class Booking {
     @JoinColumn(name = "user_id", nullable = false)
     @JsonIgnoreProperties({"motorbikes", "bookings", "password"})
     private User user; // Khách hàng đặt lịch
-
     @NotNull(message = "Vui lòng chọn xe của khách hàng")
     @ManyToOne
     @JoinColumn(name = "motorbike_id", nullable = false)
@@ -59,6 +59,9 @@ public class Booking {
     @Column(name = "created_at")
     private LocalDateTime createdAt = LocalDateTime.now();
 
+    @org.hibernate.annotations.UpdateTimestamp // TỰ ĐỘNG CẬP NHẬT KHI ĐƠN HÀNG XONG
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
     // Mối quan hệ Nhiều-Nhiều với bảng Services thông qua bảng trung gian booking_services
     @ManyToMany
     @JoinTable(

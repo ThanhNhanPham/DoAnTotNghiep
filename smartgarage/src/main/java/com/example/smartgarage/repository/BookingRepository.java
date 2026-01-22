@@ -49,4 +49,7 @@ public interface BookingRepository extends JpaRepository<Booking,Long> {
     List<Object[]> countAllStatusRaw();
 
     Page<Booking> findAllByBranchId(Long branchId, Pageable pageable);
+    // tìm tất cả booking hoàn thành cách đây 6 tháng
+    @Query("SELECT b FROM Booking b WHERE b.status = 'COMPLETED' AND b.updatedAt >= :startDate AND b.updatedAt < :endDate")
+    List<Booking> findBookingsForReminder(@Param("startDate") LocalDateTime startDate, @Param("endDate") LocalDateTime endDate);
 }

@@ -2,10 +2,12 @@ package com.example.smartgarage.service;
 
 import com.example.smartgarage.dto.ReviewRequest;
 import com.example.smartgarage.entity.Booking;
+import com.example.smartgarage.entity.Notification;
 import com.example.smartgarage.entity.Review;
 import com.example.smartgarage.entity.User;
 import com.example.smartgarage.enums.BookingStatus;
 import com.example.smartgarage.repository.BookingRepository;
+import com.example.smartgarage.repository.NotificationRepository;
 import com.example.smartgarage.repository.ReviewRepository;
 import com.example.smartgarage.repository.UserRepository;
 import jakarta.transaction.Transactional;
@@ -19,6 +21,9 @@ public class ReviewService {
     @Autowired  private ReviewRepository reviewRepository;
     @Autowired  private UserRepository userRepository;
     @Autowired  private BookingRepository bookingRepository;
+    @Autowired  private NotificationRepository notificationRepository;
+    @Autowired private EmailService emailService;
+    @Autowired private EmailTemplateService templateService;
     @Transactional
     public Review createReview(String email, ReviewRequest request) {
         // 1. Tìm đơn hàng
@@ -60,12 +65,30 @@ public class ReviewService {
         return Math.round(average * 10.0) / 10.0;
     }
     @Transactional
-    public Review updateAdminReply(Long reviewId, String replyContent) {
+    public Review updateAdminReply(Long reviewId, String reply) {
         Review review = reviewRepository.findById(reviewId)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy đánh giá để phản hồi"));
 
-        review.setAdminReply(replyContent);
+        review.setAdminReply(reply);
         review.setRepliedAt(LocalDateTime.now());
-        return reviewRepository.save(review);
+        // 2. Lưu thông báo vào Database (Để hiện "chuông" trên App)
+        Notification notify = new Notification();
+        notify.setUser(review.getUser());
+        notify.setTitle("Gara đã phản hồi đánh giá của bạn");
+        notify.setContent("Phản hồi: " + reply);
+        notificationRepository.save(notify);
+
+        // Gửi Email cho khách
+        Review savedReview = reviewRepository.save(review);
+        // 4. Gửi Email (Nên được xử lý Bất đồng bộ - Async)
+        // Sử dụng Template HTML để chuyên nghiệp hơn
+        String htmlContent = templateService.buildAdminReplyEmail(
+                review.getUser().getFullName(),
+                review.getComment(),
+                reply
+        );
+
+        emailService.sendHtmlEmail(review.getUser().getEmail(), "Phản hồi từ Smart Gara", htmlContent);
+        return savedReview;
     }
 }

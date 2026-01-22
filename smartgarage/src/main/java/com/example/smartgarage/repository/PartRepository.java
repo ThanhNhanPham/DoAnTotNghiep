@@ -19,4 +19,6 @@ public interface PartRepository extends JpaRepository<Part,Long> {
 
     // 3. Lấy danh sách linh kiện còn hàng (để hiển thị khi chọn cho đơn hàng)
     List<Part> findByQuantityGreaterThan(int quantity);
+    // 4. Kiểm tra tồn tại theo tên (Hữu ích khi thêm mới để tránh trùng lặp)
+    boolean existsByNameIgnoreCase(String name);
 }
