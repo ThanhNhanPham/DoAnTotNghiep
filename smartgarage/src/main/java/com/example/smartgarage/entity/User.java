@@ -47,4 +47,6 @@ public class User {
     @JsonIgnoreProperties({"user", "motorbikes", "bookings"})
     private List<Motorbike> motorbikes;
 
+    // Các booking của user
+
 }
