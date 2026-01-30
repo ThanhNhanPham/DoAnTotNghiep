@@ -6,7 +6,6 @@ import com.example.smartgarage.repository.MotorbikeRepository;
 import com.example.smartgarage.repository.UserRepository;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -19,11 +18,15 @@ import java.util.Optional;
 @RequestMapping("/api/v1/motorbikes")
 @CrossOrigin("*")
 public class MotorbikeController {
-    @Autowired
-    private MotorbikeRepository motorbikeRepository;
-    @Autowired
-    private UserRepository userRepository;
-    // 1. Lấy danh sách xe của một User cụ thể
+
+    private final MotorbikeRepository motorbikeRepository;
+    private final UserRepository userRepository;
+
+    public MotorbikeController(MotorbikeRepository motorbikeRepository, UserRepository userRepository) {
+        this.motorbikeRepository = motorbikeRepository;
+        this.userRepository = userRepository;
+    }
+
     @GetMapping("/user/{userId}")
     public ResponseEntity<List<Motorbike>> getMotorbikesByUserId(@PathVariable Long userId) {
         return ResponseEntity.ok(motorbikeRepository.findByUserId(userId));

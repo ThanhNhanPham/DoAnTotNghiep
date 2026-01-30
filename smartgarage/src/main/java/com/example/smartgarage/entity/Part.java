@@ -31,9 +31,9 @@ public class Part {
     private Integer quantity;    // Số lượng tồn kho
     @NotBlank(message = "Đơn vị tính không được để trống")
     private String unit;         // Đơn vị tính (Cái, Lít, Bộ...)
-    @ManyToMany(mappedBy = "parts")
+    @OneToMany(mappedBy = "part", cascade = CascadeType.ALL)
     @JsonIgnore
-    private List<Booking> bookings;
+    private List<BookedPart> bookedParts;
 
     public Long getId() {
         return id;
@@ -83,11 +83,11 @@ public class Part {
         this.unit = unit;
     }
 
-    public List<Booking> getBookings() {
-        return bookings;
+    public List<BookedPart> getBookedParts() {
+        return bookedParts;
     }
 
-    public void setBookings(List<Booking> bookings) {
-        this.bookings = bookings;
+    public void setBookedParts(List<BookedPart> bookedParts) {
+        this.bookedParts = bookedParts;
     }
 }

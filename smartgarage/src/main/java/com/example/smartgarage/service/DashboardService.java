@@ -10,9 +10,11 @@ import java.math.BigDecimal;
 
 @Service
 public class DashboardService {
-    @Autowired
-    private BookingRepository bookingRepository;
-    public DashboardStatusDTO getDashboardStats() {
+    private final BookingRepository bookingRepository;
+    public DashboardService(@Autowired BookingRepository bookingRepository) {
+        this.bookingRepository = bookingRepository;
+    }
+    public DashboardStatusDTO getDashboardStatus() {
         DashboardStatusDTO dto = new DashboardStatusDTO();
 
         // 1. Lấy các số liệu đếm cơ bản

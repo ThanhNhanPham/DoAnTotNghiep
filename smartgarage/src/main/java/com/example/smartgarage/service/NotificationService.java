@@ -10,7 +10,11 @@ import java.util.List;
 
 @Service
 public class NotificationService {
-    @Autowired private NotificationRepository notificationRepository;
+    private final NotificationRepository notificationRepository;
+    public NotificationService(@Autowired NotificationRepository notificationRepository) {
+        this.notificationRepository = notificationRepository;
+    }
+    // dưới đây là lấy danh sách thông báo cho người dùng, sắp xếp theo thời gian tạo mới nhất
     public List<Notification> getNotificationsForUser(Long userId) {
         return notificationRepository.findByUserIdOrderByCreatedAtDesc(userId);
     }

@@ -7,7 +7,6 @@ import com.example.smartgarage.service.BookingService;
 import com.example.smartgarage.service.MechanicService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -24,10 +23,14 @@ import java.util.List;
 @Tag(name = "Admin", description = "Các API quản lý dành cho Quản trị viên và Chủ Gara")
 @CrossOrigin("*")
 public class AdminController {
-    @Autowired
-    private BookingService bookingService;
-    @Autowired
-    private MechanicService mechanicService;
+
+    private final BookingService bookingService;
+    private final MechanicService mechanicService;
+
+    public AdminController(BookingService bookingService, MechanicService mechanicService) {
+        this.bookingService = bookingService;
+        this.mechanicService = mechanicService;
+    }
 
     @Operation(summary = "Xem tất cả lịch hẹn", description = "Có thể lọc theo trạng thái: PENDING, CONFIRMED, COMPLETED, CANCELLED")
     @GetMapping("/bookings")

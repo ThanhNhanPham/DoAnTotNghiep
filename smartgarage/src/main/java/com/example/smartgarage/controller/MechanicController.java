@@ -4,9 +4,9 @@ import com.example.smartgarage.entity.Mechanic;
 import com.example.smartgarage.enums.MechanicStatus;
 import com.example.smartgarage.repository.BranchRepository;
 import com.example.smartgarage.repository.MechanicRepository;
+import com.example.smartgarage.service.MechanicService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -16,10 +16,17 @@ import java.util.List;
 @RequestMapping("/api/v1/mechanics")
 @CrossOrigin("*")
 public class MechanicController {
-    @Autowired
-    private MechanicRepository mechanicRepository;
-    @Autowired
-    private BranchRepository branchRepository;
+
+    private final MechanicRepository mechanicRepository;
+    private final BranchRepository branchRepository;
+    private final MechanicService mechanicService;
+
+    public MechanicController(MechanicRepository mechanicRepository, BranchRepository branchRepository, MechanicService mechanicService) {
+        this.mechanicService = mechanicService;
+        this.mechanicRepository = mechanicRepository;
+        this.branchRepository = branchRepository;
+    }
+
     // Lấy tất cả thợ trong hệ thống
     @GetMapping
     public List<Mechanic> getAllMechanics() {
@@ -56,5 +63,11 @@ public class MechanicController {
             mechanicRepository.save(mechanic);
             return ResponseEntity.ok("Đã chuyển trạng thái thợ sang nghỉ việc (INACTIVE).");
         }).orElse(ResponseEntity.notFound().build());
+    }
+    // Sửa thông tin của thợ
+    @PutMapping("/{id}")
+    public ResponseEntity<?> updateMechanic(@PathVariable Long id, @Valid @RequestBody Mechanic updatedMechanic) {
+        Mechanic result = mechanicService.updateMechanic(id, updatedMechanic);
+        return ResponseEntity.ok(result);
     }
 }

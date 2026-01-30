@@ -1,7 +1,6 @@
 package com.example.smartgarage.entity;
 
 import com.example.smartgarage.enums.BookingStatus;
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.*;
@@ -11,7 +10,6 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 @Entity
 @Table(name = "bookings")
@@ -28,7 +26,7 @@ public class Booking {
     @ManyToOne
     @JoinColumn(name = "user_id", nullable = false)
     @JsonIgnoreProperties({"motorbikes", "bookings", "password"})
-    private User user; // Khách hàng đặt lịch
+    private User user; // Khách hàng đặt lịchs
     @NotNull(message = "Vui lòng chọn xe của khách hàng")
     @ManyToOne
     @JoinColumn(name = "motorbike_id", nullable = false)
@@ -48,7 +46,7 @@ public class Booking {
     @Column(name = "booking_time", nullable = false)
     private LocalDateTime bookingTime;
 
-    @NotBlank(message = "Trạng thái đơn hàng không được để trống")
+    @NotNull(message = "Trạng thái đơn hàng không được để trống")
     @Enumerated(EnumType.STRING)
     private BookingStatus status; // Trạng thái: PENDING, CONFIRMED, COMPLETED, CANCELLED
 
@@ -62,22 +60,13 @@ public class Booking {
     @org.hibernate.annotations.UpdateTimestamp // TỰ ĐỘNG CẬP NHẬT KHI ĐƠN HÀNG XONG
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
-    // Mối quan hệ Nhiều-Nhiều với bảng Services thông qua bảng trung gian booking_services
-    @ManyToMany
-    @JoinTable(
-            name = "booking_services",
-            joinColumns = @JoinColumn(name = "booking_id"),
-            inverseJoinColumns = @JoinColumn(name = "service_id")
-    )
-    private List<Service> services;
+    // Mối quan hệ Một-Nhiều với bảng Services thông qua bảng trung gian booking_services
+    @OneToMany(mappedBy = "booking", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<BookedService> bookedServices = new ArrayList<>();
 
-    @ManyToMany(cascade = {CascadeType.PERSIST, CascadeType.MERGE})
-    @JoinTable(
-            name = "booking_parts",
-            joinColumns = @JoinColumn(name = "booking_id"),
-            inverseJoinColumns = @JoinColumn(name = "part_id")
-    )
-    private List<Part> parts = new ArrayList<>();
+    @OneToMany(mappedBy = "booking", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<BookedPart> bookedPart = new ArrayList<>();
+
     @DecimalMin(value = "0.0", message = "Tổng tiền không được nhỏ hơn 0")
     @Column(name = "total_amount")
     private BigDecimal totalAmount;

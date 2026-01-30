@@ -1,12 +1,9 @@
 package com.example.smartgarage.controller;
 
-import com.example.smartgarage.entity.Branch;
 import com.example.smartgarage.entity.Service;
 import com.example.smartgarage.repository.ServiceRepository;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import org.springframework.beans.factory.annotation.Autowired;
-
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -19,8 +16,11 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/v1/services")
 public class ServiceController {
-    @Autowired
-    private ServiceRepository serviceRepository;
+
+    private final ServiceRepository serviceRepository;
+    public ServiceController(ServiceRepository serviceRepository) {
+        this.serviceRepository = serviceRepository;
+    }
     @GetMapping
     public List<Service> getAllServices() {
         return serviceRepository.findAll();

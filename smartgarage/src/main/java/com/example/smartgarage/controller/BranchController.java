@@ -4,7 +4,6 @@ import com.example.smartgarage.entity.Branch;
 import com.example.smartgarage.repository.BranchRepository;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -16,8 +15,11 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/v1/branches")
 public class BranchController {
-    @Autowired
-    private BranchRepository branchRepository;
+    private final BranchRepository branchRepository;
+
+    public BranchController(BranchRepository branchRepository) {
+        this.branchRepository = branchRepository;
+    }
     @GetMapping
     public List<Branch> getAllBranches() {
         return branchRepository.findAll();

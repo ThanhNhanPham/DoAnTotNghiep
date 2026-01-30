@@ -27,19 +27,21 @@ public interface BookingRepository extends JpaRepository<Booking,Long> {
     long countByStatus(@Param("status") BookingStatus status);
 
     // 2. Sửa lỗi: Truyền tham số Enum vào thay vì viết cứng chuỗi 'COMPLETED'
-    @Query("SELECT SUM(s.price) FROM Booking b JOIN b.services s WHERE b.status = :status")
+    @Query("SELECT SUM(b.totalAmount) FROM Booking b WHERE b.status = :status")
     BigDecimal calculateTotalRevenue();
 
-    @Query("SELECT new com.example.smartgarage.dto.ServiceStatisticDTO(s.name, COUNT(s)) " +
-            "FROM Booking b JOIN b.services s " +
-            "GROUP BY s.name ORDER BY COUNT(s) DESC")
+    @Query("SELECT new com.example.smartgarage.dto.ServiceStatisticDTO(s.name, COUNT(bs)) " +
+            "FROM Booking b " +
+            "JOIN b.bookedServices bs " +
+            "JOIN bs.service s " +
+            "GROUP BY s.name ORDER BY COUNT(bs) DESC")
     List<ServiceStatisticDTO> findTopServices(Pageable pageable);
 
     @Query("SELECT COUNT(b) FROM Booking b WHERE b.bookingTime >= :startOfDay")
     long countNewBookingsToday(@Param("startOfDay") LocalDateTime startOfDay);
 
     // 3. Tối ưu hóa: Thêm tham số status để linh hoạt tính doanh thu theo kỳ
-    @Query("SELECT SUM(s.price) FROM Booking b JOIN b.services s " +
+    @Query("SELECT SUM(b.totalAmount) FROM Booking b " +
             "WHERE b.status = :status AND b.bookingTime BETWEEN :startDate AND :endDate")
     BigDecimal calculateRevenueByPeriod(@Param("status") BookingStatus status,
                                         @Param("startDate") LocalDateTime startDate,

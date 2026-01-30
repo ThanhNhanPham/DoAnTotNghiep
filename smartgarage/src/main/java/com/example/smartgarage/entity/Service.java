@@ -49,6 +49,11 @@ public class Service {
             inverseJoinColumns = @JoinColumn(name = "part_id")
     )
     // Ngăn không cho Part gọi ngược lại Booking khi trả về JSON của Service
-    @JsonIgnoreProperties("bookings")
+    @JsonIgnoreProperties("bookedParts") // Tránh vòng lặp JSON nếu Part có list này
+    @Builder.Default
     private List<Part> suggestedParts = new ArrayList<>();
+
+    @OneToMany(mappedBy = "service")
+    @com.fasterxml.jackson.annotation.JsonIgnore // Không trả về list này khi xem danh mục dịch vụ
+    private List<BookedService> bookedServices;
 }

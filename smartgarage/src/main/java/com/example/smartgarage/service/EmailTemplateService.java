@@ -1,8 +1,6 @@
 package com.example.smartgarage.service;
 import org.springframework.stereotype.Service;
 
-import java.util.Map;
-
 @Service
 public class EmailTemplateService {
     public String buildAdminReplyEmail(String customerName,String reviewComment,String adminReply){

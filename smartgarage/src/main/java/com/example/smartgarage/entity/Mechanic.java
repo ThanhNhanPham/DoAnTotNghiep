@@ -9,6 +9,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.*;
+import org.springframework.data.annotation.CreatedDate;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -35,13 +36,19 @@ public class Mechanic {
     @Size(max = 500, message = "Địa chỉ không quá 500 ký tự")
     @Column(columnDefinition = "TEXT")
     private String address;
-    @NotBlank(message = "Trạng thái không được để trống")
+    @NotNull(message = "Trạng thái không được để trống")
     @Enumerated(EnumType.STRING)
     @Column(length = 20)
     private MechanicStatus status; // Trạng thái: ACTIVE, INACTIVE, BUSY
 
-    @Column(name = "created_at")
-    private LocalDateTime createdAt = LocalDateTime.now();
+    @Column(name = "created_at", updatable = false, nullable = false)
+    private LocalDateTime createdAt ;
+    @PrePersist
+    protected void onCreate() {
+        if (this.createdAt == null) {
+            this.createdAt = LocalDateTime.now();
+        }
+    }
 
     // Mỗi thợ sửa chữa thuộc về một chi nhánh cụ thể
     @NotNull(message = "Thợ phải thuộc về một chi nhánh")

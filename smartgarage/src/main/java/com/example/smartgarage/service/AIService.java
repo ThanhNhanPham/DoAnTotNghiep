@@ -2,9 +2,10 @@ package com.example.smartgarage.service;
 
 import com.example.smartgarage.entity.ConsultationHistory;
 import com.example.smartgarage.entity.Service;
+import com.example.smartgarage.entity.User;
 import com.example.smartgarage.repository.ConsultationHistoryRepository;
 import com.example.smartgarage.repository.ServiceRepository;
-import org.springframework.beans.factory.annotation.Autowired;
+import com.example.smartgarage.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.web.client.HttpClientErrorException;
@@ -23,20 +24,26 @@ public class AIService {
     @Value("${gemini.model}")
     private String modelName;
 
-    // Sử dụng v1 cho các bản Stable năm 2026 (như Gemini 2.5 Flash)
-    private final String BASE_URL = "https://generativelanguage.googleapis.com/v1/models/";
+    private final ServiceRepository serviceRepository;
 
-    @Autowired
-    private ServiceRepository serviceRepository;
 
-    @Autowired
-    private RestTemplate restTemplate;
+    private final RestTemplate restTemplate;
 
+
+    private final UserRepository userRepository;
     // Thêm Repository mới vào để lưu lịch sử
-    @Autowired
-    private ConsultationHistoryRepository historyRepository;
+    private final ConsultationHistoryRepository historyRepository;
+    public AIService(ServiceRepository serviceRepository,
+                     RestTemplate restTemplate,
+                     UserRepository userRepository,
+                     ConsultationHistoryRepository historyRepository) {
+        this.serviceRepository = serviceRepository;
+        this.restTemplate = restTemplate;
+        this.userRepository = userRepository;
+        this.historyRepository = historyRepository;
+    }
 
-    public String suggestService(String customerIssue) {
+    public String suggestService(String customerIssue, String username) {
         try {
             // 1. Lấy danh sách dịch vụ thực tế từ DB
             String availableServices = serviceRepository.findAll().stream()
@@ -44,6 +51,8 @@ public class AIService {
                     .collect(Collectors.joining(", "));
 
             // 2. Tạo URL chuẩn xác (Sử dụng model 2.5 Flash để tránh lỗi 404)
+            // Sử dụng v1 cho các bản Stable năm 2026 (như Gemini 2.5 Flash)
+            String BASE_URL = "https://generativelanguage.googleapis.com/v1/models/";
             String finalUrl = BASE_URL + modelName + ":generateContent?key=" + apiKey;
 
             // 3. Thiết lập Header
@@ -74,17 +83,19 @@ public class AIService {
             if (response.getBody() != null && response.getBody().containsKey("candidates")) {
                 List<?> candidates = (List<?>) response.getBody().get("candidates");
                 if (!candidates.isEmpty()) {
-                    Map<?, ?> firstCandidate = (Map<?, ?>) candidates.get(0);
+                    Map<?, ?> firstCandidate = (Map<?, ?>) candidates.getFirst();
                     Map<?, ?> content = (Map<?, ?>) firstCandidate.get("content");
                     List<?> parts = (List<?>) content.get("parts");
-                    Map<?, ?> firstPart = (Map<?, ?>) parts.get(0);
+                    Map<?, ?> firstPart = (Map<?, ?>) parts.getFirst();
 
                     String aiSuggestion = (String) firstPart.get("text");
-
+                    User user = userRepository.findByEmail(username)
+                            .orElseThrow(() -> new RuntimeException("Không tìm thấy khách hàng: " + username));
                     // --- BƯỚC MỚI: LƯU VÀO DATABASE ---
                     ConsultationHistory history = new ConsultationHistory();
                     history.setCustomerIssue(customerIssue);
                     history.setAiSuggestion(aiSuggestion);
+                    history.setCustomer(user);
                     history.setCreatedAt(LocalDateTime.now());
                     historyRepository.save(history);
 

@@ -39,8 +39,8 @@ public class Motorbike {
     private String model;
     @Size(max = 30, message = "Mô tả màu sắc quá dài")
     private String color;
-
-    @NotNull(message = "Xe phải thuộc về một người dùng")
+//
+//    @NotNull(message = "Xe phải thuộc về một người dùng")
     @ManyToOne
     @JoinColumn(name = "user_id", nullable = false)
     @JsonIgnore

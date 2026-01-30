@@ -3,7 +3,6 @@ package com.example.smartgarage.controller;
 import com.example.smartgarage.entity.Part;
 import com.example.smartgarage.repository.PartRepository;
 import jakarta.validation.Valid;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -15,7 +14,10 @@ import java.util.List;
 @CrossOrigin("*")
 @PreAuthorize("hasRole('ADMIN')")
 public class PartController {
-    @Autowired private PartRepository partRepository;
+    private final PartRepository partRepository;
+    public PartController(PartRepository partRepository) {
+        this.partRepository = partRepository;
+    }
 
     // 1. Lấy tất cả linh kiện (dành cho Admin quản lý kho)
     @GetMapping
@@ -56,7 +58,7 @@ public class PartController {
         Part part = partRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy linh kiện"));
 
-        part.setQuantity(Integer.valueOf(part.getQuantity() + amount));
+        part.setQuantity(part.getQuantity() + amount);
         return ResponseEntity.ok(partRepository.save(part));
     }
     // 6. API Cảnh báo hàng sắp hết (Dành cho Dashboard)

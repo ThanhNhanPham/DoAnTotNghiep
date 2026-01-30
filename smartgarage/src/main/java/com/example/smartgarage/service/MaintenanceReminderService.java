@@ -17,10 +17,10 @@ public class MaintenanceReminderService {
     @Scheduled(cron = "0 * * * * ?")// mõi phút quét một lần để test
     public void sendDailyMaintenanceReminders() {
         // Tính toán khoảng thời gian 6 tháng trước
-        LocalDateTime sáuThángTrước_BắtĐầu = LocalDateTime.now().minusMonths(6).withHour(0).withMinute(0);
-        LocalDateTime sáuThángTrước_KếtThúc = sáuThángTrước_BắtĐầu.plusDays(1);
+        LocalDateTime sáuThángTract_BắtĐầu = LocalDateTime.now().minusMonths(6).withHour(0).withMinute(0);
+        LocalDateTime sáuThángTract_KếtThúc = sáuThángTract_BắtĐầu.plusDays(1);
 
-        List<Booking> listReminders = bookingRepository.findBookingsForReminder(sáuThángTrước_BắtĐầu, sáuThángTrước_KếtThúc);
+        List<Booking> listReminders = bookingRepository.findBookingsForReminder(sáuThángTract_BắtĐầu, sáuThángTract_KếtThúc);
 
         for (Booking booking : listReminders) {
             String htmlContent = templateService.buildMaintenanceReminderEmail(

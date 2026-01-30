@@ -39,12 +39,12 @@ public class BookingHistoryDTO {
             dto.setBranchName(booking.getBranch().getName());
         }
 
-        dto.setServiceNames(booking.getServices().stream()
-                .map(s -> s.getName())
+        dto.setServiceNames(booking.getBookedServices().stream()
+                .map(s -> s.getService().getName())
                 .collect(Collectors.toList()));
 
-        dto.setTotalPrice(BigDecimal.valueOf(booking.getServices().stream()
-                .mapToDouble(s -> s.getPrice().doubleValue())
+        dto.setTotalPrice(BigDecimal.valueOf(booking.getBookedServices().stream()
+                .mapToDouble(s -> s.getPriceAtBooking().doubleValue())
                 .sum()));
         return dto;
     }
