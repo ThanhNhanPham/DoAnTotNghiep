@@ -1,0 +1,201 @@
+.mechanics-page {
+  width: 100%;
+}
+
+.page-header {
+  margin-bottom: 24px;
+}
+
+.page-header h1 {
+  font-size: 28px;
+  font-weight: 600;
+  margin: 0 0 8px 0;
+  color: #262626;
+}
+
+.page-header p {
+  font-size: 14px;
+  color: #8c8c8c;
+  margin: 0;
+}
+
+.mechanics-card {
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.mechanics-card .ant-card-body {
+  padding: 24px;
+}
+
+.mechanics-toolbar {
+  margin-bottom: 24px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.text-right {
+  text-align: right;
+}
+
+@media (max-width: 768px) {
+  .text-right {
+    text-align: left;
+  }
+}
+
+/* Statistics */
+.stat-item {
+  background: #f5f5f5;
+  padding: 16px;
+  border-radius: 8px;
+  text-align: center;
+  border-left: 3px solid #1890ff;
+}
+
+.stat-value {
+  font-size: 24px;
+  font-weight: 600;
+  color: #262626;
+  margin-bottom: 8px;
+}
+
+.stat-label {
+  font-size: 12px;
+  color: #8c8c8c;
+}
+
+/* Mechanic name cell */
+.mechanic-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.mechanic-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  flex-shrink: 0;
+  font-size: 16px;
+}
+
+.mechanic-fullname {
+  font-size: 14px;
+  font-weight: 500;
+  color: #262626;
+}
+
+.mechanic-email-small {
+  font-size: 12px;
+  color: #8c8c8c;
+}
+
+.mechanic-branch-small {
+  font-size: 12px;
+  color: #1890ff;
+  font-weight: 500;
+}
+
+.address-cell {
+  display: inline-block;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Cell with icon */
+.cell-with-icon {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cell-with-icon svg {
+  color: #1890ff;
+  flex-shrink: 0;
+}
+
+/* Experience cell */
+.experience-cell {
+  font-weight: 600;
+  color: #262626;
+}
+
+/* Rating cell */
+.rating-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rating-value {
+  font-size: 12px;
+  color: #8c8c8c;
+}
+
+/* Jobs cell */
+.jobs-cell {
+  font-weight: 600;
+  color: #1890ff;
+}
+
+/* Table styling */
+.mechanics-card .ant-table {
+  background: transparent;
+}
+
+.mechanics-card .ant-table-thead > tr > th {
+  background: #fafafa;
+  border-bottom: 2px solid #f0f0f0;
+}
+
+.mechanics-card .ant-table-tbody > tr:hover > td {
+  background: #fafafa;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .page-header h1 {
+    font-size: 24px;
+  }
+
+  .stat-item {
+    padding: 12px;
+  }
+
+  .stat-value {
+    font-size: 20px;
+  }
+
+  .stat-label {
+    font-size: 11px;
+  }
+
+  .mechanic-avatar {
+    width: 36px;
+    height: 36px;
+    font-size: 14px;
+  }
+}
+
+@media (max-width: 480px) {
+  .mechanics-toolbar {
+    padding-bottom: 16px;
+  }
+
+  .mechanic-fullname {
+    font-size: 13px;
+  }
+
+  .mechanic-email-small {
+    font-size: 11px;
+  }
+}
