@@ -2,6 +2,7 @@ package com.example.smartgarage.controller;
 
 import com.example.smartgarage.entity.Branch;
 import com.example.smartgarage.repository.BranchRepository;
+import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpHeaders;
@@ -11,7 +12,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
-@Tag(name = "Branch", description = "Quản lý chi nhánh cửa hàng")
+@Tag(name = "Branch API", description = "Quản lý chi nhánh cửa hàng")
 @RestController
 @RequestMapping("/api/v1/branches")
 public class BranchController {
@@ -20,12 +21,20 @@ public class BranchController {
     public BranchController(BranchRepository branchRepository) {
         this.branchRepository = branchRepository;
     }
+    @Operation(summary="Lấy tất cả chi nhánh của cửa hàng")
     @GetMapping
-    public List<Branch> getAllBranches() {
-        return branchRepository.findAll();
+    public ResponseEntity<List<Branch>> getAllBranches() {
+        List<Branch> branches= branchRepository.findAll();
+        return ResponseEntity.ok().body(branches);
     }
 
-    // Thêm chi nhánh cuả hàng
+    @Operation(summary="Lấy các cửa hàng còn hoạt động")
+    @GetMapping("/active")
+    public ResponseEntity<List<Branch>> getActiveBranches() {
+        List<Branch> branches= branchRepository.findAllByIsActiveTrue();
+        return ResponseEntity.ok().body(branches);
+    }
+    @Operation(summary="Thêm chi nhánh cửa hàng mới")
     @PostMapping
     public ResponseEntity<Branch> createBranch(@Valid @RequestBody Branch branch) {
         try {
@@ -36,14 +45,14 @@ public class BranchController {
         }
     }
 
-    // sửa chi nhánh cửa hàng
+    @Operation(summary="Cập nhật chi nhánh cửa hàng")
     @PutMapping("/{id}")
     public ResponseEntity<Branch> updateBranch(@PathVariable Long id,@Valid @RequestBody Branch branchDetails) {
         try {
             // 1. Tìm chi nhánh cũ trong Database
             return branchRepository.findById(id).map(existingBranch -> {
 
-                // 2. Cập nhật các thông tin mới từ branchDetails gửi lên
+                // 2. Cập   nhật các thông tin mới từ branchDetails gửi lên
                 existingBranch.setName(branchDetails.getName());
                 existingBranch.setAddress(branchDetails.getAddress());
                 existingBranch.setPhone(branchDetails.getPhone());
@@ -61,20 +70,13 @@ public class BranchController {
         }
     }
 
-    // Xóa chi nhánh cửa hàng
+    @Operation(summary="Xoá chi nhánh cửa hàng", description="chuyển active từ true sang false")
     @DeleteMapping("/{id}")
-    public ResponseEntity<String> deleteBranch(@PathVariable Long id) {
-        try {
-            // 1. Kiểm tra xem chi nhánh có tồn tại trong DB không
-            if (!branchRepository.existsById(id)) {
-                return new ResponseEntity<>("Lỗi: Không tìm thấy chi nhánh có ID = " + id, HttpStatus.NOT_FOUND);
-            }
-            branchRepository.deleteById(id);
-
-            return new ResponseEntity<>("Đã xóa chi nhánh thành công!", HttpStatus.OK);
-        } catch (Exception e) {
-            return new ResponseEntity<>("Không thể xóa chi nhánh này vì có dữ liệu liên quan (thợ, lịch hẹn...)",
-                    HttpStatus.CONFLICT);
-        }
+    public ResponseEntity<String> deactivateBranch(@PathVariable Long id) {
+        return branchRepository.findById(id).map(branch -> {
+            branch.setIsActive(false); // Chuyển trạng thái thành không hoạt động
+            branchRepository.save(branch);
+            return ResponseEntity.ok("Chi nhánh đã ngưng hoạt động.");
+        }).orElse(ResponseEntity.status(HttpStatus.NOT_FOUND).body("Không tìm thấy chi nhánh với ID: " + id));
     }
 }

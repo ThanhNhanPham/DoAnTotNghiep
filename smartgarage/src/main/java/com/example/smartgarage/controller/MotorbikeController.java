@@ -1,56 +1,55 @@
 package com.example.smartgarage.controller;
 
 import com.example.smartgarage.entity.Motorbike;
-import com.example.smartgarage.entity.User;
-import com.example.smartgarage.repository.MotorbikeRepository;
-import com.example.smartgarage.repository.UserRepository;
+import com.example.smartgarage.service.MotorbikeService;
+import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.Optional;
 
-@Tag(name = "Motorbike", description = "Quản lý xe của khách hàng")
+@Tag(name = "Motorbike API", description = "Quản lý xe của khách hàng")
 @RestController
 @RequestMapping("/api/v1/motorbikes")
 @CrossOrigin("*")
 public class MotorbikeController {
 
-    private final MotorbikeRepository motorbikeRepository;
-    private final UserRepository userRepository;
+    private final MotorbikeService motorbikeService;
 
-    public MotorbikeController(MotorbikeRepository motorbikeRepository, UserRepository userRepository) {
-        this.motorbikeRepository = motorbikeRepository;
-        this.userRepository = userRepository;
+    public MotorbikeController(MotorbikeService motorbikeService) {
+        this.motorbikeService = motorbikeService;
     }
 
+    @Operation(summary="admin lấy danh sách xe của hệ thống")
+    @GetMapping
+    public ResponseEntity<List<Motorbike>> getAllMotorbikes() {
+        return ResponseEntity.ok(motorbikeService.getAllMotorbikes());
+    }
+
+    @Operation(summary="khách hàng cập nhật thông tin xe")
+    @PutMapping("/{id}")
+    public ResponseEntity<?> updateMotorbike(@PathVariable Long id, @Valid @RequestBody Motorbike motorbikeDetails) {
+        return motorbikeService.updateMotorbike(id, motorbikeDetails)
+                .<ResponseEntity<?>>map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    @Operation(summary="Lấy thông tin xe máy theo userId")
     @GetMapping("/user/{userId}")
     public ResponseEntity<List<Motorbike>> getMotorbikesByUserId(@PathVariable Long userId) {
-        return ResponseEntity.ok(motorbikeRepository.findByUserId(userId));
+        return ResponseEntity.ok(motorbikeService.getMotorbikesByUserId(userId));
     }
-    // 2. Thêm xe mới cho User
+
+    @Operation(summary="User thêm thông tin xe máy")
     @PostMapping("/user/{userId}")
     public ResponseEntity<?> addMotorbike(@PathVariable Long userId,@Valid @RequestBody Motorbike motorbike) {
-        Optional<User> userOptional = userRepository.findById(userId);
-
-        if (userOptional.isPresent()) {
-            User user = userOptional.get();
-            motorbike.setUser(user);
-            Motorbike savedMotorbike = motorbikeRepository.save(motorbike);
-            return ResponseEntity.status(HttpStatus.CREATED).body(savedMotorbike);
-        } else {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("User không tồn tại");
-        }
+        return motorbikeService.addMotorbike(userId, motorbike);
     }
-    // 3. Xóa xe máy khỏi hệ thống
+    @Operation(summary="xoá xe máy khỏi hệ thống", description="nếu như xoá xe máy thì chuyển trạng thái active = false")
     @DeleteMapping("/{id}")
     public ResponseEntity<?> deleteMotorbike(@PathVariable Long id) {
-        return motorbikeRepository.findById(id).map(motorbike -> {
-            motorbikeRepository.delete(motorbike);
-            return ResponseEntity.ok().build();
-        }).orElse(ResponseEntity.notFound().build());
+        return motorbikeService.softDeleteMotorbike(id);
     }
 }

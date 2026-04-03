@@ -5,11 +5,13 @@ import com.example.smartgarage.dto.ReviewRequest;
 import com.example.smartgarage.entity.Review;
 import com.example.smartgarage.service.ReviewService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+@Tag(name = "Review API", description = "Quản lý đánh giá")
 @RestController
 @RequestMapping("/api/v1/reviews")
 public class ReviewController {
@@ -29,11 +31,12 @@ public class ReviewController {
         }
     }
 
-    // Lấy điểm đánh giá trung bình của thợ
+    @Operation(summary="Lấy điểm trung bình đánh giá của thợ")
     @GetMapping("/mechanic/{mechanicId}/average")
     public ResponseEntity<Double> getAverageRating(@PathVariable Long mechanicId) {
         return ResponseEntity.ok(reviewService.getAverageRating(mechanicId));
     }
+    @Operation(summary="admin trả lời đánh giá")
     @PatchMapping("/{id}/reply")
     @PreAuthorize("hasRole('ADMIN')") // Chỉ Admin mới được phép gọi API này
     public ResponseEntity<?> replyToReview(@PathVariable Long id, @RequestBody AdminReplyRequest request) {

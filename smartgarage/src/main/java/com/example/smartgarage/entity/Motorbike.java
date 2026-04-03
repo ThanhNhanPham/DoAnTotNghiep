@@ -45,4 +45,7 @@ public class Motorbike {
     @JoinColumn(name = "user_id", nullable = false)
     @JsonIgnore
     private User user;
+
+    @Column(name = "is_active", nullable = false)
+    private Boolean is_active = true;
 }

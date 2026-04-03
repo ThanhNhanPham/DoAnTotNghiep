@@ -2,6 +2,8 @@ package com.example.smartgarage.controller;
 
 import com.example.smartgarage.entity.Part;
 import com.example.smartgarage.repository.PartRepository;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -9,6 +11,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+@Tag(name = "Part API", description = "Quản lý xe linh kiện của cửa hàng")
 @RestController
 @RequestMapping("/api/v1/parts")
 @CrossOrigin("*")
@@ -19,23 +22,25 @@ public class PartController {
         this.partRepository = partRepository;
     }
 
-    // 1. Lấy tất cả linh kiện (dành cho Admin quản lý kho)
+
+    @Operation(summary="Admin lấy danh sách quản lý linh kiện")
     @GetMapping
     public ResponseEntity<List<Part>> getAllParts() {
         return ResponseEntity.ok(partRepository.findAll());
     }
-    // 2. Tìm kiếm linh kiện theo tên (Dùng khi chọn linh kiện cho đơn hàng)
+    @Operation(summary="Tìm kiếm linh kiện theo tên")
     @GetMapping("/search")
     public ResponseEntity<List<Part>> searchParts(@RequestParam String name) {
         return ResponseEntity.ok(partRepository.findByNameContainingIgnoreCase(name));
     }
 
-    //3. Thêm mới linh kiện vào hệ thống
+    @Operation(summary="Thêm linh kiện mới vào hệ thống")
     @PostMapping
     public ResponseEntity<Part> addPart(@Valid @RequestBody Part part) {
         return ResponseEntity.ok(partRepository.save(part));
     }
-    //4.Cập nhật thông tin linh kiện(Giá, tên, mô tả)
+
+    @Operation(summary="Cập nhật thông tin linh kiện")
     @PutMapping("/{id}")
     public ResponseEntity<Part> updatePart(@PathVariable Long id,@Valid @RequestBody Part partDetails) {
         Part part = partRepository.findById(id)
@@ -49,7 +54,7 @@ public class PartController {
 
         return ResponseEntity.ok(partRepository.save(part));
     }
-    //5.Api nhap linh kien vao kho
+    @Operation(summary="api nhập lih kiện vào kho")
     @PatchMapping("/{id}/add-stock")
     public ResponseEntity<Part> addStock(@PathVariable Long id, @RequestParam Integer amount) {
         if(amount <= 0) {
@@ -61,10 +66,9 @@ public class PartController {
         part.setQuantity(part.getQuantity() + amount);
         return ResponseEntity.ok(partRepository.save(part));
     }
-    // 6. API Cảnh báo hàng sắp hết (Dành cho Dashboard)
+    @Operation(summary="Api cảnh báo linh kiện kho sắp hết")
     @GetMapping("/low-stock")
     public ResponseEntity<List<Part>> getLowStock() {
-        // Lấy danh sách linh kiện còn dưới 5 cái
         return ResponseEntity.ok(partRepository.findLowStockParts(5));
     }
 }

@@ -8,6 +8,7 @@ import com.example.smartgarage.enums.Role;
 import com.example.smartgarage.repository.UserRepository;
 import com.example.smartgarage.security.JwtTokenProvider;
 import com.example.smartgarage.service.UserService;
+import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -20,7 +21,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.HashMap;
 import java.util.Map;
 
-@Tag(name = "Auth", description = "Quản lý đăng ký và đăng nhập")
+@Tag(name = "Auth API", description = "Quản lý đăng ký và đăng nhập")
 @RestController
 @RequestMapping("/api/v1/auth")
 public class AuthController {
@@ -38,7 +39,8 @@ public class AuthController {
         this.userService= userService;
     }
 
-    // 1. API ĐĂNG KÝ (Dùng cái này để tạo user mới, tránh lỗi isMatch: false)
+
+    @Operation(summary="Api dùng để tạo user mới")
     @PostMapping("/register")
     public ResponseEntity<?> register(@RequestBody User user) {
         if (userRepository.findByEmail(user.getEmail()).isPresent()) {
@@ -56,6 +58,7 @@ public class AuthController {
     }
 
     // 2. API ĐĂNG NHẬP (Đã sửa lỗi ResponseEntity)
+    @Operation(summary="API dùng để đăng nhập")
     @PostMapping("/login")
     public ResponseEntity<?> login(@Valid @RequestBody LoginRequest loginRequest) {
         // Tìm user theo email
@@ -68,8 +71,8 @@ public class AuthController {
                 // Tạo token
                 String token = jwtTokenProvider.generateToken(user.getEmail());
 
-                // Trả về DTO JwtResponse (token, email, role)
-                return ResponseEntity.ok(new JwtResponse(token, user.getEmail(), user.getRole().name()));
+                // Trả về DTO JwtResponse (token, email, role, userId,address)
+                return ResponseEntity.ok(new JwtResponse(token, user.getEmail(), user.getRole().name(),user.getId(),user.getFullAddress()));
             }
         }
         // Nếu không khớp email hoặc mật khẩu
@@ -77,7 +80,7 @@ public class AuthController {
                 .body("Email hoặc mật khẩu không chính xác!");
     }
 
-    // 3. API TEST MẬT KHẨU (Dành riêng cho bạn debug trên Postman)
+    @Operation(summary="api test mật khẩu")
     @PostMapping("/debug-password")
     public ResponseEntity<?> debugPassword(@RequestBody LoginRequest request) {
         Map<String, Object> result = new HashMap<>();
@@ -106,4 +109,5 @@ public class AuthController {
         userService.changedPassword(userDetails.getUsername(), request);
         return ResponseEntity.ok("Đổi mật khẩu thành công.");
     }
+
 }

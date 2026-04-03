@@ -4,6 +4,7 @@ import com.example.smartgarage.dto.AIConsultationRequest;
 import com.example.smartgarage.entity.ConsultationHistory;
 import com.example.smartgarage.repository.ConsultationHistoryRepository;
 import com.example.smartgarage.service.AIService;
+import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -11,7 +12,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
-@Tag(name = "AI", description = "Quản lý lịch sử tư vấn và gợi ý từ AI")
+@Tag(name = "AI API", description = "Quản lý lịch sử tư vấn và gợi ý từ AI")
 @RestController
 @RequestMapping("/api/v1/ai")
 public class AIController {
@@ -23,7 +24,7 @@ public class AIController {
         this.aiService = aiService;
         this.consultationHistoryRepository = consultationHistoryRepository;
     }
-
+    @Operation(summary="AI gợi ý dịch vụ cho khách hàng")
     @PostMapping("/suggest")
     public ResponseEntity<?> getAiSuggestion(@Valid @RequestBody AIConsultationRequest request, Authentication auth) {
         try {
@@ -39,6 +40,7 @@ public class AIController {
         }
     }
 
+    @Operation(summary="lấy lịch sủ truy vấn Ai của ngừoi dùng")
     @GetMapping("/history")
     public ResponseEntity<List<ConsultationHistory>> getAllHistory() {
         try {

@@ -1,8 +1,16 @@
 package com.example.smartgarage.service;
+import jakarta.mail.MessagingException;
+import jakarta.mail.internet.MimeMessage;
+import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
 
 @Service
 public class EmailTemplateService {
+    private final JavaMailSender mailSender;
+    public EmailTemplateService(JavaMailSender mailSender) {
+        this.mailSender = mailSender;
+    }
     public String buildAdminReplyEmail(String customerName,String reviewComment,String adminReply){
         return "<div style='font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #ddd; border-radius: 8px; overflow: hidden;'>" +
                 "  <div style='background-color: #2c3e50; color: white; padding: 20px; text-align: center;'>" +
@@ -53,5 +61,30 @@ public class EmailTemplateService {
                 "    <p>Hẹn gặp lại bạn tại Gara!</p>" +
                 "  </div>" +
                 "</div>";
+    }
+    public void sendResetEmail(String email, String token) {
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "utf-8");
+
+            String htmlContent = "<div style='font-family: Arial, sans-serif; line-height: 1.6;'>" +
+                    "<h2 style='color: #2c3e50;'>Yêu cầu đặt lại mật khẩu</h2>" +
+                    "<p>Chào bạn,</p>" +
+                    "<p>Hệ thống Smart Garage nhận được yêu cầu đặt lại mật khẩu cho email: <strong>" + email + "</strong></p>" +
+                    "<div style='background: #f4f4f4; padding: 15px; text-align: center; border-radius: 5px;'>" +
+                    "<p style='margin: 0; font-size: 18px;'>Mã xác nhận của bạn:</p>" +
+                    "<h1 style='color: #e74c3c; margin: 10px 0;'>" + token + "</h1>" +
+                    "</div>" +
+                    "<p>Vui lòng nhập mã này vào ứng dụng Mobile để hoàn tất quá trình đổi mật khẩu.</p>" +
+                    "<p style='color: #7f8c8d; font-size: 12px;'>Mã có hiệu lực trong 15 phút.</p>" +
+                    "</div>";
+
+            helper.setTo(email);
+            helper.setSubject("[Smart Garage] - Mã xác nhận đặt lại mật khẩu");
+            helper.setText(htmlContent, true); // Quan trọng: set 'true' để gửi HTML
+            mailSender.send(message);
+        } catch (MessagingException e) {
+            throw new RuntimeException("Lỗi khi tạo và gửi email HTML: " + e.getMessage());
+        }
     }
 }
