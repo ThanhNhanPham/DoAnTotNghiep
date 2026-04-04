@@ -2,13 +2,14 @@ package com.example.smartgarage.controller;
 
 import com.example.smartgarage.entity.User;
 import com.example.smartgarage.repository.UserRepository;
+import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
-@Tag(name = "User", description = "Quản lý danh sách người dùng")
+@Tag(name = "User API", description = "Quản lý danh sách người dùng")
 @RestController
 @RequestMapping("/api/v1/users")
 @CrossOrigin("*")
@@ -18,6 +19,7 @@ public class UserController {
         this.userRepository = userRepository;
     }
 
+    @Operation(summary="admin lấy danh sách người dùng theo id ")
     @GetMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<User> getUserById(@PathVariable Long id) {
@@ -25,7 +27,8 @@ public class UserController {
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
-    // sửa thông tin cá nhân người dùng
+
+    @Operation(summary="update thông tin người dùng")
     @PutMapping("/{id}")
     public ResponseEntity<User> updateUser(@PathVariable Long id,@Valid @RequestBody User userDetails) {
         return userRepository.findById(id).map(user -> {

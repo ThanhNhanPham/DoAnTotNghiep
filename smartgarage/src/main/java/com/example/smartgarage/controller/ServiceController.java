@@ -2,6 +2,7 @@ package com.example.smartgarage.controller;
 
 import com.example.smartgarage.entity.Service;
 import com.example.smartgarage.repository.ServiceRepository;
+import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpHeaders;
@@ -12,7 +13,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
-@Tag(name = "Service", description = "Quản lý dịch vụ sửa chữa")
+@Tag(name = "Service API", description = "Quản lý dịch vụ sửa chữa")
 @RestController
 @RequestMapping("/api/v1/services")
 public class ServiceController {
@@ -21,12 +22,13 @@ public class ServiceController {
     public ServiceController(ServiceRepository serviceRepository) {
         this.serviceRepository = serviceRepository;
     }
+    @Operation(summary="lấy danh sách tất cả các service của cửa hàng")
     @GetMapping
     public List<Service> getAllServices() {
         return serviceRepository.findAll();
     }
 
-    // thêm dịch vụ
+    @Operation(summary="thêm dịch vụ mới cho cửa hàng")
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Service> createService(@Valid @RequestBody Service service) {
@@ -38,7 +40,7 @@ public class ServiceController {
         }
     }
 
-    // chỉnh sửa dịch vụ
+    @Operation(summary="chỉnh sửa dịch vụ của cửa hàng")
     @PutMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Service> updateService(@PathVariable Long id,@Valid @RequestBody Service service){
@@ -64,7 +66,7 @@ public class ServiceController {
         }
     }
 
-    // xóa dịch vụ
+    @Operation(summary="Xoá dịch vụ của cửa hàng")
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<String> deleteService(@PathVariable Long id) {
@@ -77,7 +79,7 @@ public class ServiceController {
 
             return new ResponseEntity<>("Đã xóa dịch vụ thành công!", HttpStatus.OK);
         } catch (Exception e) {
-            return new ResponseEntity<>("Không thể xóa dịc vụ này vì có dữ liệu liên quan (thợ, lịch hẹn...)",
+            return new ResponseEntity<>("Không thể xóa dịch vụ này vì có dữ liệu liên quan (thợ, lịch hẹn...)",
                     HttpStatus.CONFLICT);
         }
     }

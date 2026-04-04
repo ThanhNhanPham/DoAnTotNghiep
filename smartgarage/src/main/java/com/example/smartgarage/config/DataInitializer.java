@@ -27,6 +27,9 @@ public class DataInitializer {
                 admin.setPassword(passwordEncoder.encode("123456")); // Mã hóa mật khẩu
                 admin.setRole(Role.SUPERADMIN); // Sử dụng Enum mới
                 admin.setPhone("0988888888");
+                admin.setProvince("Thành phố Hồ Chí Minh");
+                admin.setWard("Phường Hiệp Bình");
+                admin.setHouseNumber("25 Đường số 18");
                 userRepository.save(admin);
                 System.out.println(">>> Đã tạo tài khoản SUPERADMIN mặc định: admin@smartgarage.com /123456");
             }

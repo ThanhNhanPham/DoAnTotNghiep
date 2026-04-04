@@ -84,15 +84,19 @@ public class BookingService {
         return bookingRepository.save(booking);
     }
 
-    // Lấy danh sách lịch hẹn của chính người đang đăng nhập
-//    public List<Booking> getMyBookings(String email) {
-//        User user = userRepository.findByEmail(email)
-//                .orElseThrow(() -> new RuntimeException("User không tồn tại"));
-//        return bookingRepository.findAllByUserIdOrderByBookingTimeDesc(user.getId());
-//    }
     public List<BookingResponse> getAllBookings(String status) {
-        List<Booking> bookings = bookingRepository.findAll(); // Lấy tất cả Entity từ DB
-        // SỬ DỤNG HÀM MAPPER: Duyệt qua danh sách và biến mỗi Entity thành DTO
+        List<Booking> bookings;
+        if (status == null || status.isBlank()) {
+            bookings = bookingRepository.findAll();
+        } else {
+            BookingStatus bookingStatus;
+            try {
+                bookingStatus = BookingStatus.valueOf(status.trim().toUpperCase());
+            } catch (IllegalArgumentException ex) {
+                throw new IllegalArgumentException("Trạng thái không hợp lệ: " + status);
+            }
+            bookings = bookingRepository.findByStatus(bookingStatus);
+        }
         return bookings.stream()
                 .map(this::mapToResponse) // Gọi hàm mapToResponse cho từng phần tử
                 .collect(Collectors.toList());
@@ -102,7 +106,7 @@ public class BookingService {
         // 1. Tính tiền dịch vụ (Service)
         BigDecimal servicesTotal = (booking.getBookedServices() == null) ? BigDecimal.ZERO :
                 booking.getBookedServices().stream()
-                        .map(BookedService::getPriceAtBooking)
+                        .map(bs -> bs.getPriceAtBooking() != null ? bs.getPriceAtBooking() : BigDecimal.ZERO)
                         .reduce(BigDecimal.ZERO, BigDecimal::add);
 
     // 2. Tính tiền linh kiện (Part) - Nếu danh sách null hoặc trống thì mặc định là 0

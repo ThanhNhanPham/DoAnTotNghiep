@@ -12,4 +12,6 @@ public class JwtResponse {
 //    private String type = "Bearer"; // Gán mặc định là Bearer
     private String email;
     private String role;
+    private Long userId;
+    private String fullAddress;
 }

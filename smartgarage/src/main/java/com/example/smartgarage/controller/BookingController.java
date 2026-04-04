@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
-@Tag(name = "Booking", description = "Quản lý lịch hẹn sửa xe")
+@Tag(name = "Booking API", description = "Quản lý lịch hẹn sửa xe")
 @RestController
 @RequestMapping("/api/v1/bookings")
 @CrossOrigin("*")
@@ -60,7 +60,7 @@ public class BookingController {
         }
     }
 
-    // 4. API Xác nhận lịch hẹn (Dành cho ADMIN/Nhân viên)
+    @Operation(summary="admin xác nhận lịch hẹn cho khách hàng")
     @PatchMapping("/{bookingId}/confirm")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<?> confirm(@PathVariable Long bookingId, @RequestParam Long mechanicId) {
@@ -72,19 +72,26 @@ public class BookingController {
         }
     }
 
-    // 5. API Hoàn thành việc sửa chữa (Dành cho ADMIN/Nhân viên)
+
     @GetMapping("/admin/all")
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Admin xem toàn bộ lịch hẹn", description = "Có thể lọc theo status (PENDING, CONFIRMED...)")
     public ResponseEntity<?> getAllBookings(@RequestParam(required = false) String status) {
-        return ResponseEntity.ok(bookingService.getAllBookings(status));
+        try {
+            return ResponseEntity.ok(bookingService.getAllBookings(status));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
     }
 
+    @Operation(summary="Admin xem toàn bộ lịch hẹn", description="không lọc theo filter")
     @GetMapping("/admin/bookings")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<List<BookingResponse>> getAllBookings() {
-        return ResponseEntity.ok(bookingService.getAllBookings(null));
+        List<BookingResponse> results = bookingService.getAllBookings(null);
+        return ResponseEntity.ok().body(results);
     }
-
+    @Operation(summary="Xác nhận lịch hẹn cho khách hàng")
     @PatchMapping("/{bookingId}/complete")
     public ResponseEntity<?> complete(@PathVariable Long bookingId) {
         try {
@@ -94,7 +101,8 @@ public class BookingController {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
-    // 6. API Thêm linh kiện vào đơn hàng (Dành cho ADMIN/Nhân viên)
+
+    @Operation(summary="api admin thêm linh kiện vào đơn hàng")
     @PostMapping("/{bookingId}/Part/{partId}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<String> addPartToBooking(@PathVariable Long bookingId, @PathVariable Long partId, @RequestParam int quantity) {

@@ -1,7 +1,7 @@
 package com.example.smartgarage.enums;
 
-public enum RoleStatus {
+public enum Role {
     ADMIN,
-    SUPER_ADMIN,
+    SUPERADMIN,
     CUSTOMER
 }
