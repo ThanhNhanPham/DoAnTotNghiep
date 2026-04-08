@@ -1,32 +1,37 @@
 package com.example.smartgarage.controller;
 
-import com.example.smartgarage.entity.Branch;
 import com.example.smartgarage.entity.Service;
 import com.example.smartgarage.repository.ServiceRepository;
+import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import org.springframework.beans.factory.annotation.Autowired;
-
+import jakarta.validation.Valid;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
-@Tag(name = "Service", description = "Quản lý dịch vụ sửa chữa")
+@Tag(name = "Service API", description = "Quản lý dịch vụ sửa chữa")
 @RestController
 @RequestMapping("/api/v1/services")
 public class ServiceController {
-    @Autowired
-    private ServiceRepository serviceRepository;
+
+    private final ServiceRepository serviceRepository;
+    public ServiceController(ServiceRepository serviceRepository) {
+        this.serviceRepository = serviceRepository;
+    }
+    @Operation(summary="lấy danh sách tất cả các service của cửa hàng")
     @GetMapping
     public List<Service> getAllServices() {
         return serviceRepository.findAll();
     }
 
-    // cập nhật dịch vụ
+    @Operation(summary="thêm dịch vụ mới cho cửa hàng")
     @PostMapping
-    public ResponseEntity<Service> createBranch(@RequestBody Service service) {
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Service> createService(@Valid @RequestBody Service service) {
         try {
             Service savedService = serviceRepository.save(service);
             return new ResponseEntity<>(savedService, HttpStatus.CREATED);
@@ -35,9 +40,10 @@ public class ServiceController {
         }
     }
 
-    // chỉnh sửa dịch vụ
+    @Operation(summary="chỉnh sửa dịch vụ của cửa hàng")
     @PutMapping("/{id}")
-    public ResponseEntity<Service> updateService(@PathVariable Long id, @RequestBody Service service){
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Service> updateService(@PathVariable Long id,@Valid @RequestBody Service service){
         try {
             // 1. Tìm dịch vụ cũ trong Database
             return serviceRepository.findById(id).map(existingService -> {
@@ -47,7 +53,7 @@ public class ServiceController {
                 existingService.setDescription(service.getDescription());
                 existingService.setPrice(service.getPrice());
                 existingService.setDurationMinutes(service.getDurationMinutes());
-                existingService.setActive(service.getActive());
+                existingService.setIsActive(service.getIsActive());
 
                 // 3. Lưu lại vào DB
                 Service updatedService = serviceRepository.save(existingService);
@@ -60,8 +66,9 @@ public class ServiceController {
         }
     }
 
-    // xóa dịch vụ
+    @Operation(summary="Xoá dịch vụ của cửa hàng")
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<String> deleteService(@PathVariable Long id) {
         try {
             // 1. Kiểm tra xem chi nhánh có tồn tại trong DB không
@@ -72,7 +79,7 @@ public class ServiceController {
 
             return new ResponseEntity<>("Đã xóa dịch vụ thành công!", HttpStatus.OK);
         } catch (Exception e) {
-            return new ResponseEntity<>("Không thể xóa dịc vụ này vì có dữ liệu liên quan (thợ, lịch hẹn...)",
+            return new ResponseEntity<>("Không thể xóa dịch vụ này vì có dữ liệu liên quan (thợ, lịch hẹn...)",
                     HttpStatus.CONFLICT);
         }
     }

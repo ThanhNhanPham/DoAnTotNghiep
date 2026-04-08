@@ -2,6 +2,9 @@ package com.example.smartgarage.service;
 
 import com.example.smartgarage.dto.*;
 import com.example.smartgarage.entity.*;
+import com.example.smartgarage.enums.BookingStatus;
+import com.example.smartgarage.enums.MechanicStatus;
+import com.example.smartgarage.exception.ResourceNotFoundException;
 import com.example.smartgarage.repository.*;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
@@ -19,7 +22,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
-import com.deepoove.poi.XWPFTemplate;
 
 
 import org.springframework.core.io.ClassPathResource;
@@ -37,6 +39,7 @@ public class BookingService {
     @Autowired private ServiceRepository serviceRepository;
     @Autowired private MechanicRepository mechanicRepository;
     @Autowired private EmailService emailService;
+    @Autowired private PartRepository partRepository;
     @Transactional
     public Booking createBooking(String currentUserEmail, BookingRequest request) {
         // 1. Lấy User từ Email (đã xác thực qua JWT), không dùng ID từ Request để tránh giả mạo
@@ -46,6 +49,7 @@ public class BookingService {
         // 2. Kiểm tra xe máy có thuộc quyền sở hữu của User này không (Bảo mật thêm)
         Motorbike motorbike = motorbikeRepository.findById(request.getMotorbikeId())
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy xe máy"));
+
         if (!motorbike.getUser().getId().equals(user.getId())) {
             throw new RuntimeException("Xe máy này không thuộc sở hữu của bạn!");
         }
@@ -59,36 +63,63 @@ public class BookingService {
         booking.setBranch(branch);
         booking.setBookingTime(request.getBookingTime());
         booking.setNote(request.getNote());
-        booking.setStatus("PENDING");
+        booking.setStatus(BookingStatus.PENDING);
 
         // 4. Lấy danh sách dịch vụ và tính sơ bộ tổng tiền (nếu cần)
-        List<com.example.smartgarage.entity.Service> services = serviceRepository.findAllById(request.getServiceIds());
-        booking.setServices(services);
+        List<com.example.smartgarage.entity.Service> selectedServices = serviceRepository.findAllById(request.getServiceIds());
+        // chuyển đổi sang BookedService
+        List<BookedService> bookedServices = selectedServices.stream().map(s -> {
+            return BookedService.builder()
+                    .booking(booking)
+                    .service(s)
+                    .priceAtBooking(s.getPrice()) // Lưu giá tại thời điểm này
+                    .build();
+        }).collect(Collectors.toList());
+        booking.setBookedServices(bookedServices);
+        BigDecimal total = selectedServices.stream()
+                .map(com.example.smartgarage.entity.Service::getPrice)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        booking.setTotalAmount(total);
 
         return bookingRepository.save(booking);
     }
 
-    // Lấy danh sách lịch hẹn của chính người đang đăng nhập
-//    public List<Booking> getMyBookings(String email) {
-//        User user = userRepository.findByEmail(email)
-//                .orElseThrow(() -> new RuntimeException("User không tồn tại"));
-//        return bookingRepository.findAllByUserIdOrderByBookingTimeDesc(user.getId());
-//    }
     public List<BookingResponse> getAllBookings(String status) {
-        List<Booking> bookings = bookingRepository.findAll(); // Lấy tất cả Entity từ DB
-        // SỬ DỤNG HÀM MAPPER: Duyệt qua danh sách và biến mỗi Entity thành DTO
+        List<Booking> bookings;
+        if (status == null || status.isBlank()) {
+            bookings = bookingRepository.findAll();
+        } else {
+            BookingStatus bookingStatus;
+            try {
+                bookingStatus = BookingStatus.valueOf(status.trim().toUpperCase());
+            } catch (IllegalArgumentException ex) {
+                throw new IllegalArgumentException("Trạng thái không hợp lệ: " + status);
+            }
+            bookings = bookingRepository.findByStatus(bookingStatus);
+        }
         return bookings.stream()
                 .map(this::mapToResponse) // Gọi hàm mapToResponse cho từng phần tử
                 .collect(Collectors.toList());
     }
 
     public BookingResponse mapToResponse(Booking booking) {
-        // 1. Tính tổng tiền từ danh sách dịch vụ
-        // Nếu danh sách null, mặc định tổng tiền là 0
-        BigDecimal total = (booking.getServices() == null) ? BigDecimal.ZERO :
-                booking.getServices().stream()
-                        .map(com.example.smartgarage.entity.Service::getPrice)
+        // 1. Tính tiền dịch vụ (Service)
+        BigDecimal servicesTotal = (booking.getBookedServices() == null) ? BigDecimal.ZERO :
+                booking.getBookedServices().stream()
+                        .map(bs -> bs.getPriceAtBooking() != null ? bs.getPriceAtBooking() : BigDecimal.ZERO)
                         .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+    // 2. Tính tiền linh kiện (Part) - Nếu danh sách null hoặc trống thì mặc định là 0
+        BigDecimal partsTotal = (booking.getBookedPart() == null) ? BigDecimal.ZERO :
+                booking.getBookedPart().stream()
+                        .map(bp -> {
+                            BigDecimal price = bp.getPriceAtBooking() != null ? bp.getPriceAtBooking() : BigDecimal.ZERO;
+                            BigDecimal qty = new BigDecimal(bp.getQuantity() != null ? bp.getQuantity() : 0);
+                            return price.multiply(qty);
+                        })
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+    // 3. Tổng cộng cuối cùng
+        BigDecimal finalTotal = servicesTotal.add(partsTotal);
         // 2. Map dữ liệu vào DTO
         return BookingResponse.builder()
                 .id(booking.getId())
@@ -102,10 +133,14 @@ public class BookingService {
                 .branchName(booking.getBranch() != null ? booking.getBranch().getName() : "N/A")
                 .mechanicName(booking.getMechanic() != null ? booking.getMechanic().getFullName() : "Chưa có thợ")
                 // Lấy danh sách tên dịch vụ
-                .serviceNames(booking.getServices().stream()
-                        .map(com.example.smartgarage.entity.Service::getName)
+                .serviceNames(booking.getBookedServices().stream()
+                        .map(bs -> bs.getService().getName())
                         .collect(Collectors.toList()))
-                .totalAmount(total)
+                // Map danh sách tên Linh kiện (Phần mới thêm)
+                .partNames(booking.getBookedPart() != null ? booking.getBookedPart().stream()
+                        .map(bp -> bp.getPart().getName())
+                        .collect(Collectors.toList()) : new java.util.ArrayList<>())
+                .totalAmount(finalTotal)
                 .build();
     }
 
@@ -117,23 +152,46 @@ public class BookingService {
         if (!booking.getUser().getEmail().equals(currentUserEmail)) {
             throw new RuntimeException(" bạn không có quyền hủy lịch hẹn của người khác!");
         }
-        if (!"PENDING".equals(booking.getStatus())) {
+        if (booking.getStatus() != BookingStatus.PENDING) {
             throw new RuntimeException("Chỉ có thể hủy lịch hẹn đang ở trạng thái PENDING.");
         }
-        booking.setStatus("CANCELLED");
+        booking.setStatus(BookingStatus.CANCELLED);
         bookingRepository.save(booking);
     }
     @Transactional
     public BookingResponse confirmBooking(Long bookingId, Long mechanicId) {
-        // 1. Tìm và cập nhật Entity trong DB
-        Booking booking = bookingRepository.findById(bookingId).orElseThrow();
-        Mechanic mechanic = mechanicRepository.findById(mechanicId).orElseThrow();
+        // 1. Tìm đơn hàng (Booking)
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy đơn hàng ID: " + bookingId));
 
+        // Kiểm tra nếu đơn hàng đã được xác nhận hoặc đã hoàn thành trước đó
+        if (booking.getStatus() != BookingStatus.PENDING) {
+            throw new RuntimeException("Đơn hàng này không ở trạng thái chờ (PENDING) để xác nhận.");
+        }
+
+        // 2. Tìm Thợ sửa xe (Mechanic)
+        Mechanic mechanic = mechanicRepository.findById(mechanicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy thợ ID: " + mechanicId));
+
+        // 3. KIỂM TRA TRẠNG THÁI THỢ (Tối ưu quan trọng)
+        // Giả sử trạng thái sẵn sàng của bạn là "AVAILABLE" hoặc "ACTIVE"
+        if (mechanic.getStatus() != MechanicStatus.ACTIVE) {
+            throw new RuntimeException("Thợ " + mechanic.getFullName() + " hiện đang bận hoặc không sẵn sàng làm việc!");
+        }
+
+        // 4. CẬP NHẬT TRẠNG THÁI
+        // Gán thợ cho đơn hàng
         booking.setMechanic(mechanic);
-        booking.setStatus("CONFIRMED");
-        bookingRepository.save(booking);
+        booking.setStatus(BookingStatus.CONFIRMED);
 
-        // 2. SỬ DỤNG HÀM MAPPER: Chuyển đổi Entity vừa lưu sang DTO
+        // Chuyển trạng thái thợ sang "BUSY" để các Admin khác không gán thợ này vào đơn khác
+        mechanic.setStatus(MechanicStatus.BUSY);
+
+        // 5. LƯU THAY ĐỔI
+        bookingRepository.save(booking);
+        mechanicRepository.save(mechanic); // Cần lưu lại trạng thái mới của thợ
+
+        // 6. TRẢ VỀ DTO (Sử dụng hàm mapper bạn đã viết)
         return mapToResponse(booking);
     }
 
@@ -172,10 +230,10 @@ public class BookingService {
     public DashboardStatusDTO getDashboardStatus() {
         // 1. Đếm số lượng theo từng trạng thái
         long total = bookingRepository.count();
-        long pending = bookingRepository.countByStatus("PENDING");
-        long confirmed = bookingRepository.countByStatus("CONFIRMED");
-        long completed = bookingRepository.countByStatus("COMPLETED");
-        long cancelled = bookingRepository.countByStatus("CANCELLED");
+        long pending = bookingRepository.countByStatus(BookingStatus.PENDING);
+        long confirmed = bookingRepository.countByStatus(BookingStatus.CONFIRMED);
+        long completed = bookingRepository.countByStatus(BookingStatus.COMPLETED);
+        long cancelled = bookingRepository.countByStatus(BookingStatus.CANCELLED);
 
         // 2. Tính tổng doanh thu
         BigDecimal revenue = bookingRepository.calculateTotalRevenue();
@@ -195,18 +253,34 @@ public class BookingService {
                 topServices
         );
     }
+    private CellStyle createHeaderStyle(Workbook workbook) {
+        CellStyle style = workbook.createCellStyle();
+        Font font = workbook.createFont();
+        font.setBold(true);
+        style.setFont(font);
+        style.setFillForegroundColor(IndexedColors.GREY_25_PERCENT.getIndex());
+        style.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        style.setBorderBottom(BorderStyle.THIN);
+        return style;
+    }
 
     public byte[] exportBookingsToExcel() throws IOException {
         List<Booking> bookings = bookingRepository.findAll();
         try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             Sheet sheet = workbook.createSheet("Danh sách lịch hẹn");
+            // 1. Tạo Styles
+            CellStyle headerStyle = createHeaderStyle(workbook);
+            CellStyle dateStyle = workbook.createCellStyle();
+            dateStyle.setDataFormat(workbook.createDataFormat().getFormat("dd/MM/yyyy HH:mm"));
+
+            CellStyle moneyStyle = workbook.createCellStyle();
+            moneyStyle.setDataFormat(workbook.createDataFormat().getFormat("#,##0")); // Định dạng phân cách hàng nghìn
 
             // 1. Tạo Header (Dòng tiêu đề)
             Row headerRow = sheet.createRow(0);
-            String[] columns = {"ID", "Khách hàng","Số điê thoại", "Biển số", "Ngày hẹn", "Trạng thái", "Tổng tiền"};
+            String[] columns = {"ID", "Khách hàng","Số điện thoại", "Biển số", "Ngày hẹn", "Trạng thái", "Tổng tiền"};
 
             // Style cho Header (In đậm, nền xám)
-            CellStyle headerStyle = workbook.createCellStyle();
             Font font = workbook.createFont();
             font.setBold(true);
             headerStyle.setFont(font);
@@ -227,14 +301,19 @@ public class BookingService {
                 row.createCell(1).setCellValue(booking.getUser() != null ? booking.getUser().getFullName() : "N/A");
                 row.createCell(2).setCellValue(booking.getUser() != null ? booking.getUser().getPhone() : "N/A");
                 row.createCell(3).setCellValue(booking.getMotorbike() != null ? booking.getMotorbike().getLicensePlate() : "N/A");
-                row.createCell(4).setCellValue(booking.getBookingTime().toString());
-                row.createCell(5).setCellValue(booking.getStatus());
+                Cell dateCell = row.createCell(4);
+                if (booking.getBookingTime() != null) {
+                    dateCell.setCellValue(java.sql.Timestamp.valueOf(booking.getBookingTime()));
+                    dateCell.setCellStyle(dateStyle);
+                }
+                row.createCell(5).setCellValue(booking.getStatus().toString());
 
-                // Tính tổng tiền (Sử dụng logic BigDecimal chúng ta đã sửa)
-                double total = booking.getServices().stream().mapToDouble(s -> s.getPrice().doubleValue()).sum();
-                row.createCell(5).setCellValue(total);
+                // Cột Tổng tiền (Lấy từ field totalAmount đã tính sẵn hoặc tính lại bằng BigDecimal)
+                Cell totalCell = row.createCell(6);
+                BigDecimal total = booking.getTotalAmount() != null ? booking.getTotalAmount() : BigDecimal.ZERO;
+                totalCell.setCellValue(total.doubleValue()); // POI nhận double nhưng Style sẽ định dạng lại
+                totalCell.setCellStyle(moneyStyle);
             }
-
             // Tự động căn chỉnh độ rộng cột
             for (int i = 0; i < columns.length; i++) {
                 sheet.autoSizeColumn(i);
@@ -273,9 +352,9 @@ public class BookingService {
 
         // 4. Tính tổng tiền từ danh sách dịch vụ (Dùng BigDecimal để chính xác)
         BigDecimal total = BigDecimal.ZERO;
-        if (booking.getServices() != null) {
-            total = booking.getServices().stream()
-                    .map(com.example.smartgarage.entity.Service::getPrice)
+        if (booking.getBookedServices() != null) {
+            total = booking.getBookedServices().stream()
+                    .map(BookedService::getPriceAtBooking)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
         }
         response.setTotalAmount(total);
@@ -286,63 +365,115 @@ public class BookingService {
     // Trong class BookingService
     @Transactional
     public BookingResponse completeBooking(Long id) {
-        // 1. Tìm đơn hàng
+        // 1. Tìm đơn hàng và Kiểm tra trạng thái
         Booking booking = bookingRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy đơn hàng ID: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy đơn hàng ID: " + id));
 
-        if ("COMPLETED".equals(booking.getStatus()) || "CANCELLED".equals(booking.getStatus())) {
-            throw new RuntimeException("Đơn hàng đã kết thúc, không thể thay đổi!");
+        if (booking.getStatus() == BookingStatus.COMPLETED || booking.getStatus() == BookingStatus.CANCELLED) {
+            throw new RuntimeException("Đơn hàng đã kết thúc hoặc đã hủy từ trước!");
         }
 
-        // 2. Lấy biển số xe (Xử lý lỗi biến licensePlate ở đây)
-        String licensePlate = (booking.getMotorbike() != null) ? booking.getMotorbike().getLicensePlate() : "N/A";
-
-        // 3. Tính tổng tiền và định dạng số
-        BigDecimal totalAmount = booking.getServices().stream()
-                .map(com.example.smartgarage.entity.Service::getPrice)
+        // 2. Trừ kho linh kiện (Inventory Management)
+        if (booking.getBookedPart() != null) {
+            for (BookedPart bookedPart : booking.getBookedPart()) {
+                Part catalogPart = bookedPart.getPart();
+                int quantityUsed = bookedPart.getQuantity();
+                if(catalogPart.getQuantity() < quantityUsed) {
+                    throw new RuntimeException("Linh kiện '" + catalogPart.getName() + "' không đủ số lượng trong kho!");
+                }
+                catalogPart.setQuantity(catalogPart.getQuantity() - quantityUsed);
+                partRepository.save(catalogPart);
+            }
+        }
+        // 3. Tính toán tổng tiền (Dịch vụ + Linh kiện)
+        BigDecimal servicesTotal = booking.getBookedServices().stream()
+                .map(BookedService::getPriceAtBooking)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        String formattedTotal = String.format("%,.0f", totalAmount);
+        BigDecimal partsTotal = (booking.getBookedPart() != null) ? booking.getBookedPart().stream()
+                .map(BookedPart::getPriceAtBooking)
+                .reduce(BigDecimal.ZERO, BigDecimal::add) : BigDecimal.ZERO;
 
-        // 4. Cập nhật trạng thái
-        booking.setStatus("COMPLETED");
+        BigDecimal finalTotal = servicesTotal.add(partsTotal);
+        booking.setTotalAmount(finalTotal);
+
+        // 4. Cập nhật trạng thái Booking và Giải phóng thợ
+        booking.setStatus(BookingStatus.COMPLETED);
         if (booking.getMechanic() != null) {
-            booking.getMechanic().setStatus("AVAILABLE");
+            booking.getMechanic().setStatus(MechanicStatus.ACTIVE);
         }
+
         bookingRepository.save(booking);
 
-        // 5. Gửi Email HTML (Sửa lỗi và tối ưu giao diện)
-        if (booking.getUser() != null && booking.getUser().getEmail() != null) {
-            String customerName = (booking.getUser().getFullName() != null) ? booking.getUser().getFullName() : "Quý khách";
+        // 5. Gửi Email HTML (Sử dụng hàm bổ trợ đã viết ở bước trước)
+        sendCompletionEmail(booking, finalTotal);
+        // 6. Chuyển đổi sang BookingResponse (Sử dụng Builder)
+        return mapToResponse(booking);
+    }
+    private void sendCompletionEmail(Booking booking, BigDecimal total) {
+        if (booking.getUser() == null || booking.getUser().getEmail() == null) return;
 
-            // Tạo danh sách dịch vụ dạng bảng HTML
-            String serviceRows = booking.getServices().stream()
-                    .map(s -> "<tr>" +
-                            "<td style='padding: 10px; border-bottom: 1px solid #eee;'>" + s.getName() + "</td>" +
-                            "<td style='padding: 10px; border-bottom: 1px solid #eee; text-align: right;'>" + String.format("%,.0f", s.getPrice()) + " VNĐ</td>" +
-                            "</tr>")
-                    .collect(Collectors.joining());
+        String licensePlate = (booking.getMotorbike() != null) ? booking.getMotorbike().getLicensePlate() : "N/A";
+        String customerName = (booking.getUser().getFullName() != null) ? booking.getUser().getFullName() : "Quý khách";
 
-            String htmlContent = "<html><body style='font-family: Arial, sans-serif; line-height: 1.6; color: #333;'>" +
-                    "<div style='max-width: 600px; margin: 0 auto; border: 1px solid #ddd; padding: 20px; border-radius: 10px;'>" +
-                    "<h2 style='color: #007bff; text-align: center;'>SMART GARAGE - HÓA ĐƠN</h2>" +
-                    "<p>Chào <b>" + customerName + "</b>,</p>" +
-                    "<p>Chúc mừng! Xe của bạn mang biển số <span style='color: #d9534f; font-weight: bold;'>" + licensePlate + "</span> đã được sửa chữa và bảo trì hoàn tất.</p>" +
-                    "<table style='width: 100%; border-collapse: collapse; margin-top: 20px;'>" +
-                    "<thead style='background-color: #f8f9fa;'><tr><th style='padding: 10px; text-align: left;'>Dịch vụ</th><th style='padding: 10px; text-align: right;'>Giá</th></tr></thead>" +
-                    "<tbody>" + serviceRows + "</tbody>" +
-                    "</table>" +
-                    "<div style='margin-top: 20px; text-align: right; font-size: 18px; font-weight: bold; color: #d9534f;'>" +
-                    "TỔNG CỘNG: " + formattedTotal + " VNĐ" +
-                    "</div>" +
-                    "<hr style='border: 0; border-top: 1px solid #eee; margin: 20px 0;'>" +
-                    "<p style='font-size: 12px; color: #777; text-align: center;'>Đây là email tự động, vui lòng không phản hồi. Hẹn gặp lại bạn!</p>" +
-                    "</div></body></html>";
+        // Tạo các dòng cho Dịch vụ
+        String serviceRows = booking.getBookedServices().stream()
+                .map(s -> String.format("<tr><td style='padding:8px; border-bottom:1px solid #eee;'>%s (Dịch vụ)</td><td style='text-align:right;'>%,.0f VNĐ</td></tr>", s.getService().getName(), s.getPriceAtBooking()))
+                .collect(Collectors.joining());
 
-            emailService.sendHtmlEmail(booking.getUser().getEmail(), "Hóa đơn hoàn tất sửa chữa - " + licensePlate, htmlContent);
-        }
+        // Tạo các dòng cho Linh kiện (Nếu có)
+        String partRows = booking.getBookedPart().stream()
+                .map(p -> String.format("<tr><td style='padding:8px; border-bottom:1px solid #eee;'>%s (Linh kiện)</td><td style='text-align:right;'>%,.0f VNĐ</td></tr>", p.getPart().getName(), p.getPriceAtBooking()))
+                .collect(Collectors.joining());
 
-        return convertToResponse(booking);
+        String htmlContent = "<html><body style='font-family: \"Segoe UI\", Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #444; background-color: #f9f9f9; padding: 20px;'>" +
+                "<div style='max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.1); border: 1px solid #e1e1e1;'>" +
+                // Header
+                "<div style='background-color: #007bff; color: #ffffff; padding: 30px; text-align: center;'>" +
+                "<h1 style='margin: 0; font-size: 24px; text-transform: uppercase; letter-spacing: 2px;'>Smart Garage</h1>" +
+                "<p style='margin: 5px 0 0; opacity: 0.8;'>Hóa Đơn Dịch Vụ Điện Tử</p>" +
+                "</div>" +
+
+                // Body Content
+                "<div style='padding: 30px;'>" +
+                "<p>Xin chào <b>" + customerName + "</b>,</p>" +
+                "<p>Chúng tôi vui mừng thông báo rằng xe của bạn với biển số <b style='color: #007bff;'>" + licensePlate + "</b> đã được đội ngũ kỹ thuật hoàn tất sửa chữa và kiểm tra kỹ lưỡng.</p>" +
+
+                "<div style='margin: 25px 0; padding: 15px; background-color: #f8f9fa; border-left: 4px solid #007bff;'>" +
+                "<p style='margin: 0; font-size: 14px;'><b>Trạng thái:</b> Sẵn sàng bàn giao</p>" +
+                "<p style='margin: 5px 0 0; font-size: 14px;'><b>Ngày hoàn thành:</b> " + java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")) + "</p>" +
+                "</div>" +
+
+                // Table
+                "<table style='width: 100%; border-collapse: collapse; margin-bottom: 20px;'>" +
+                "<thead>" +
+                "<tr style='border-bottom: 2px solid #eee; text-align: left;'>" +
+                "<th style='padding: 12px 0;'>Hạng mục chi tiết</th>" +
+                "<th style='padding: 12px 0; text-align: right;'>Thành tiền</th>" +
+                "</tr>" +
+                "</thead>" +
+                "<tbody>" + serviceRows + partRows + "</tbody>" +
+                "</table>" +
+
+                // Total
+                "<div style='border-top: 2px solid #eee; padding-top: 20px; text-align: right;'>" +
+                "<span style='font-size: 16px; color: #777;'>Tổng thanh toán:</span>" +
+                "<h2 style='margin: 5px 0; color: #d9534f; font-size: 28px;'>" + String.format("%,.0f", total) + " <span style='font-size: 18px;'>VNĐ</span></h2>" +
+                "</div>" +
+
+                "<p style='margin-top: 30px;'>Cảm ơn bạn đã tin tưởng và sử dụng dịch vụ tại <b>Smart Garage</b>. Chúng tôi rất hân hạnh được đồng hành cùng bạn trên mọi hành trình!</p>" +
+                "<p style='font-weight: bold; color: #007bff;'>Hẹn gặp lại bạn!</p>" +
+                "</div>" +
+
+                // Footer
+                "<div style='background-color: #f1f1f1; padding: 20px; text-align: center; font-size: 12px; color: #888; border-top: 1px solid #eee;'>" +
+                "<p style='margin: 0;'>Đây là email thông báo tự động từ hệ thống quản lý Smart Garage.</p>" +
+                "<p style='margin: 5px 0;'><b>Vui lòng không phản hồi lại email này.</b></p>" +
+                "<p style='margin: 15px 0 0;'>&copy; 2026 Smart Garage System | Thủ Đưc, Hồ Chí Minh</p>" +
+                "</div>" +
+                "</div></body></html>";
+
+        emailService.sendHtmlEmail(booking.getUser().getEmail(), "Hóa đơn hoàn tất - " + licensePlate, htmlContent);
     }
 
     public byte[] exportInvoiceWord(Long bookingId) throws IOException {
@@ -356,10 +487,10 @@ public class BookingService {
         data.put("date", LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy")));
 
         // Tính tổng tiền
-        BigDecimal total = booking.getServices().stream()
-                .map(com.example.smartgarage.entity.Service::getPrice)
+        BigDecimal total = booking.getBookedServices().stream()
+                .map(BookedService::getPriceAtBooking)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        data.put("totalPrice", total.toString() + " VNĐ");
+        data.put("totalPrice", total + " VNĐ");
         // 2. Đọc template và đổ dữ liệu
         Resource resource = new ClassPathResource("templates/invoice_template.docx");
         try (InputStream is = resource.getInputStream();
@@ -370,5 +501,36 @@ public class BookingService {
             template.close();
             return out.toByteArray();
         }
+    }
+    @Transactional
+    public void addPartToBooking(Long bookingId, Long partId, int quantity) {
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy đơn hàng"));
+        Part catalogPart = partRepository.findById(partId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy linh kiện"));
+        // 3. Kiểm tra tồn kho
+        if (catalogPart.getQuantity() < quantity) {
+            throw new RuntimeException("Kho chỉ còn " + catalogPart.getQuantity() + " sản phẩm, không đủ để thêm!");
+        }
+        //4. KIẾN TẠO MỐI LIÊN KẾT (Tạo đối tượng trung gian BookedPart)
+        // Chúng ta không dùng cái cũ, mà tạo cái mới để "snapshot" dữ liệu
+        BookedPart bookedPart = new BookedPart();
+        bookedPart.setBooking(booking);
+        bookedPart.setPart(catalogPart);
+        bookedPart.setQuantity(quantity);
+        bookedPart.setPriceAtBooking(catalogPart.getPrice());
+        // Thêm vào danh sách (Sự liên kết hình thành ở đây)
+        // 5. Cập nhật danh sách trong Booking
+        booking.getBookedPart().add(bookedPart);
+
+        // 6. TRỪ KHO (Logic quan trọng của Smart Garage)
+        catalogPart.setQuantity(catalogPart.getQuantity() - quantity);
+        // 7. Cập nhật lại tổng tiền của đơn hàng
+        BigDecimal currentTotal = (booking.getTotalAmount() != null) ? booking.getTotalAmount() : BigDecimal.ZERO;
+        BigDecimal additionalCost = catalogPart.getPrice().multiply(new BigDecimal(quantity));
+
+        booking.setTotalAmount(currentTotal.add(additionalCost));
+        partRepository.save(catalogPart); // Lưu lại số lượng kho mới
+        bookingRepository.save(booking);
     }
 }

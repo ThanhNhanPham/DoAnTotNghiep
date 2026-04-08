@@ -32,3 +32,8 @@ build/
 /src/main/resources/application.properties
 ### VS Code ###
 .vscode/
+.DS_Store
+node_modules/
+dist/
+build/
+.env

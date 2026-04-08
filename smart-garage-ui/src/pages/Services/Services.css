@@ -1,0 +1,172 @@
+.services-page {
+  width: 100%;
+}
+
+.page-header {
+  margin-bottom: 24px;
+}
+
+.page-header h1 {
+  font-size: 28px;
+  font-weight: 600;
+  margin: 0 0 8px 0;
+  color: #262626;
+}
+
+.page-header p {
+  font-size: 14px;
+  color: #8c8c8c;
+  margin: 0;
+}
+
+.services-card {
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.services-card .ant-card-body {
+  padding: 24px;
+}
+
+.services-toolbar {
+  margin-bottom: 24px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.text-right {
+  text-align: right;
+}
+
+@media (max-width: 768px) {
+  .text-right {
+    text-align: left;
+  }
+}
+
+/* Statistics */
+.stat-item {
+  background: #f5f5f5;
+  padding: 16px;
+  border-radius: 8px;
+  text-align: center;
+  border-left: 3px solid #1890ff;
+}
+
+.stat-value {
+  font-size: 24px;
+  font-weight: 600;
+  color: #262626;
+  margin-bottom: 8px;
+}
+
+.stat-label {
+  font-size: 12px;
+  color: #8c8c8c;
+}
+
+/* Service name cell */
+.service-name-cell {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.service-icon {
+  color: #1890ff;
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.service-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: #262626;
+  margin-bottom: 4px;
+}
+
+.service-desc {
+  font-size: 12px;
+  color: #8c8c8c;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 300px;
+}
+
+/* Price cell */
+.price-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  color: #52c41a;
+}
+
+.price-cell svg {
+  color: #52c41a;
+}
+
+/* Duration cell */
+.duration-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #1890ff;
+}
+
+.duration-cell svg {
+  color: #1890ff;
+}
+
+/* Table styling */
+.services-card .ant-table {
+  background: transparent;
+}
+
+.services-card .ant-table-thead > tr > th {
+  background: #fafafa;
+  border-bottom: 2px solid #f0f0f0;
+}
+
+.services-card .ant-table-tbody > tr:hover > td {
+  background: #fafafa;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .page-header h1 {
+    font-size: 24px;
+  }
+
+  .stat-item {
+    padding: 12px;
+  }
+
+  .stat-value {
+    font-size: 20px;
+  }
+
+  .stat-label {
+    font-size: 11px;
+  }
+
+  .service-desc {
+    max-width: 150px;
+  }
+}
+
+@media (max-width: 480px) {
+  .services-toolbar {
+    padding-bottom: 16px;
+  }
+
+  .service-title {
+    font-size: 13px;
+  }
+
+  .service-desc {
+    font-size: 11px;
+    max-width: 120px;
+  }
+}

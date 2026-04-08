@@ -1,19 +1,26 @@
 package com.example.smartgarage.entity;
 
 import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.NoArgsConstructor;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
+import lombok.*;
+
 import java.time.LocalDateTime;
 
 @Entity
 @Table(name="consultation_histories")
 @NoArgsConstructor
 @AllArgsConstructor
+@Getter
+@Setter
+@Builder
 public class ConsultationHistory {
     @Id
     @GeneratedValue(strategy = jakarta.persistence.GenerationType.IDENTITY)
     private Long id;
-
+    @NotBlank(message = "Mô tả tình trạng xe không được để trống")
+    @Size(min = 10, message = "Mô tả phải có ít nhất 10 ký tự để AI có thể chẩn đoán chính xác")
     @Column(name = "customer_issue", nullable = false, columnDefinition = "TEXT")
     private String customerIssue;
 
@@ -27,6 +34,7 @@ public class ConsultationHistory {
     @Column(name = "created_at")
     private LocalDateTime createdAt = LocalDateTime.now();
 
+    @NotNull(message = "Lịch sử tư vấn phải gắn với một khách hàng")
     @ManyToOne
     @JoinColumn(name = "customer_id")
     private User customer;
@@ -34,47 +42,5 @@ public class ConsultationHistory {
     @OneToOne
     @JoinColumn(name = "booking_id")
     private Booking booking;
-    public Booking getBooking() {
-        return booking;
-    }
-    public void setBooking(Booking booking) {
-        this.booking = booking;
-    }
-    public User getCustomer() {
-        return customer;
-    }
-    public void setCustomer(User customer) {
-        this.customer = customer;
-    }
-    public Long getId() {
-        return id;
-    }
 
-    public void setId(Long id) {
-        this.id = id;
-    }
-
-    public String getCustomerIssue() {
-        return customerIssue;
-    }
-
-    public void setCustomerIssue(String customerIssue) {
-        this.customerIssue = customerIssue;
-    }
-
-    public String getAiSuggestion() {
-        return aiSuggestion;
-    }
-
-    public void setAiSuggestion(String aiSuggestion) {
-        this.aiSuggestion = aiSuggestion;
-    }
-
-    public LocalDateTime getCreatedAt() {
-        return createdAt;
-    }
-
-    public void setCreatedAt(LocalDateTime createdAt) {
-        this.createdAt = createdAt;
-    }
 }

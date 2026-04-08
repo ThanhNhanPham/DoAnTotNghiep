@@ -1,6 +1,9 @@
 package com.example.smartgarage.dto;
 import com.example.smartgarage.entity.Booking;
+import com.example.smartgarage.enums.BookingStatus;
 import lombok.Data;
+
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -9,7 +12,7 @@ import java.util.stream.Collectors;
 public class BookingHistoryDTO {
     private Long id;
     private LocalDateTime bookingTime;
-    private String status;
+    private BookingStatus status;
     private String note;
     private String motorbikeName; // Ví dụ: Honda Sh 150i
     private String licensePlate;
@@ -17,7 +20,7 @@ public class BookingHistoryDTO {
     private String branchName;
     // Danh sách tên các dịch vụ và tổng tiền
     private List<String> serviceNames;
-    private Double totalPrice;
+    private BigDecimal totalPrice;
 
     // Hàm static để chuyển đổi từ Entity sang DTO
     public static BookingHistoryDTO fromEntity(Booking booking) {
@@ -36,13 +39,13 @@ public class BookingHistoryDTO {
             dto.setBranchName(booking.getBranch().getName());
         }
 
-        dto.setServiceNames(booking.getServices().stream()
-                .map(s -> s.getName())
+        dto.setServiceNames(booking.getBookedServices().stream()
+                .map(s -> s.getService().getName())
                 .collect(Collectors.toList()));
 
-        dto.setTotalPrice(booking.getServices().stream()
-                .mapToDouble(s -> s.getPrice().doubleValue())
-                .sum());
+        dto.setTotalPrice(BigDecimal.valueOf(booking.getBookedServices().stream()
+                .mapToDouble(s -> s.getPriceAtBooking().doubleValue())
+                .sum()));
         return dto;
     }
 }
