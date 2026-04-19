@@ -105,16 +105,15 @@
   color: #8c8c8c;
 }
 
-/* Motorbike cell */
-.motorbike-cell {
+/* Vehicle cell */
+.vehicle-cell {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 8px;
 }
 
-.motorbike-cell svg {
+.vehicle-cell svg {
   color: #52c41a;
-  margin-top: 2px;
   flex-shrink: 0;
 }
 

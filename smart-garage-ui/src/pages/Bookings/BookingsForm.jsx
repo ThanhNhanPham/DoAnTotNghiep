@@ -9,9 +9,9 @@ const BookingsForm = ({ visible, editingBooking, onClose, onSave, branches }) =>
     if (editingBooking) {
       form.setFieldsValue({
         ...editingBooking,
-        userId: editingBooking.user.id,
-        motorbikeId: editingBooking.motorbike.id,
-        branchId: editingBooking.branch.id,
+        userId: editingBooking.user?.id,
+        vehicleId: editingBooking.vehicle?.id,
+        branchId: editingBooking.branch?.id,
         mechanicId: editingBooking.mechanic?.id,
         bookingTime: dayjs(editingBooking.bookingTime),
       });
@@ -29,7 +29,7 @@ const BookingsForm = ({ visible, editingBooking, onClose, onSave, branches }) =>
         ...values,
         bookingTime: values.bookingTime.toISOString(),
         user: { id: values.userId, fullName: 'Mock User', phone: '0901234567' },
-        motorbike: { id: values.motorbikeId, licensePlate: '59A-12345', brand: 'Honda' },
+        vehicle: { id: values.vehicleId, licensePlate: '59A-12345', brand: 'Honda' },
         branch: branches.find((b) => b.id === values.branchId),
         mechanic: values.mechanicId ? { id: values.mechanicId, fullName: 'Mock Mechanic' } : null,
       };
@@ -53,7 +53,7 @@ const BookingsForm = ({ visible, editingBooking, onClose, onSave, branches }) =>
     { id: 3, fullName: 'Lê Văn C' },
   ];
 
-  const motorbikes = [
+  const vehicles = [
     { id: 1, licensePlate: '59A-12345' },
     { id: 2, licensePlate: '59B-67890' },
     { id: 3, licensePlate: '59C-11111' },
@@ -67,7 +67,7 @@ const BookingsForm = ({ visible, editingBooking, onClose, onSave, branches }) =>
   return (
     <Modal
       title={editingBooking ? 'Sửa đặt lịch' : 'Thêm đặt lịch mới'}
-      visible={visible}
+      open={visible}
       onOk={handleOk}
       onCancel={handleCancel}
       width={750}
@@ -91,7 +91,7 @@ const BookingsForm = ({ visible, editingBooking, onClose, onSave, branches }) =>
             placeholder="Chọn khách hàng"
             showSearch
             filterOption={(input, option) =>
-              option.label.toLowerCase().includes(input.toLowerCase())
+              (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
             }
             options={users.map((u) => ({
               label: u.fullName,
@@ -101,19 +101,19 @@ const BookingsForm = ({ visible, editingBooking, onClose, onSave, branches }) =>
         </Form.Item>
 
         <Form.Item
-          label="Xe"
-          name="motorbikeId"
-          rules={[{ required: true, message: 'Vui lòng chọn xe' }]}
+          label="Phương tiện"
+          name="vehicleId"
+          rules={[{ required: true, message: 'Vui lòng chọn phương tiện' }]}
         >
           <Select
-            placeholder="Chọn xe"
+            placeholder="Chọn phương tiện"
             showSearch
             filterOption={(input, option) =>
-              option.label.toLowerCase().includes(input.toLowerCase())
+              (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
             }
-            options={motorbikes.map((m) => ({
-              label: m.licensePlate,
-              value: m.id,
+            options={vehicles.map((v) => ({
+              label: v.licensePlate,
+              value: v.id,
             }))}
           />
         </Form.Item>

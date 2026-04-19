@@ -1,146 +1,147 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Card,
   Table,
   Button,
   Input,
   Space,
-  Modal,
   Tag,
   Popconfirm,
   Row,
   Col,
   Select,
   message,
+  Tooltip,
+  Modal,
+  Form
 } from 'antd';
 import {
-  PlusOutlined,
   DeleteOutlined,
-  EditOutlined,
   SearchOutlined,
+  CheckCircleOutlined,
+  ToolOutlined,
+  CloseCircleOutlined
 } from '@ant-design/icons';
-import { Calendar, User, Car, Building2, Wrench, DollarSign } from 'lucide-react';
-import BookingsForm from './BookingsForm';
+import { Calendar, User, Car, Bike, Building2, Wrench, DollarSign } from 'lucide-react';
+import bookingService from '../../services/bookingService';
+import branchService from '../../services/branchService';
+import mechanicService from '../../services/mechanicService';
 import './Bookings.css';
 
 const Bookings = () => {
-  const [bookings, setBookings] = useState([
-    {
-      id: 1,
-      user: { id: 1, fullName: 'Nguyễn Văn A', phone: '0901234567' },
-      motorbike: { id: 1, licensePlate: '59A-12345', brand: 'Honda' },
-      branch: { id: 1, name: 'Chi nhánh Quận 1' },
-      mechanic: { id: 1, fullName: 'Trần Văn B' },
-      bookingTime: '2024-12-20T10:00:00',
-      status: 'CONFIRMED',
-      note: 'Khách yêu cầu sửa nhanh',
-      totalAmount: 500000,
-      createdAt: '2024-12-15T08:30:00',
-    },
-    {
-      id: 2,
-      user: { id: 2, fullName: 'Trần Thị B', phone: '0912345678' },
-      motorbike: { id: 2, licensePlate: '59B-67890', brand: 'Yamaha' },
-      branch: { id: 2, name: 'Chi nhánh Quận 3' },
-      mechanic: null,
-      bookingTime: '2024-12-21T14:00:00',
-      status: 'PENDING',
-      note: '',
-      totalAmount: 0,
-      createdAt: '2024-12-16T09:00:00',
-    },
-    {
-      id: 3,
-      user: { id: 3, fullName: 'Lê Văn C', phone: '0923456789' },
-      motorbike: { id: 3, licensePlate: '59C-11111', brand: 'Honda' },
-      branch: { id: 1, name: 'Chi nhánh Quận 1' },
-      mechanic: { id: 2, fullName: 'Phạm Thị D' },
-      bookingTime: '2024-12-18T09:00:00',
-      status: 'COMPLETED',
-      note: '',
-      totalAmount: 750000,
-      createdAt: '2024-12-10T10:00:00',
-    },
-    {
-      id: 4,
-      user: { id: 4, fullName: 'Phạm Thị D', phone: '0934567890' },
-      motorbike: { id: 4, licensePlate: '59D-22222', brand: 'Suzuki' },
-      branch: { id: 3, name: 'Chi nhánh Bình Thạnh' },
-      mechanic: null,
-      bookingTime: '2024-12-19T15:00:00',
-      status: 'CANCELLED',
-      note: 'Khách hủy lịch',
-      totalAmount: 0,
-      createdAt: '2024-12-12T11:00:00',
-    },
-  ]);
-
+  const [bookings, setBookings] = useState([]);
+  const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(false);
   const [searchText, setSearchText] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [branchFilter, setBranchFilter] = useState('');
-  const [isModalVisible, setIsModalVisible] = useState(false);
-  const [editingBooking, setEditingBooking] = useState(null);
+  const [statusFilter, setStatusFilter] = useState(undefined);
+  const [branchFilter, setBranchFilter] = useState(undefined);
 
-  // Danh sách chi nhánh (mock - trong thực tế sẽ fetch từ API)
-  const branches = [
-    { id: 1, name: 'Chi nhánh Quận 1' },
-    { id: 2, name: 'Chi nhánh Quận 3' },
-    { id: 3, name: 'Chi nhánh Bình Thạnh' },
-  ];
+  // States for Confirming Booking
+  const [isConfirmModalVisible, setIsConfirmModalVisible] = useState(false);
+  const [bookingToConfirm, setBookingToConfirm] = useState(null);
+  const [mechanics, setMechanics] = useState([]);
+  const [selectedMechanicId, setSelectedMechanicId] = useState(undefined);
+  const [confirmLoading, setConfirmLoading] = useState(false);
 
-  // Lọc danh sách đặt lịch
+  useEffect(() => {
+    fetchBookings();
+    fetchBranches();
+    fetchMechanics();
+  }, []);
+
+  const fetchBookings = async () => {
+    setLoading(true);
+    try {
+      const data = await bookingService.getAllBookings();
+      setBookings(data || []);
+    } catch (error) {
+      message.error('Lỗi khi tải danh sách lịch hẹn!');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchBranches = async () => {
+    try {
+      const data = await branchService.getActiveBranches();
+      setBranches(data || []);
+    } catch (error) {
+      message.error('Lỗi khi tải danh sách chi nhánh!');
+    }
+  };
+
+  const fetchMechanics = async () => {
+    try {
+      const data = await mechanicService.getAllMechanics(); // you can filter active ones later
+      setMechanics(data || []);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  // Filter Bookings
   const filteredBookings = bookings.filter((booking) => {
+    const userStr = booking.vehicleOwnerName || booking.customerName || booking.user?.fullName || booking.userName || booking.email || '';
+    const plateStr = booking.vehicle?.licensePlate || booking.licensePlate || '';
     const matchSearch =
-      booking.user.fullName.toLowerCase().includes(searchText.toLowerCase()) ||
-      booking.motorbike.licensePlate.toLowerCase().includes(searchText.toLowerCase());
-    const matchStatus = !statusFilter || booking.status === statusFilter;
-    const matchBranch = !branchFilter || booking.branch.id === branchFilter;
+      userStr.toLowerCase().includes(searchText.toLowerCase()) ||
+      plateStr.toLowerCase().includes(searchText.toLowerCase());
+    
+    // Fallbacks because response schema is unknown yet
+    const currentStatus = booking.status || 'PENDING'; 
+    const matchStatus = !statusFilter || currentStatus === statusFilter;
+    
+    const branchId = booking.branch?.id || booking.branchId;
+    const matchBranch = !branchFilter || branchId === branchFilter;
+    
     return matchSearch && matchStatus && matchBranch;
   });
 
-  // Mở modal thêm đặt lịch
-  const handleAddBooking = () => {
-    setEditingBooking(null);
-    setIsModalVisible(true);
-  };
-
-  // Mở modal sửa đặt lịch
-  const handleEditBooking = (booking) => {
-    setEditingBooking(booking);
-    setIsModalVisible(true);
-  };
-
-  // Xóa đặt lịch
-  const handleDeleteBooking = (bookingId) => {
-    setBookings(bookings.filter((b) => b.id !== bookingId));
-    message.success('Xóa đặt lịch thành công!');
-  };
-
-  // Lưu đặt lịch
-  const handleSaveBooking = (values) => {
-    if (editingBooking) {
-      // Cập nhật đặt lịch
-      setBookings(
-        bookings.map((b) =>
-          b.id === editingBooking.id ? { ...b, ...values } : b
-        )
-      );
-      message.success('Cập nhật đặt lịch thành công!');
-    } else {
-      // Thêm đặt lịch mới
-      const newBooking = {
-        id: Math.max(...bookings.map((b) => b.id), 0) + 1,
-        ...values,
-        createdAt: new Date().toISOString(),
-      };
-      setBookings([...bookings, newBooking]);
-      message.success('Thêm đặt lịch thành công!');
+  const handleDeleteBooking = async (bookingId) => {
+    try {
+      await bookingService.cancelBooking(bookingId);
+      message.success('Đã xóa/hủy lịch hẹn thành công!');
+      fetchBookings();
+    } catch (error) {
+       message.error('Lỗi khi hủy lịch hẹn!');
     }
-    setIsModalVisible(false);
   };
 
-  // Cấu hình trạng thái
+  const handleCompleteBooking = async (bookingId) => {
+    try {
+      await bookingService.completeBooking(bookingId);
+      message.success('Đánh dấu hoàn thành lịch sửa xe thành công!');
+      fetchBookings();
+    } catch (error) {
+      message.error('Lỗi khi hoàn thành lịch hẹn!');
+    }
+  };
+  
+  // Logic to show confirm modal
+  const openConfirmModal = (booking) => {
+    setBookingToConfirm(booking);
+    setSelectedMechanicId(undefined);
+    setIsConfirmModalVisible(true);
+  };
+  
+  const handleConfirmBooking = async () => {
+    if (!selectedMechanicId) {
+      message.warning('Vui lòng chọn thợ sửa xe!');
+      return;
+    }
+    setConfirmLoading(true);
+    try {
+      await bookingService.confirmBooking(bookingToConfirm.id, selectedMechanicId);
+      message.success('Xác nhận lịch hẹn thành công!');
+      setIsConfirmModalVisible(false);
+      fetchBookings();
+    } catch (error) {
+      message.error('Lỗi khi xác nhận lịch hẹn!');
+    } finally {
+      setConfirmLoading(false);
+    }
+  };
+
   const statusConfig = {
     PENDING: { color: 'orange', text: 'Chờ xử lý' },
     CONFIRMED: { color: 'blue', text: 'Đã xác nhận' },
@@ -148,7 +149,40 @@ const Bookings = () => {
     CANCELLED: { color: 'red', text: 'Đã hủy' },
   };
 
-  // Cấu hình cột bảng
+  const paymentMethodConfig = {
+    CASH: { color: 'default', text: 'Tiền mặt' },
+    MOMO: { color: 'magenta', text: 'MoMo' },
+    BANK_TRANSFER: { color: 'geekblue', text: 'Chuyển khoản' },
+  };
+
+  const paymentStatusConfig = {
+    PENDING: { color: 'orange', text: 'Chờ thanh toán' },
+    SUCCESS: { color: 'green', text: 'Đã thanh toán' },
+    FAILED: { color: 'red', text: 'Thất bại' },
+    CANCELLED: { color: 'default', text: 'Đã hủy' },
+  };
+
+  const formatDateTime = (value) => {
+    if (!value) return 'N/A';
+    return new Date(value).toLocaleString('vi-VN');
+  };
+
+  const renderTagList = (items, emptyText = 'Chưa có') => {
+    if (!items || items.length === 0) {
+      return <span style={{ color: '#8c8c8c' }}>{emptyText}</span>;
+    }
+
+    return (
+      <Space size={[4, 4]} wrap>
+        {items.map((item) => (
+          <Tag key={item} color="processing" style={{ marginInlineEnd: 0 }}>
+            {item}
+          </Tag>
+        ))}
+      </Space>
+    );
+  };
+
   const columns = [
     {
       title: 'STT',
@@ -159,57 +193,74 @@ const Bookings = () => {
     },
     {
       title: 'Khách hàng',
-      dataIndex: 'user',
       key: 'user',
       width: 180,
-      render: (user) => (
-        <div className="user-cell">
-          <User size={14} />
-          <div>
-            <div className="user-name">{user.fullName}</div>
-            <div className="user-phone">{user.phone}</div>
+      render: (_, record) => {
+        const name = record.vehicleOwnerName || record.customerName || record.user?.fullName || record.userName || record.user?.name || 'Khách Vãng Lai';
+        const phone = record.customerPhone || record.user?.phone || record.phone || '';
+        return (
+          <div className="user-cell">
+            <User size={14} />
+            <div>
+              <div className="user-name">{name}</div>
+              <div className="user-phone">{phone}</div>
+            </div>
           </div>
-        </div>
-      ),
+        );
+      },
     },
     {
-      title: 'Xe',
-      dataIndex: 'motorbike',
-      key: 'motorbike',
-      width: 150,
-      render: (motorbike) => (
-        <div className="motorbike-cell">
-          <Car size={14} />
-          <div>
-            <div className="license-plate">{motorbike.licensePlate}</div>
-            <div className="brand">{motorbike.brand}</div>
+      title: 'Phương tiện',
+      key: 'vehicle',
+      width: 200,
+      render: (_, record) => {
+        const plate = record.vehicle?.licensePlate || record.licensePlate || 'Chưa rõ';
+        const vehicleName = record.vehicleName || record.vehicle?.name || record.brand || '';
+        const type = record.vehicle?.type || 'MOTORBIKE';
+        const isCar = type === 'CAR';
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+            <div className="license-plate" style={{ fontSize: '14px', fontWeight: 600, color: '#262626' }}>
+              {plate}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              {isCar ? <Car size={14} color="#52c41a" /> : <Bike size={14} color="#fa8c16" />}
+              <span style={{ fontSize: '12px', color: '#8c8c8c' }}>{isCar ? 'Ô tô' : 'Xe máy'}</span>
+            </div>
+            <div className="brand" style={{ fontSize: '12px', color: '#bfbfbf', fontStyle: 'italic' }}>
+              {vehicleName}
+            </div>
           </div>
-        </div>
-      ),
+        );
+      },
     },
     {
       title: 'Chi nhánh',
-      dataIndex: 'branch',
       key: 'branch',
       width: 150,
-      render: (branch) => (
-        <div className="branch-cell">
-          <Building2 size={14} />
-          <span>{branch.name}</span>
-        </div>
-      ),
+      render: (_, record) => {
+        const bName = record.branch?.name || record.branchName || 'Chưa phân bổ';
+        return (
+          <div className="branch-cell">
+            <Building2 size={14} />
+            <span style={{whiteSpace: 'normal'}}>{bName}</span>
+          </div>
+        );
+      },
     },
     {
       title: 'Thợ sửa',
-      dataIndex: 'mechanic',
       key: 'mechanic',
-      width: 150,
-      render: (mechanic) => (
-        <div className="mechanic-cell">
-          <Wrench size={14} />
-          <span>{mechanic ? mechanic.fullName : 'Chưa phân công'}</span>
-        </div>
-      ),
+      width: 160,
+      render: (_, record) => {
+        const mName = record.mechanic?.fullName || record.mechanicName;
+        return (
+          <div className="mechanic-cell">
+            <Wrench size={14} />
+            <span>{mName ? mName : 'Chưa phân công'}</span>
+          </div>
+        );
+      },
     },
     {
       title: 'Thời gian đặt',
@@ -219,9 +270,31 @@ const Bookings = () => {
       render: (time) => (
         <div className="time-cell">
           <Calendar size={14} />
-          <span>{new Date(time).toLocaleString('vi-VN')}</span>
+          <span>{formatDateTime(time)}</span>
         </div>
       ),
+    },
+    {
+      title: 'Khung giờ hẹn',
+      key: 'arrivalSlot',
+      width: 220,
+      render: (_, record) => (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <span>
+            <strong>Từ:</strong> {formatDateTime(record.arrivalSlotStart)}
+          </span>
+          <span>
+            <strong>Đến:</strong> {formatDateTime(record.arrivalSlotEnd)}
+          </span>
+        </div>
+      ),
+    },
+    {
+      title: 'Giờ nhận xe',
+      dataIndex: 'arrivalTime',
+      key: 'arrivalTime',
+      width: 170,
+      render: (time) => formatDateTime(time),
     },
     {
       title: 'Trạng thái',
@@ -229,58 +302,137 @@ const Bookings = () => {
       key: 'status',
       width: 130,
       render: (status) => {
-        const config = statusConfig[status];
-        return <Tag color={config.color}>{config.text}</Tag>;
+        const badge = statusConfig[status || 'PENDING'] || statusConfig.PENDING;
+        return <Tag color={badge.color}>{badge.text}</Tag>;
       },
     },
     {
+      title: 'Dịch vụ',
+      key: 'serviceNames',
+      width: 260,
+      render: (_, record) => renderTagList(record.serviceNames, 'Chưa chọn dịch vụ'),
+    },
+    {
+      title: 'Linh kiện',
+      key: 'partNames',
+      width: 240,
+      render: (_, record) => renderTagList(record.partNames, 'Chưa có linh kiện'),
+    },
+    {
       title: 'Tổng tiền',
-      dataIndex: 'totalAmount',
       key: 'totalAmount',
       width: 130,
-      render: (amount) => (
-        <div className="amount-cell">
-          <DollarSign size={14} />
-          <span>{amount.toLocaleString('vi-VN')} đ</span>
-        </div>
-      ),
+      render: (_, record) => {
+        const amt = record.totalAmount || record.price || 0;
+        return (
+          <div className="amount-cell">
+            <DollarSign size={14} />
+            <span>{amt.toLocaleString('vi-VN')} đ</span>
+          </div>
+        );
+      },
+    },
+    {
+      title: 'Thanh toán',
+      key: 'payment',
+      width: 190,
+      render: (_, record) => {
+        const method = paymentMethodConfig[record.paymentMethod] || {
+          color: 'default',
+          text: record.paymentMethod || 'Chưa chọn',
+        };
+        const status = paymentStatusConfig[record.paymentStatus] || {
+          color: 'default',
+          text: record.paymentStatus || 'Chưa rõ',
+        };
+
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <Tag color={method.color} style={{ width: 'fit-content', marginInlineEnd: 0 }}>
+              {method.text}
+            </Tag>
+            <Tag color={status.color} style={{ width: 'fit-content', marginInlineEnd: 0 }}>
+              {status.text}
+            </Tag>
+          </div>
+        );
+      },
     },
     {
       title: 'Thao tác',
       key: 'actions',
-      width: 120,
+      width: 170,
       fixed: 'right',
-      render: (_, record) => (
-        <Space>
-          <Button
-            type="primary"
-            size="small"
-            icon={<EditOutlined />}
-            onClick={() => handleEditBooking(record)}
-          />
-          <Popconfirm
-            title="Xóa đặt lịch"
-            description="Bạn có chắc muốn xóa đặt lịch này?"
-            onConfirm={() => handleDeleteBooking(record.id)}
-            okText="Xóa"
-            cancelText="Hủy"
-          >
-            <Button type="primary" danger size="small" icon={<DeleteOutlined />} />
-          </Popconfirm>
-        </Space>
-      ),
+      render: (_, record) => {
+        const s = record.status || 'PENDING';
+        return (
+          <Space>
+            {s === 'PENDING' && (
+              <Tooltip title="Xác nhận & Giao thợ">
+                <Button 
+                  type="primary" 
+                  icon={<CheckCircleOutlined style={{ fontSize: '18px' }} />} 
+                  onClick={() => openConfirmModal(record)} 
+                />
+              </Tooltip>
+            )}
+            {s === 'CONFIRMED' && (
+              <Popconfirm
+                title="Hoàn thành lịch"
+                description="Đánh dấu lịch này đã sửa xong chưa?"
+                onConfirm={() => handleCompleteBooking(record.id)}
+              >
+                <Tooltip title="Đánh dấu Hoàn thành">
+                  <Button 
+                    type="primary" 
+                    className="btn-success"
+                    style={{ background: '#52c41a', borderColor: '#52c41a' }}
+                    icon={<ToolOutlined style={{ fontSize: '18px' }} />} 
+                  />
+                </Tooltip>
+              </Popconfirm>
+            )}
+            
+            {(s === 'PENDING' || s === 'CONFIRMED') && (
+              <Popconfirm
+                title="Hủy đặt lịch"
+                description="Bạn có chắc muốn hủy đặt lịch này không?"
+                onConfirm={() => handleDeleteBooking(record.id)}
+                okText="Hủy lịch"
+                cancelText="Thoát"
+              >
+                <Tooltip title="Hủy/Xóa đơn">
+                  <Button type="primary" danger icon={<CloseCircleOutlined style={{ fontSize: '18px' }} />} />
+                </Tooltip>
+              </Popconfirm>
+            )}
+
+            {(s === 'COMPLETED' || s === 'CANCELLED') && (
+               <Popconfirm
+               title="Xóa bản ghi"
+               description="Bạn có chắc muốn xóa vĩnh viễn không?"
+               onConfirm={() => handleDeleteBooking(record.id)}
+               okButtonProps={{ danger: true }}
+             >
+               <Tooltip title="Xóa">
+                 <Button type="text" danger icon={<DeleteOutlined style={{ fontSize: '18px' }} />} />
+               </Tooltip>
+             </Popconfirm>
+            )}
+          </Space>
+        );
+      },
     },
   ];
 
   return (
     <div className="bookings-page">
       <div className="page-header">
-        <h1>Quản lý đặt lịch</h1>
-        <p>Quản lý các lịch hẹn sửa chữa và bảo dưỡng xe</p>
+        <h1>Quản lý Đơn Đặt Lịch</h1>
+        <p>Quản lý các lịch hẹn sửa chữa do khách hàng yêu cầu</p>
       </div>
 
       <Card className="bookings-card" bordered={false}>
-        {/* Filters and Actions */}
         <div className="bookings-toolbar">
           <Row gutter={[16, 16]} align="middle">
             <Col xs={24} sm={12} md={8}>
@@ -319,20 +471,12 @@ const Bookings = () => {
                 options={branches.map((b) => ({ label: b.name, value: b.id }))}
               />
             </Col>
-
-            <Col xs={24} sm={12} md={6} className="text-right">
-              <Button
-                type="primary"
-                icon={<PlusOutlined />}
-                onClick={handleAddBooking}
-              >
-                Thêm đặt lịch
-              </Button>
-            </Col>
+            
+            {/* We removed the explicit "Add Booking" button here 
+                because Admins no longer manually create them. */}
           </Row>
         </div>
 
-        {/* Statistics */}
         <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
           <Col xs={12} sm={6} md={4}>
             <div className="stat-item">
@@ -343,7 +487,7 @@ const Bookings = () => {
           <Col xs={12} sm={6} md={5}>
             <div className="stat-item stat-pending">
               <div className="stat-value">
-                {bookings.filter((b) => b.status === 'PENDING').length}
+                {bookings.filter((b) => (b.status || 'PENDING') === 'PENDING').length}
               </div>
               <div className="stat-label">Chờ xử lý</div>
             </div>
@@ -374,7 +518,6 @@ const Bookings = () => {
           </Col>
         </Row>
 
-        {/* Table */}
         <Table
           columns={columns}
           dataSource={filteredBookings}
@@ -386,18 +529,37 @@ const Bookings = () => {
             showSizeChanger: true,
             showQuickJumper: true,
           }}
-          scroll={{ x: 1500 }}
+          scroll={{ x: 2600 }}
         />
       </Card>
+      
+      {/* Modal Confirm Booking */}
+      <Modal
+        title="Xác nhận lịch hẹn & Phân công thợ"
+        open={isConfirmModalVisible}
+        onOk={handleConfirmBooking}
+        onCancel={() => setIsConfirmModalVisible(false)}
+        confirmLoading={confirmLoading}
+        okText="Xác nhận"
+        cancelText="Bỏ qua"
+      >
+        <p>Chọn thợ sửa xe cho đơn hàng này:</p>
+        <Select 
+            placeholder="-- Chọn thợ rảnh --" 
+            style={{ width: '100%' }}
+            value={selectedMechanicId}
+            onChange={setSelectedMechanicId}
+            allowClear
+            options={mechanics
+                .filter(m => m.status === 'ACTIVE') // Khuyên dùng thợ ACTIVE
+                .map(m => ({
+                    label: `${m.fullName} - ${m.branch?.name || ''}`,
+                    value: m.id
+                }))
+            }
+        />
+      </Modal>
 
-      {/* Booking Form Modal */}
-      <BookingsForm
-        visible={isModalVisible}
-        editingBooking={editingBooking}
-        onClose={() => setIsModalVisible(false)}
-        onSave={handleSaveBooking}
-        branches={branches}
-      />
     </div>
   );
 };
