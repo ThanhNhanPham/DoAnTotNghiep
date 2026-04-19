@@ -1,7 +1,10 @@
 package com.example.smartgarage.entity;
 
 import com.example.smartgarage.enums.BookingStatus;
+import com.example.smartgarage.enums.PaymentMethod;
+import com.example.smartgarage.enums.PaymentStatus;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.*;
 import lombok.*;
@@ -25,12 +28,12 @@ public class Booking {
     @NotNull(message = "Khách hàng không được để trống")
     @ManyToOne
     @JoinColumn(name = "user_id", nullable = false)
-    @JsonIgnoreProperties({"motorbikes", "bookings", "password"})
-    private User user; // Khách hàng đặt lịchs
+    @JsonIgnoreProperties({"vehicles", "bookings", "password"})
+    private User user; // Khách hàng đặt lịch
     @NotNull(message = "Vui lòng chọn xe của khách hàng")
     @ManyToOne
-    @JoinColumn(name = "motorbike_id", nullable = false)
-    private Motorbike motorbike; // Xe mang đi sửa
+    @JoinColumn(name = "vehicle_id", nullable = false)
+    private Vehicle vehicle; // Xe mang đi sửa
 
     @NotNull(message = "Vui lòng chọn chi nhánh")
     @ManyToOne
@@ -46,15 +49,25 @@ public class Booking {
     @Column(name = "booking_time", nullable = false)
     private LocalDateTime bookingTime;
 
+    @Column(name = "arrival_slot_start")
+    private LocalDateTime arrivalSlotStart;
+
+    @Column(name = "arrival_slot_end")
+    private LocalDateTime arrivalSlotEnd;
+
+    @Column(name = "arrival_time")
+    private LocalDateTime arrivalTime;
+
     @NotNull(message = "Trạng thái đơn hàng không được để trống")
     @Enumerated(EnumType.STRING)
-    private BookingStatus status; // Trạng thái: PENDING, CONFIRMED, COMPLETED, CANCELLED
+    @Column(nullable = false)
+    private BookingStatus status = BookingStatus.PENDING; // Trạng thái: PENDING, CONFIRMED, COMPLETED, CANCELLED
 
     @Size(max = 1000, message = "Ghi chú không được quá 1000 ký tự")
     @Column(columnDefinition = "TEXT")
     private String note;
 
-    @Column(name = "created_at")
+    @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 
     @org.hibernate.annotations.UpdateTimestamp // TỰ ĐỘNG CẬP NHẬT KHI ĐƠN HÀNG XONG
@@ -65,9 +78,39 @@ public class Booking {
     private List<BookedService> bookedServices = new ArrayList<>();
 
     @OneToMany(mappedBy = "booking", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<BookedPart> bookedPart = new ArrayList<>();
+    private List<BookedPart> bookedParts = new ArrayList<>();
 
     @DecimalMin(value = "0.0", message = "Tổng tiền không được nhỏ hơn 0")
     @Column(name = "total_amount")
     private BigDecimal totalAmount;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "payment_method", nullable = false, columnDefinition = "varchar(255) default 'CASH'")
+    private PaymentMethod paymentMethod = PaymentMethod.CASH;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "payment_status", nullable = false, columnDefinition = "varchar(255) default 'UNPAID'")
+    private PaymentStatus paymentStatus = PaymentStatus.UNPAID;
+
+    @PrePersist
+    public void applyPaymentDefaults() {
+        if (status == null) {
+            status = BookingStatus.PENDING;
+        }
+        if (paymentMethod == null) {
+            paymentMethod = PaymentMethod.CASH;
+        }
+        if (paymentStatus == null) {
+            paymentStatus = PaymentStatus.UNPAID;
+        }
+        if (createdAt == null) {
+            createdAt = LocalDateTime.now();
+        }
+    }
+
+    @Transient
+    @JsonProperty("vehicleOwnerName")
+    public String getVehicleOwnerName() {
+        return user != null ? user.getFullName() : null;
+    }
 }

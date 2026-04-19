@@ -1,0 +1,99 @@
+.vehicles-page {
+  padding: 24px;
+}
+
+.page-header {
+  margin-bottom: 24px;
+}
+
+.page-header h1 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.page-header p {
+  margin: 4px 0 0 0;
+  color: #666;
+}
+
+.vehicles-card {
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.vehicles-toolbar {
+  margin-bottom: 24px;
+}
+
+.stat-item {
+  background: #f8f9fa;
+  padding: 16px;
+  border-radius: 8px;
+  text-align: center;
+  border: 1px solid #f0f0f0;
+}
+
+.stat-value {
+  font-size: 24px;
+  font-weight: 600;
+  color: #1890ff;
+}
+
+.stat-label {
+  font-size: 14px;
+  color: #666;
+  margin-top: 4px;
+}
+
+/* Cell styles */
+.plate-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.plate-text {
+  font-weight: 600;
+  color: #1890ff;
+  letter-spacing: 0.5px;
+}
+
+.brand-cell, .model-cell {
+  color: #1f1f1f;
+}
+
+.color-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #666;
+}
+
+.owner-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.owner-name {
+  font-weight: 500;
+  color: #1f1f1f;
+}
+
+.text-right {
+  text-align: right;
+}
+
+/* Table customization */
+.ant-table-thead > tr > th {
+  background: #fafafa;
+  font-weight: 600;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .text-right {
+    text-align: left;
+  }
+}

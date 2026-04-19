@@ -1,11 +1,12 @@
 package com.example.smartgarage.entity;
 
+import com.example.smartgarage.enums.VehicleType;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
-import jdk.jfr.Enabled;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -14,11 +15,10 @@ import lombok.Setter;
 @Entity
 @Setter
 @Getter
-@Enabled
-@Table(name = "motorbikes")
+@Table(name = "vehicles")
 @NoArgsConstructor
 @AllArgsConstructor
-public class Motorbike {
+public class Vehicle {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -37,15 +37,26 @@ public class Motorbike {
     @NotNull(message = "Mẫu xe không được để trống")
     @Size(max = 50, message = "Tên dòng xe không quá 50 ký tự")
     private String model;
+
     @Size(max = 30, message = "Mô tả màu sắc quá dài")
     private String color;
-//
-//    @NotNull(message = "Xe phải thuộc về một người dùng")
+
+    @NotNull(message = "Loại xe không được để trống")
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private VehicleType type;
+
     @ManyToOne
     @JoinColumn(name = "user_id", nullable = false)
     @JsonIgnore
     private User user;
 
     @Column(name = "is_active", nullable = false)
-    private Boolean is_active = true;
+    private Boolean isActive = true;
+
+    @Transient
+    @JsonProperty("ownerName")
+    public String getOwnerName() {
+        return user != null ? user.getFullName() : null;
+    }
 }

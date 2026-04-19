@@ -36,7 +36,6 @@ public class BookingController {
         return ResponseEntity.ok(createdBooking);
     }
 
-    // 2. API Xem lịch sử đặt lịch của CHÍNH khách hàng đang đăng nhập
     @Operation(summary = "Xem lại lịch sử đặt lịch  ", description = "Khách hàng xem lại lịch sử đặt lịch của mình")
     @GetMapping("/my-history")
     public ResponseEntity<List<BookingHistoryDTO>> getMyBookings(Authentication authentication) {
@@ -48,7 +47,13 @@ public class BookingController {
         // 3. Trả về kết quả
         return ResponseEntity.ok(history);
     }
-    // 3. API Hủy lịch hẹn: Phải kiểm tra đúng chủ sở hữu (Email)
+    @Operation(summary = "Xem chi tiết lịch hẹn", description = "Khách hàng xem chi tiết một lịch hẹn cụ thể của mình")
+    @GetMapping("/{id}")
+    public ResponseEntity<?> getBooking(@PathVariable Long id, Authentication authentication) {
+        BookingResponse booking = bookingService.getBookingById(id, authentication.getName());
+        return ResponseEntity.ok(booking);
+    }
+
     @Operation(summary = "Hủy lịch hẹn", description = "Khách hàng hủy lịch hẹn của mình")
     @DeleteMapping("/{id}")
     public ResponseEntity<?> cancelBooking(@PathVariable Long id, Authentication authentication) {
