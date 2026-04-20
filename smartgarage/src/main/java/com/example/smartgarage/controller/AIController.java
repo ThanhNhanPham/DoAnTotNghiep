@@ -9,6 +9,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
@@ -42,9 +43,26 @@ public class AIController {
 
     @Operation(summary="lấy lịch sủ truy vấn Ai của ngừoi dùng")
     @GetMapping("/history")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<List<ConsultationHistory>> getAllHistory() {
         try {
             List<ConsultationHistory> histories = consultationHistoryRepository.findAllByOrderByCreatedAtDesc();
+            if (histories.isEmpty()) {
+                return ResponseEntity.noContent().build();
+            }
+            return ResponseEntity.ok(histories);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    @Operation(summary = "Lấy lịch sử truy vấn AI của user đang đăng nhập")
+    @GetMapping("/history/me")
+    public ResponseEntity<List<ConsultationHistory>> getMyHistory(Authentication auth) {
+        try {
+            String username = auth.getName();
+            List<ConsultationHistory> histories =
+                    consultationHistoryRepository.findByCustomerEmailOrderByCreatedAtDesc(username);
             if (histories.isEmpty()) {
                 return ResponseEntity.noContent().build();
             }
