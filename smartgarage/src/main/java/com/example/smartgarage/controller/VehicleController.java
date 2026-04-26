@@ -6,6 +6,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -46,6 +47,12 @@ public class VehicleController {
     @PostMapping("/user/{userId}")
     public ResponseEntity<?> addVehicle(@PathVariable Long userId, @Valid @RequestBody Vehicle vehicle) {
         return vehicleService.addVehicle(userId, vehicle);
+    }
+
+    @Operation(summary = "Tải ảnh xe lên")
+    @PostMapping("/upload-image")
+    public ResponseEntity<?> uploadVehicleImage(@RequestParam("file") MultipartFile file) {
+        return vehicleService.uploadVehicleImage(file);
     }
 
     @Operation(summary="xoá xe khỏi hệ thống", description="nếu như xoá xe thì chuyển trạng thái active = false")
