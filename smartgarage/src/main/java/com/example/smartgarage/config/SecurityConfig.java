@@ -35,6 +35,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/v1/auth/**").permitAll()
                         .requestMatchers("/api/v1/**").permitAll()
+                        .requestMatchers("/uploads/**").permitAll()
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         // 2. Dùng hasAuthority để khớp chính xác chuỗi "ADMIN" trong DB
                         .requestMatchers("/api/v1/admin/**").hasAuthority("ADMIN")
