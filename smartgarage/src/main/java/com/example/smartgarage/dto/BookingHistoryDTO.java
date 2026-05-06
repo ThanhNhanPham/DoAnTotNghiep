@@ -20,6 +20,7 @@ public class BookingHistoryDTO {
     private BookingStatus status;
     private String note;
     private String vehicleName; // Ví dụ: Honda Sh 150i
+    private String vehicleImageUrl;
     private String licensePlate;
     // Chỉ lấy tên chi nhánh
     private String branchName;
@@ -44,6 +45,7 @@ public class BookingHistoryDTO {
 
         if (booking.getVehicle() != null) {
             dto.setVehicleName(booking.getVehicle().getBrand() + " " + booking.getVehicle().getModel());
+            dto.setVehicleImageUrl(booking.getVehicle().getImageUrl());
             dto.setLicensePlate(booking.getVehicle().getLicensePlate());
         }
 

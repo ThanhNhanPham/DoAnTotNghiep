@@ -27,6 +27,7 @@ public class BookingResponse {
     private String vehicleOwnerName;
     private String customerPhone;
     private String vehicleName; // VD: "Honda Sh 150i"
+    private String vehicleImageUrl;
     private String licensePlate;
     private String branchName;
     private String mechanicName;

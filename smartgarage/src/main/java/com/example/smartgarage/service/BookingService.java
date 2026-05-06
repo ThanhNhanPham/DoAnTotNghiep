@@ -166,6 +166,7 @@ public class BookingService {
                 .customerPhone(booking.getUser() != null ? booking.getUser().getPhone() : "N/A")
                 .vehicleName(booking.getVehicle() != null ?
                         booking.getVehicle().getBrand() + " " + booking.getVehicle().getModel() : "N/A")
+                .vehicleImageUrl(booking.getVehicle() != null ? booking.getVehicle().getImageUrl() : null)
                 .licensePlate(booking.getVehicle() != null ? booking.getVehicle().getLicensePlate() : "N/A")
                 .branchName(booking.getBranch() != null ? booking.getBranch().getName() : "N/A")
                 .mechanicName(booking.getMechanic() != null ? booking.getMechanic().getFullName() : "Chưa có thợ")
