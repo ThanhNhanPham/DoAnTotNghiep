@@ -1,5 +1,6 @@
 package com.example.smartgarage.entity;
 
+import com.example.smartgarage.enums.VehicleType;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.*;
@@ -38,6 +39,9 @@ public class Service {
 
     @Column(name = "image_url")
     private String imageUrl;
+    @Enumerated(EnumType.STRING)
+    @Column(name="type",nullable = true)
+    private VehicleType type;
 
     @Column(name = "is_active")
     private Boolean isActive = true;
