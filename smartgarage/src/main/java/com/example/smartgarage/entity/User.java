@@ -9,6 +9,7 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.*;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Entity
@@ -56,9 +57,12 @@ public class User {
     private Branch branch; // Nếu là nhân viên thì thuộc chi nhánh nào
 
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL)
-    @JsonIgnoreProperties({"user", "motorbikes", "bookings"})
-    private List<Motorbike> motorbikes;
-
+    @JsonIgnoreProperties({"user", "vehicles", "bookings"})
+    private List<Vehicle> vehicles;
+    @Column(name = "created_at", updatable = false, nullable = false)
+    private LocalDateTime createdAt ;
+    @Column(name = "is_active", nullable = false)
+    private Boolean isActive;
     // Các booking của user
     public String getFullAddress() {
         if (this.province == null) return "";
