@@ -21,8 +21,8 @@ public class ReviewController {
     }
 
     @PostMapping
-    @Operation(summary = "Gửi đánh giá mới", description = "Yêu cầu quyền ROLE_USER và đơn hàng phải COMPLETED")
-    @PreAuthorize("hasRole('USER')")
+    @Operation(summary = "Gửi đánh giá mới", description = "Yêu cầu quyền ROLE_CUSTOMER và đơn hàng phải COMPLETED")
+    @PreAuthorize("hasRole('CUSTOMER')")
     public ResponseEntity<?> postReview(@RequestBody ReviewRequest request, Authentication auth) {
         try {
             return ResponseEntity.ok(reviewService.createReview(auth.getName(), request));
