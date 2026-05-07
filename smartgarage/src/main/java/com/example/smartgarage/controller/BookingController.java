@@ -8,9 +8,12 @@ import com.example.smartgarage.service.BookingService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Min;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -19,6 +22,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/v1/bookings")
 @CrossOrigin("*")
+@Validated
 public class BookingController {
 
     private final BookingService bookingService;
@@ -29,93 +33,69 @@ public class BookingController {
     // 1. API Đặt lịch mới: Lấy danh tính từ Token, không truyền userId qua URL
     @Operation(summary = "Đặt lịch sửa xe mới", description = "Khách hàng gửi thông tin xe và dịch vụ để đặt lịch")
     @PostMapping
-    public ResponseEntity<?> createBooking(@Valid @RequestBody BookingRequest bookingRequest,
-                                           Authentication authentication) {
+    @PreAuthorize("hasRole('CUSTOMER')")
+    public ResponseEntity<BookingResponse> createBooking(@Valid @RequestBody BookingRequest bookingRequest,
+                                                         Authentication authentication) {
         String currentEmail = authentication.getName();
         Booking createdBooking = bookingService.createBooking(currentEmail, bookingRequest);
-        return ResponseEntity.ok(createdBooking);
+        return ResponseEntity.status(HttpStatus.CREATED).body(bookingService.mapToResponse(createdBooking));
     }
 
     @Operation(summary = "Xem lại lịch sử đặt lịch  ", description = "Khách hàng xem lại lịch sử đặt lịch của mình")
     @GetMapping("/my-history")
+    @PreAuthorize("hasRole('CUSTOMER')")
     public ResponseEntity<List<BookingHistoryDTO>> getMyBookings(Authentication authentication) {
-        // 1. Lấy email từ Token (đã được Filter giải mã và nạp vào Authentication)
         String email = authentication.getName();
-
-        // 2. Gọi service xử lý
         List<BookingHistoryDTO> history = bookingService.getMyBookings(email);
-        // 3. Trả về kết quả
         return ResponseEntity.ok(history);
     }
     @Operation(summary = "Xem chi tiết lịch hẹn", description = "Khách hàng xem chi tiết một lịch hẹn cụ thể của mình")
     @GetMapping("/{id}")
-    public ResponseEntity<?> getBooking(@PathVariable Long id, Authentication authentication) {
+    @PreAuthorize("hasRole('CUSTOMER')")
+    public ResponseEntity<BookingResponse> getBooking(@PathVariable Long id, Authentication authentication) {
         BookingResponse booking = bookingService.getBookingById(id, authentication.getName());
         return ResponseEntity.ok(booking);
     }
 
     @Operation(summary = "Hủy lịch hẹn", description = "Khách hàng hủy lịch hẹn của mình")
     @DeleteMapping("/{id}")
-    public ResponseEntity<?> cancelBooking(@PathVariable Long id, Authentication authentication) {
-        try {
-            bookingService.cancelBooking(id, authentication.getName());
-            return ResponseEntity.ok("Đã hủy lịch hẹn thành công.");
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
+    @PreAuthorize("hasRole('CUSTOMER')")
+    public ResponseEntity<Void> cancelBooking(@PathVariable Long id, Authentication authentication) {
+        bookingService.cancelBooking(id, authentication.getName());
+        return ResponseEntity.noContent().build();
     }
 
     @Operation(summary="admin xác nhận lịch hẹn cho khách hàng")
     @PatchMapping("/{bookingId}/confirm")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<?> confirm(@PathVariable Long bookingId, @RequestParam Long mechanicId) {
-        try {
-            BookingResponse confirmedBooking = bookingService.confirmBooking(bookingId, mechanicId);
-            return ResponseEntity.ok(confirmedBooking);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
+    public ResponseEntity<BookingResponse> confirm(@PathVariable Long bookingId, @RequestParam Long mechanicId) {
+        BookingResponse confirmedBooking = bookingService.confirmBooking(bookingId, mechanicId);
+        return ResponseEntity.ok(confirmedBooking);
     }
 
 
-    @GetMapping("/admin/all")
+    @GetMapping({"/admin/all"})
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Admin xem toàn bộ lịch hẹn", description = "Có thể lọc theo status (PENDING, CONFIRMED...)")
-    public ResponseEntity<?> getAllBookings(@RequestParam(required = false) String status) {
-        try {
-            return ResponseEntity.ok(bookingService.getAllBookings(status));
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
+    public ResponseEntity<List<BookingResponse>> getAllBookingsForAdmin(@RequestParam(required = false) String status) {
+        return ResponseEntity.ok(bookingService.getAllBookings(status));
     }
 
-    @Operation(summary="Admin xem toàn bộ lịch hẹn", description="không lọc theo filter")
-    @GetMapping("/admin/bookings")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<List<BookingResponse>> getAllBookings() {
-        List<BookingResponse> results = bookingService.getAllBookings(null);
-        return ResponseEntity.ok().body(results);
-    }
-    @Operation(summary="Xác nhận lịch hẹn cho khách hàng")
+    @Operation(summary="Hoàn tất lịch hẹn cho khách hàng")
     @PatchMapping("/{bookingId}/complete")
-    public ResponseEntity<?> complete(@PathVariable Long bookingId) {
-        try {
-            BookingResponse completedBooking = bookingService.completeBooking(bookingId);
-            return ResponseEntity.ok(completedBooking);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<BookingResponse> complete(@PathVariable Long bookingId) {
+        BookingResponse completedBooking = bookingService.completeBooking(bookingId);
+        return ResponseEntity.ok(completedBooking);
     }
 
     @Operation(summary="api admin thêm linh kiện vào đơn hàng")
-    @PostMapping("/{bookingId}/Part/{partId}")
+    @PostMapping({"/{bookingId}/parts/{partId}"})
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<String> addPartToBooking(@PathVariable Long bookingId, @PathVariable Long partId, @RequestParam int quantity) {
-        try {
-            bookingService.addPartToBooking(bookingId, partId,quantity);
-            return ResponseEntity.ok("Đã thêm linh kiện vào đơn hàng thành công.");
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
+    public ResponseEntity<String> addPartToBooking(@PathVariable Long bookingId,
+                                                   @PathVariable Long partId,
+                                                   @RequestParam @Min(1) int quantity) {
+        bookingService.addPartToBooking(bookingId, partId, quantity);
+        return ResponseEntity.ok("Đã thêm linh kiện vào đơn hàng thành công.");
     }
 }
