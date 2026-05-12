@@ -1,7 +1,8 @@
 package com.example.smartgarage.controller;
 
 import com.example.smartgarage.entity.Service;
-import com.example.smartgarage.repository.ServiceRepository;
+import com.example.smartgarage.enums.VehicleType;
+import com.example.smartgarage.service.ServiceService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -18,14 +19,17 @@ import java.util.List;
 @RequestMapping("/api/v1/services")
 public class ServiceController {
 
-    private final ServiceRepository serviceRepository;
-    public ServiceController(ServiceRepository serviceRepository) {
-        this.serviceRepository = serviceRepository;
+    private final ServiceService serviceService;
+
+    public ServiceController(ServiceService serviceService) {
+        this.serviceService = serviceService;
     }
+
     @Operation(summary="lấy danh sách tất cả các service của cửa hàng")
     @GetMapping
-    public List<Service> getAllServices() {
-        return serviceRepository.findAll();
+    public ResponseEntity<List<Service>> getAllServices(@RequestParam(required = false) VehicleType type) {
+        List<Service> services = serviceService.getAllServices(type);
+        return ResponseEntity.ok(services);
     }
 
     @Operation(summary="thêm dịch vụ mới cho cửa hàng")
@@ -33,7 +37,7 @@ public class ServiceController {
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Service> createService(@Valid @RequestBody Service service) {
         try {
-            Service savedService = serviceRepository.save(service);
+            Service savedService = serviceService.createService(service);
             return new ResponseEntity<>(savedService, HttpStatus.CREATED);
         } catch (Exception e) {
             return new ResponseEntity<>((HttpHeaders) null, HttpStatus.INTERNAL_SERVER_ERROR);
@@ -45,22 +49,9 @@ public class ServiceController {
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Service> updateService(@PathVariable Long id,@Valid @RequestBody Service service){
         try {
-            // 1. Tìm dịch vụ cũ trong Database
-            return serviceRepository.findById(id).map(existingService -> {
-
-                // 2. Cập nhật các thông tin mới từ serviceDetails gửi lên
-                existingService.setName(service.getName());
-                existingService.setDescription(service.getDescription());
-                existingService.setPrice(service.getPrice());
-                existingService.setDurationMinutes(service.getDurationMinutes());
-                existingService.setIsActive(service.getIsActive());
-
-                // 3. Lưu lại vào DB
-                Service updatedService = serviceRepository.save(existingService);
-                return new ResponseEntity<>(updatedService, HttpStatus.OK);
-
-            }).orElse(new ResponseEntity<>(HttpStatus.NOT_FOUND)); // Trả về 404 nếu không tìm thấy ID
-
+            return serviceService.updateService(id, service)
+                    .map(updatedService -> new ResponseEntity<>(updatedService, HttpStatus.OK))
+                    .orElse(new ResponseEntity<>(HttpStatus.NOT_FOUND));
         } catch (Exception e) {
             return new ResponseEntity<>((HttpHeaders) null, HttpStatus.INTERNAL_SERVER_ERROR);
         }
@@ -71,12 +62,9 @@ public class ServiceController {
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<String> deleteService(@PathVariable Long id) {
         try {
-            // 1. Kiểm tra xem chi nhánh có tồn tại trong DB không
-            if (!serviceRepository.existsById(id)) {
+            if (!serviceService.deleteService(id)) {
                 return new ResponseEntity<>("Lỗi: Không tìm thấy dịch vụ có ID = " + id, HttpStatus.NOT_FOUND);
             }
-            serviceRepository.deleteById(id);
-
             return new ResponseEntity<>("Đã xóa dịch vụ thành công!", HttpStatus.OK);
         } catch (Exception e) {
             return new ResponseEntity<>("Không thể xóa dịch vụ này vì có dữ liệu liên quan (thợ, lịch hẹn...)",

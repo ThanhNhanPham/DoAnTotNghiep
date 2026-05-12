@@ -24,6 +24,7 @@ public class Service {
     @Column(nullable = false)
     @NotBlank(message = "Tên dịch vụ không được để trống")
     private String name;
+    @Column(length = 1000)
     @Size(max = 1000, message = "Mô tả không được vượt quá 1000 ký tự")
     private String description;
 
@@ -39,20 +40,20 @@ public class Service {
 
     @Column(name = "image_url")
     private String imageUrl;
+
+    @NotNull(message = "Loại xe áp dụng không được để trống")
     @Enumerated(EnumType.STRING)
-    @Column(name="type",nullable = true)
+    @Column(name = "type", nullable = false)
     private VehicleType type;
 
-    @Column(name = "is_active")
+    @Column(name = "is_active", nullable = false)
     private Boolean isActive = true;
-    // Ngăn không cho Part gọi ngược lại Booking khi trả về JSON của Service
     @ManyToMany
     @JoinTable(
             name = "service_suggested_parts",
             joinColumns = @JoinColumn(name = "service_id"),
             inverseJoinColumns = @JoinColumn(name = "part_id")
     )
-    // Ngăn không cho Part gọi ngược lại Booking khi trả về JSON của Service
     @JsonIgnoreProperties("bookedParts") // Tránh vòng lặp JSON nếu Part có list này
     @Builder.Default
     private List<Part> suggestedParts = new ArrayList<>();
