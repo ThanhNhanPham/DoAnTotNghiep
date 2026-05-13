@@ -1,6 +1,7 @@
 package com.example.smartgarage.exception;
 
 import com.example.smartgarage.dto.ErrorMessage;
+import jakarta.validation.ConstraintViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -22,6 +23,24 @@ public class GlobalExceptionHandler {
         return new ErrorMessage(HttpStatus.NOT_FOUND.value(), LocalDateTime.now(), ex.getMessage(), request.getDescription(false));
     }
 
+    @ExceptionHandler(BadRequestException.class)
+    @ResponseStatus(value = HttpStatus.BAD_REQUEST)
+    public ErrorMessage handleBadRequestException(BadRequestException ex, WebRequest request) {
+        return new ErrorMessage(HttpStatus.BAD_REQUEST.value(), LocalDateTime.now(), ex.getMessage(), request.getDescription(false));
+    }
+
+    @ExceptionHandler(ForbiddenException.class)
+    @ResponseStatus(value = HttpStatus.FORBIDDEN)
+    public ErrorMessage handleForbiddenException(ForbiddenException ex, WebRequest request) {
+        return new ErrorMessage(HttpStatus.FORBIDDEN.value(), LocalDateTime.now(), ex.getMessage(), request.getDescription(false));
+    }
+
+    @ExceptionHandler(ConflictException.class)
+    @ResponseStatus(value = HttpStatus.CONFLICT)
+    public ErrorMessage handleConflictException(ConflictException ex, WebRequest request) {
+        return new ErrorMessage(HttpStatus.CONFLICT.value(), LocalDateTime.now(), ex.getMessage(), request.getDescription(false));
+    }
+
     // 2. CẢI TIẾN: Bắt TOÀN BỘ lỗi Validation
     @ExceptionHandler(MethodArgumentNotValidException.class)
     @ResponseStatus(value = HttpStatus.BAD_REQUEST)
@@ -35,6 +54,17 @@ public class GlobalExceptionHandler {
                 HttpStatus.BAD_REQUEST.value(),
                 LocalDateTime.now(),
                 "Dữ liệu không hợp lệ: " + errors.toString(), // Hoặc tùy biến hiển thị
+                request.getDescription(false)
+        );
+    }
+
+    @ExceptionHandler(ConstraintViolationException.class)
+    @ResponseStatus(value = HttpStatus.BAD_REQUEST)
+    public ErrorMessage handleConstraintViolationException(ConstraintViolationException ex, WebRequest request) {
+        return new ErrorMessage(
+                HttpStatus.BAD_REQUEST.value(),
+                LocalDateTime.now(),
+                "Dữ liệu không hợp lệ: " + ex.getMessage(),
                 request.getDescription(false)
         );
     }
@@ -61,6 +91,12 @@ public class GlobalExceptionHandler {
                 "Cấu trúc JSON không hợp lệ hoặc sai định dạng dữ liệu!",
                 request.getDescription(false)
         );
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    @ResponseStatus(value = HttpStatus.BAD_REQUEST)
+    public ErrorMessage handleIllegalArgumentException(IllegalArgumentException ex, WebRequest request) {
+        return new ErrorMessage(HttpStatus.BAD_REQUEST.value(), LocalDateTime.now(), ex.getMessage(), request.getDescription(false));
     }
 
     // 5. Xử lý logic nghiệp vụ và lỗi hệ thống (Giữ nguyên như của bạn)
