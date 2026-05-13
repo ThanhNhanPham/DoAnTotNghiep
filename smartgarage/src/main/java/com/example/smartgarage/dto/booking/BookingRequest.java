@@ -1,4 +1,4 @@
-package com.example.smartgarage.dto;
+package com.example.smartgarage.dto.booking;
 
 import com.example.smartgarage.enums.PaymentMethod;
 import lombok.Data;
