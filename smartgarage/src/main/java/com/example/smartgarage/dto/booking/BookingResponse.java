@@ -33,6 +33,7 @@ public class BookingResponse {
     private String mechanicName;
     private List<String> serviceNames;
     private List<String> partNames;
+    private String cancelReason;
     private BigDecimal totalAmount;
     private PaymentMethod paymentMethod;
     private PaymentStatus paymentStatus;

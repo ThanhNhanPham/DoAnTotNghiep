@@ -1,9 +1,7 @@
 package com.example.smartgarage.controller;
 
-import com.example.smartgarage.dto.booking.AddBookingPartRequest;
-import com.example.smartgarage.dto.booking.BookingResponse;
+import com.example.smartgarage.dto.booking.*;
 import com.example.smartgarage.dto.ConfirmBookingRequest;
-import com.example.smartgarage.dto.booking.UpdateBookingPartRequest;
 import com.example.smartgarage.service.BookingService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -54,8 +52,8 @@ public class AdminBookingController {
 
     @Operation(summary = "Admin hủy lịch hẹn")
     @PatchMapping("/{bookingId}/cancel")
-    public ResponseEntity<BookingResponse> cancelBooking(@PathVariable Long bookingId) {
-        return ResponseEntity.ok(bookingService.cancelBookingForAdmin(bookingId));
+    public ResponseEntity<BookingResponse> cancelBooking(@PathVariable Long bookingId,  @Valid @RequestBody AdminCancelBookingRequest request) {
+        return ResponseEntity.ok(bookingService.cancelBookingForAdmin(bookingId, request.getCancelReason()));
     }
 
     @Operation(summary = "Admin thêm linh kiện vào booking")
@@ -78,5 +76,26 @@ public class AdminBookingController {
     public ResponseEntity<BookingResponse> removePart(@PathVariable Long bookingId,
                                                       @PathVariable Long partId) {
         return ResponseEntity.ok(bookingService.removeBookingPart(bookingId, partId));
+    }
+
+    @Operation(summary = "Admin thêm dịch vụ vào booking")
+    @PostMapping("/{bookingId}/services")
+    public ResponseEntity<BookingResponse> addService(@PathVariable Long bookingId,
+                                                      @Valid @RequestBody AddBookingServiceRequest request) {
+        return ResponseEntity.ok(bookingService.addServiceToBooking(bookingId, request.getServiceId()));
+    }
+
+    @Operation(summary = "Admin thay toàn bộ danh sách dịch vụ trong booking")
+    @PutMapping("/{bookingId}/services")
+    public ResponseEntity<BookingResponse> replaceServices(@PathVariable Long bookingId,
+                                                           @Valid @RequestBody ReplaceBookingServicesRequest request) {
+        return ResponseEntity.ok(bookingService.replaceBookingServices(bookingId, request.getServiceIds()));
+    }
+
+    @Operation(summary = "Admin xóa dịch vụ khỏi booking")
+    @DeleteMapping("/{bookingId}/services/{serviceId}")
+    public ResponseEntity<BookingResponse> removeService(@PathVariable Long bookingId,
+                                                         @PathVariable Long serviceId) {
+        return ResponseEntity.ok(bookingService.removeBookingService(bookingId, serviceId));
     }
 }

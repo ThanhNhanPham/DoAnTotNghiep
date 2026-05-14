@@ -1,6 +1,7 @@
 package com.example.smartgarage.service;
 
 import com.example.smartgarage.dto.*;
+import com.example.smartgarage.dto.booking.AvailableBookingSlotResponse;
 import com.example.smartgarage.dto.booking.BookingHistoryDTO;
 import com.example.smartgarage.dto.booking.BookingRequest;
 import com.example.smartgarage.dto.booking.BookingResponse;
@@ -26,8 +27,11 @@ import com.deepoove.poi.XWPFTemplate;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -43,6 +47,9 @@ import java.io.InputStream;
 
 @Service
 public class BookingService {
+    private static final LocalTime DEFAULT_OPEN_TIME = LocalTime.of(8, 0);
+    private static final LocalTime DEFAULT_CLOSE_TIME = LocalTime.of(18, 0);
+
     @Autowired private UserRepository userRepository;
     @Autowired private VehicleRepository vehicleRepository;
     @Autowired private BranchRepository branchRepository;
@@ -132,6 +139,26 @@ public class BookingService {
         notificationRepository.saveAll(notifications);
     }
 
+    private void notifyCustomerAboutAdminCancellation(Booking booking, String reason) {
+        if (booking.getUser() == null) {
+            return;
+        }
+
+        String licensePlate = booking.getVehicle() != null && booking.getVehicle().getLicensePlate() != null
+                ? booking.getVehicle().getLicensePlate()
+                : "chưa rõ biển số";
+        String branchName = booking.getBranch() != null && booking.getBranch().getName() != null
+                ? booking.getBranch().getName()
+                : "chi nhánh";
+
+        Notification notification = new Notification();
+        notification.setUser(booking.getUser());
+        notification.setTitle("Lịch hẹn đã bị hủy");
+        notification.setContent("Lịch hẹn cho xe " + licensePlate + " tại " + branchName
+                + " đã bị hủy. Lý do: " + reason);
+        notificationRepository.save(notification);
+    }
+
     public List<BookingResponse> getAllBookings(String status) {
         List<Booking> bookings;
         if (status == null || status.isBlank()) {
@@ -209,6 +236,7 @@ public class BookingService {
                         .filter(bp -> bp.getPart() != null)
                         .map(bp -> bp.getPart().getName())
                         .collect(Collectors.toList()))
+                .cancelReason(booking.getCancelReason())
                 .totalAmount(finalTotal)
                 .paymentMethod(booking.getPaymentMethod())
                 .paymentStatus(booking.getPaymentStatus())
@@ -216,10 +244,11 @@ public class BookingService {
     }
 
     @Transactional
-    public void cancelBooking(Long bookingId, String currentUserEmail) {
+    public void cancelBooking(Long bookingId, String currentUserEmail, String reason) {
         Booking booking = getOwnedBooking(bookingId, currentUserEmail);
         ensureBookingPending(booking, "Chỉ có thể hủy lịch hẹn đang ở trạng thái PENDING.");
         booking.setStatus(BookingStatus.CANCELLED);
+        booking.setCancelReason(reason);
         if (booking.getPaymentStatus() == PaymentStatus.PENDING) {
             booking.setPaymentStatus(PaymentStatus.CANCELLED);
         }
@@ -227,7 +256,7 @@ public class BookingService {
     }
 
     @Transactional
-    public BookingResponse cancelBookingForAdmin(Long bookingId) {
+    public BookingResponse cancelBookingForAdmin(Long bookingId, String reason) {
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy lịch hẹn ID: " + bookingId));
 
@@ -242,8 +271,10 @@ public class BookingService {
         if (booking.getMechanic() != null) {
             booking.getMechanic().setStatus(MechanicStatus.ACTIVE);
         }
-
-        return mapToResponse(bookingRepository.save(booking));
+        booking.setCancelReason(reason);
+        Booking savedBooking = bookingRepository.save(booking);
+        notifyCustomerAboutAdminCancellation(savedBooking, reason);
+        return mapToResponse(savedBooking);
     }
 
     @Transactional
@@ -301,6 +332,80 @@ public class BookingService {
         return bookingRepository.findAllByUserIdOrderByBookingTimeDesc(user.getId()).stream()
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public AvailableBookingSlotResponse getAvailableSlots(Long branchId,
+                                                          LocalDate date,
+                                                          int slotDurationMinutes,
+                                                          int slotIntervalMinutes) {
+        if (date == null) {
+            throw new BadRequestException("Ngày tra cứu không được để trống.");
+        }
+        if (date.isBefore(LocalDate.now())) {
+            throw new BadRequestException("Chỉ có thể tra cứu khung giờ từ hôm nay trở đi.");
+        }
+        if (slotIntervalMinutes > slotDurationMinutes) {
+            throw new BadRequestException("Khoảng nhảy giữa các slot không được lớn hơn thời lượng mỗi slot.");
+        }
+
+        Branch branch = branchRepository.findById(branchId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy chi nhánh"));
+        if (!Boolean.TRUE.equals(branch.getIsActive())) {
+            throw new ConflictException("Chi nhánh hiện không hoạt động.");
+        }
+
+        int branchCapacity = (int) mechanicRepository.findByBranchId(branchId).stream()
+                .filter(mechanic -> mechanic.getStatus() != MechanicStatus.INACTIVE)
+                .count();
+        if (branchCapacity <= 0) {
+            throw new ConflictException("Chi nhánh hiện chưa có thợ khả dụng để nhận lịch.");
+        }
+
+        LocalDateTime businessStart = date.atTime(DEFAULT_OPEN_TIME);
+        LocalDateTime businessEnd = date.atTime(DEFAULT_CLOSE_TIME);
+        List<Booking> overlappingBookings = bookingRepository.findOverlappingBookings(
+                branchId,
+                List.of(BookingStatus.PENDING, BookingStatus.CONFIRMED),
+                businessStart,
+                businessEnd
+        );
+
+        List<AvailableBookingSlotResponse.SlotItem> availableSlots = new ArrayList<>();
+        LocalDateTime now = LocalDateTime.now();
+        for (LocalDateTime slotStart = businessStart;
+             !slotStart.plusMinutes(slotDurationMinutes).isAfter(businessEnd);
+             slotStart = slotStart.plusMinutes(slotIntervalMinutes)) {
+            LocalDateTime slotEnd = slotStart.plusMinutes(slotDurationMinutes);
+            if (slotStart.isBefore(now)) {
+                continue;
+            }
+            LocalDateTime currentSlotStart = slotStart;
+            LocalDateTime currentSlotEnd = slotEnd;
+
+            long overlappingCount = overlappingBookings.stream()
+                    .filter(booking -> booking.getArrivalSlotStart() != null && booking.getArrivalSlotEnd() != null)
+                    .filter(booking -> booking.getArrivalSlotStart().isBefore(currentSlotEnd)
+                            && booking.getArrivalSlotEnd().isAfter(currentSlotStart))
+                    .count();
+            int remainingCapacity = branchCapacity - (int) overlappingCount;
+            if (remainingCapacity > 0) {
+                availableSlots.add(AvailableBookingSlotResponse.SlotItem.builder()
+                        .start(currentSlotStart)
+                        .end(currentSlotEnd)
+                        .remainingCapacity(remainingCapacity)
+                        .build());
+            }
+        }
+
+        return AvailableBookingSlotResponse.builder()
+                .branchId(branch.getId())
+                .date(date)
+                .slotDurationMinutes(slotDurationMinutes)
+                .slotIntervalMinutes(slotIntervalMinutes)
+                .branchCapacity(branchCapacity)
+                .slots(availableSlots)
+                .build();
     }
 
     @Transactional
@@ -660,6 +765,12 @@ public class BookingService {
         }
     }
 
+    private void ensureBookingEditableForAdmin(Booking booking, String message) {
+        if (booking.getStatus() == BookingStatus.COMPLETED || booking.getStatus() == BookingStatus.CANCELLED) {
+            throw new ConflictException(message);
+        }
+    }
+
     private void applyServicesToBooking(Booking booking, List<Long> serviceIds, Vehicle vehicle) {
         if (serviceIds == null || serviceIds.isEmpty()) {
             throw new BadRequestException("Bạn cần chọn ít nhất một dịch vụ.");
@@ -669,14 +780,7 @@ public class BookingService {
         if (selectedServices.size() != serviceIds.size()) {
             throw new BadRequestException("Có dịch vụ không tồn tại trong hệ thống.");
         }
-        selectedServices.forEach(service -> {
-            if (!Boolean.TRUE.equals(service.getIsActive())) {
-                throw new ConflictException("Dịch vụ " + service.getName() + " hiện không hoạt động.");
-            }
-            if (service.getType() != vehicle.getType()) {
-                throw new BadRequestException("Dịch vụ " + service.getName() + " không phù hợp với loại xe đã chọn.");
-            }
-        });
+        selectedServices.forEach(service -> validateServiceForVehicle(service, vehicle));
 
         List<BookedService> bookedServices = selectedServices.stream()
                 .map(service -> BookedService.builder()
@@ -702,6 +806,15 @@ public class BookingService {
         return bookedServices.stream()
                 .map(bs -> bs.getPriceAtBooking() != null ? bs.getPriceAtBooking() : BigDecimal.ZERO)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private void validateServiceForVehicle(com.example.smartgarage.entity.Service service, Vehicle vehicle) {
+        if (!Boolean.TRUE.equals(service.getIsActive())) {
+            throw new ConflictException("Dịch vụ " + service.getName() + " hiện không hoạt động.");
+        }
+        if (service.getType() != vehicle.getType()) {
+            throw new BadRequestException("Dịch vụ " + service.getName() + " không phù hợp với loại xe đã chọn.");
+        }
     }
 
     private BigDecimal calculatePartsTotal(List<BookedPart> bookedParts) {
@@ -766,5 +879,62 @@ public class BookingService {
         partRepository.save(catalogPart);
         bookingRepository.save(booking);
         return mapToResponse(booking);
+    }
+
+    @Transactional
+    public BookingResponse addServiceToBooking(Long bookingId, Long serviceId) {
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy đơn hàng"));
+        ensureBookingEditableForAdmin(booking, "Không thể thêm dịch vụ vào đơn hàng đã hoàn tất hoặc đã hủy.");
+
+        com.example.smartgarage.entity.Service catalogService = serviceRepository.findById(serviceId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy dịch vụ"));
+        validateServiceForVehicle(catalogService, booking.getVehicle());
+
+        boolean exists = booking.getBookedServices().stream()
+                .anyMatch(bookedService -> bookedService.getService() != null
+                        && Objects.equals(bookedService.getService().getId(), serviceId));
+        if (exists) {
+            throw new ConflictException("Dịch vụ đã tồn tại trong booking.");
+        }
+
+        BookedService bookedService = BookedService.builder()
+                .booking(booking)
+                .service(catalogService)
+                .priceAtBooking(catalogService.getPrice())
+                .build();
+        booking.getBookedServices().add(bookedService);
+        booking.setTotalAmount(calculateBookingTotal(booking));
+        return mapToResponse(bookingRepository.save(booking));
+    }
+
+    @Transactional
+    public BookingResponse replaceBookingServices(Long bookingId, List<Long> serviceIds) {
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy đơn hàng"));
+        ensureBookingEditableForAdmin(booking, "Không thể cập nhật dịch vụ của đơn hàng đã hoàn tất hoặc đã hủy.");
+        applyServicesToBooking(booking, serviceIds, booking.getVehicle());
+        booking.setTotalAmount(calculateBookingTotal(booking));
+        return mapToResponse(bookingRepository.save(booking));
+    }
+
+    @Transactional
+    public BookingResponse removeBookingService(Long bookingId, Long serviceId) {
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy đơn hàng"));
+        ensureBookingEditableForAdmin(booking, "Không thể xóa dịch vụ khỏi đơn hàng đã hoàn tất hoặc đã hủy.");
+
+        BookedService bookedService = booking.getBookedServices().stream()
+                .filter(item -> item.getService() != null && Objects.equals(item.getService().getId(), serviceId))
+                .findFirst()
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy dịch vụ trong đơn hàng"));
+
+        if (booking.getBookedServices().size() <= 1) {
+            throw new ConflictException("Booking phải có ít nhất một dịch vụ.");
+        }
+
+        booking.getBookedServices().remove(bookedService);
+        booking.setTotalAmount(calculateBookingTotal(booking));
+        return mapToResponse(bookingRepository.save(booking));
     }
 }
