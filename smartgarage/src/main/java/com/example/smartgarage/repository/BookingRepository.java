@@ -38,6 +38,8 @@ public interface BookingRepository extends JpaRepository<Booking,Long> {
     @Query("SELECT COUNT(b) FROM Booking b WHERE b.status = :status")
     long countByStatus(@Param("status") BookingStatus status);
 
+    long countByMechanicIdAndStatusInAndIdNot(Long mechanicId, List<BookingStatus> statuses, Long id);
+
     // 2. Sửa lỗi: Truyền tham số Enum vào thay vì viết cứng chuỗi 'COMPLETED'
     @Query("SELECT SUM(b.totalAmount) FROM Booking b WHERE b.status = :status")
     BigDecimal calculateTotalRevenue();
