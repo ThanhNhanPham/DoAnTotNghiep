@@ -41,6 +41,10 @@ public class Vehicle {
     @Size(max = 30, message = "Mô tả màu sắc quá dài")
     private String color;
 
+    @Column(name = "image_url")
+    @Size(max = 255, message = "Đường dẫn ảnh quá dài")
+    private String imageUrl;
+
     @NotNull(message = "Loại xe không được để trống")
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)

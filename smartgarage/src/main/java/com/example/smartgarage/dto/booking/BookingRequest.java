@@ -1,4 +1,4 @@
-package com.example.smartgarage.dto;
+package com.example.smartgarage.dto.booking;
 
 import com.example.smartgarage.enums.PaymentMethod;
 import lombok.Data;
@@ -7,7 +7,6 @@ import java.util.List;
 
 @Data
 public class BookingRequest {
-    private Long userId;        // ID người đặt
     private Long vehicleId;   // ID xe được chọn
     private Long branchId;      // ID chi nhánh Gara
     private LocalDateTime bookingTime; // Field tương thích cũ, map sang arrivalSlotStart nếu client chưa cập nhật

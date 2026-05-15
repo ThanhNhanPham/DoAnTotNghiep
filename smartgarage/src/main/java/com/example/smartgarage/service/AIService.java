@@ -9,6 +9,7 @@ import com.example.smartgarage.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.RestTemplate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -17,6 +18,8 @@ import java.util.stream.Collectors;
 
 @org.springframework.stereotype.Service
 public class AIService {
+    private static final int MAX_RETRIES = 3;
+    private static final long INITIAL_BACKOFF_MS = 1000L;
 
     @Value("${gemini.api.key}")
     private String apiKey;
@@ -76,8 +79,19 @@ public class AIService {
             );
 
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(payload, headers);
-            // 6. Gọi API Google (Hạn mức 15 lần/phút cho gói Free)
-            ResponseEntity<Map> response = restTemplate.postForEntity(finalUrl, entity, Map.class);
+            // 6. Gọi API Google, retry ngắn khi model quá tải tạm thời
+            ResponseEntity<Map> response = null;
+            for (int attempt = 1; true; attempt++) {
+                try {
+                    response = restTemplate.postForEntity(finalUrl, entity, Map.class);
+                    break;
+                } catch (HttpServerErrorException.ServiceUnavailable ex) {
+                    if (attempt == MAX_RETRIES) {
+                        return "AI đang quá tải tạm thời, vui lòng thử lại sau ít phút.";
+                    }
+                    sleepBeforeRetry(attempt);
+                }
+            }
 
             // 7. Bóc tách dữ liệu và LƯU LỊCH SỬ
             if (response.getBody() != null && response.getBody().containsKey("candidates")) {
@@ -114,9 +128,23 @@ public class AIService {
                 return "Lỗi 404: Model không tồn tại. Hãy dùng Gemini 2.5 Flash.";
             }
             return "Lỗi kết nối AI: " + e.getStatusText();
+        } catch (HttpServerErrorException e) {
+            if (e.getStatusCode() == HttpStatus.SERVICE_UNAVAILABLE) {
+                return "AI đang quá tải tạm thời, vui lòng thử lại sau ít phút.";
+            }
+            return "Dịch vụ AI đang gặp sự cố tạm thời: " + e.getStatusText();
         } catch (Exception e) {
             e.printStackTrace();
             return "Có lỗi xảy ra trong quá trình tư vấn AI: " + e.getMessage();
+        }
+    }
+
+    private void sleepBeforeRetry(int attempt) {
+        try {
+            Thread.sleep(INITIAL_BACKOFF_MS * attempt);
+        } catch (InterruptedException interruptedException) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Retry AI bị gián đoạn.", interruptedException);
         }
     }
 }

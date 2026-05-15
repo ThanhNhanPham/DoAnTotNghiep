@@ -73,6 +73,9 @@ public class Booking {
     @org.hibernate.annotations.UpdateTimestamp // TỰ ĐỘNG CẬP NHẬT KHI ĐƠN HÀNG XONG
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
+
+    @Column(name = "cancel_reason", columnDefinition = "TEXT")
+    private String cancelReason;
     // Mối quan hệ Một-Nhiều với bảng Services thông qua bảng trung gian booking_services
     @OneToMany(mappedBy = "booking", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<BookedService> bookedServices = new ArrayList<>();

@@ -24,6 +24,7 @@ import java.util.Map;
 @Tag(name = "Auth API", description = "Quản lý đăng ký và đăng nhập")
 @RestController
 @RequestMapping("/api/v1/auth")
+@CrossOrigin("*")
 public class AuthController {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
@@ -72,7 +73,7 @@ public class AuthController {
                 String token = jwtTokenProvider.generateToken(user.getEmail());
 
                 // Trả về DTO JwtResponse (token, email, role, userId,address)
-                return ResponseEntity.ok(new JwtResponse(token, user.getEmail(), user.getRole().name(),user.getId(),user.getFullAddress()));
+                return ResponseEntity.ok(new JwtResponse(token, user.getEmail(), user.getRole().name(),user.getId(),user.getFullAddress(),user.getFullName()));
             }
         }
         // Nếu không khớp email hoặc mật khẩu

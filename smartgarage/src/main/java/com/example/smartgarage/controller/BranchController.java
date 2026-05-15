@@ -8,6 +8,7 @@ import jakarta.validation.Valid;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -36,6 +37,7 @@ public class BranchController {
     }
     @Operation(summary="Thêm chi nhánh cửa hàng mới")
     @PostMapping
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Branch> createBranch(@Valid @RequestBody Branch branch) {
         try {
             Branch savedBranch = branchRepository.save(branch);
@@ -47,6 +49,7 @@ public class BranchController {
 
     @Operation(summary="Cập nhật chi nhánh cửa hàng")
     @PutMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Branch> updateBranch(@PathVariable Long id,@Valid @RequestBody Branch branchDetails) {
         try {
             // 1. Tìm chi nhánh cũ trong Database
@@ -72,6 +75,7 @@ public class BranchController {
 
     @Operation(summary="Xoá chi nhánh cửa hàng", description="chuyển active từ true sang false")
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<String> deactivateBranch(@PathVariable Long id) {
         return branchRepository.findById(id).map(branch -> {
             branch.setIsActive(false); // Chuyển trạng thái thành không hoạt động
