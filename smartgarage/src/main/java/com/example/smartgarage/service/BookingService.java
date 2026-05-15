@@ -159,6 +159,34 @@ public class BookingService {
         notificationRepository.save(notification);
     }
 
+    private void notifyAdminsAboutCustomerCancellation(Booking booking, String reason) {
+        List<User> admins = userRepository.findByRoleIn(List.of(Role.ADMIN, Role.SUPERADMIN));
+        if (admins.isEmpty()) {
+            return;
+        }
+
+        String customerName = booking.getUser() != null && booking.getUser().getFullName() != null
+                ? booking.getUser().getFullName()
+                : "Khách hàng";
+        String licensePlate = booking.getVehicle() != null && booking.getVehicle().getLicensePlate() != null
+                ? booking.getVehicle().getLicensePlate()
+                : "chưa rõ biển số";
+        String branchName = booking.getBranch() != null && booking.getBranch().getName() != null
+                ? booking.getBranch().getName()
+                : "chưa rõ chi nhánh";
+
+        List<Notification> notifications = admins.stream().map(admin -> {
+            Notification notification = new Notification();
+            notification.setUser(admin);
+            notification.setTitle("Khách hàng hủy lịch");
+            notification.setContent(customerName + " đã hủy lịch cho xe " + licensePlate
+                    + " tại " + branchName + ". Lý do: " + reason);
+            return notification;
+        }).collect(Collectors.toList());
+
+        notificationRepository.saveAll(notifications);
+    }
+
     public List<BookingResponse> getAllBookings(String status) {
         List<Booking> bookings;
         if (status == null || status.isBlank()) {
@@ -252,7 +280,8 @@ public class BookingService {
         if (booking.getPaymentStatus() == PaymentStatus.PENDING) {
             booking.setPaymentStatus(PaymentStatus.CANCELLED);
         }
-        bookingRepository.save(booking);
+        Booking savedBooking = bookingRepository.save(booking);
+        notifyAdminsAboutCustomerCancellation(savedBooking, reason);
     }
 
     @Transactional
