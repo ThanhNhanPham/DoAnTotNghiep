@@ -6,6 +6,7 @@ import com.example.smartgarage.service.ServiceService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import org.springframework.data.domain.Page;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -27,8 +28,12 @@ public class ServiceController {
 
     @Operation(summary="lấy danh sách tất cả các service của cửa hàng")
     @GetMapping
-    public ResponseEntity<List<Service>> getAllServices(@RequestParam(required = false) VehicleType type) {
-        List<Service> services = serviceService.getAllServices(type);
+    public ResponseEntity<Page<Service>> getAllServices(@RequestParam(required = false) VehicleType type,
+                                                        @RequestParam(required = false) Boolean isActive,
+                                                        @RequestParam(required = false) String keyword,
+                                                        @RequestParam(defaultValue = "0") int page,
+                                                        @RequestParam(defaultValue = "10") int size) {
+        Page<Service> services = serviceService.getServices(type, isActive, keyword, page, size);
         return ResponseEntity.ok(services);
     }
 
@@ -41,7 +46,7 @@ public class ServiceController {
 
     @Operation(summary="thêm dịch vụ mới cho cửa hàng")
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPERADMIN')")
     public ResponseEntity<Service> createService(@Valid @RequestBody Service service) {
         try {
             Service savedService = serviceService.createService(service);
@@ -53,7 +58,7 @@ public class ServiceController {
 
     @Operation(summary="chỉnh sửa dịch vụ của cửa hàng")
     @PutMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPERADMIN')")
     public ResponseEntity<Service> updateService(@PathVariable Long id,@Valid @RequestBody Service service){
         try {
             return serviceService.updateService(id, service)
@@ -66,7 +71,7 @@ public class ServiceController {
 
     @Operation(summary="Xoá dịch vụ của cửa hàng")
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPERADMIN')")
     public ResponseEntity<String> deleteService(@PathVariable Long id) {
         try {
             if (!serviceService.deleteService(id)) {

@@ -2,7 +2,12 @@ package com.example.smartgarage.service;
 
 import com.example.smartgarage.entity.Service;
 import com.example.smartgarage.enums.VehicleType;
+import com.example.smartgarage.exception.BadRequestException;
 import com.example.smartgarage.repository.ServiceRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 
 import java.util.List;
 import java.util.Optional;
@@ -21,6 +26,19 @@ public class ServiceService {
         }
         return serviceRepository.findAll();
     }
+
+    public Page<Service> getServices(VehicleType type, Boolean isActive, String keyword, int page, int size) {
+        if (page < 0) {
+            throw new BadRequestException("page phải lớn hơn hoặc bằng 0");
+        }
+        if (size <= 0) {
+            throw new BadRequestException("size phải lớn hơn 0");
+        }
+        int safeSize = Math.min(size, 100);
+        Pageable pageable = PageRequest.of(page, safeSize, Sort.by(Sort.Direction.ASC, "name"));
+        return serviceRepository.searchServices(type, isActive, keyword == null ? null : keyword.trim(), pageable);
+    }
+
     public Service getServiceById(Long id) {
         return serviceRepository.findById(id).orElse(null);
     }
