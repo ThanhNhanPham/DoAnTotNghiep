@@ -20,7 +20,10 @@ import com.example.smartgarage.repository.*;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.deepoove.poi.XWPFTemplate;
@@ -252,6 +255,25 @@ public class BookingService {
                 .collect(Collectors.toList());
     }
 
+    public Page<BookingResponse> getAllBookings(String status, Long branchId, String keyword, int page, int size) {
+        BookingStatus bookingStatus = null;
+        if (status != null && !status.isBlank()) {
+            try {
+                bookingStatus = BookingStatus.valueOf(status.trim().toUpperCase());
+            } catch (IllegalArgumentException ex) {
+                throw new IllegalArgumentException("Trạng thái không hợp lệ: " + status);
+            }
+        }
+
+        int safePage = Math.max(page, 0);
+        int safeSize = Math.min(Math.max(size, 1), 100);
+        Pageable pageable = PageRequest.of(safePage, safeSize, Sort.by(Sort.Direction.DESC, "bookingTime"));
+        String normalizedKeyword = keyword == null ? null : keyword.trim();
+
+        return bookingRepository.searchAdminBookings(bookingStatus, branchId, normalizedKeyword, pageable)
+                .map(this::mapToResponse);
+    }
+
     public BookingResponse getBookingByIdForAdmin(Long bookingId) {
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy lịch hẹn ID: " + bookingId));
@@ -299,6 +321,7 @@ public class BookingService {
                         booking.getVehicle().getBrand() + " " + booking.getVehicle().getModel() : "N/A")
                 .vehicleImageUrl(booking.getVehicle() != null ? booking.getVehicle().getImageUrl() : null)
                 .licensePlate(booking.getVehicle() != null ? booking.getVehicle().getLicensePlate() : "N/A")
+                .branchId(booking.getBranch() != null ? booking.getBranch().getId() : null)
                 .branchName(booking.getBranch() != null ? booking.getBranch().getName() : "N/A")
                 .mechanicName(booking.getMechanic() != null ? booking.getMechanic().getFullName() : "Chưa có thợ")
                 // Lấy danh sách tên dịch vụ

@@ -35,6 +35,35 @@ public interface BookingRepository extends JpaRepository<Booking,Long> {
     // 1. Chuyển String sang BookingStatus để đồng nhất kiểu dữ liệu
     List<Booking> findByStatus(BookingStatus status);
 
+    Page<Booking> findByStatus(BookingStatus status, Pageable pageable);
+
+    @Query("""
+            SELECT DISTINCT b FROM Booking b
+            LEFT JOIN b.user u
+            LEFT JOIN b.vehicle v
+            LEFT JOIN b.branch br
+            LEFT JOIN b.mechanic m
+            LEFT JOIN b.bookedServices bs
+            LEFT JOIN bs.service s
+            LEFT JOIN b.bookedParts bp
+            LEFT JOIN bp.part p
+            WHERE (:status IS NULL OR b.status = :status)
+              AND (:branchId IS NULL OR br.id = :branchId)
+              AND (
+                :keyword IS NULL OR :keyword = '' OR
+                LOWER(COALESCE(u.fullName, '')) LIKE LOWER(CONCAT('%', :keyword, '%')) OR
+                LOWER(COALESCE(v.licensePlate, '')) LIKE LOWER(CONCAT('%', :keyword, '%')) OR
+                LOWER(COALESCE(br.name, '')) LIKE LOWER(CONCAT('%', :keyword, '%')) OR
+                LOWER(COALESCE(m.fullName, '')) LIKE LOWER(CONCAT('%', :keyword, '%')) OR
+                LOWER(COALESCE(s.name, '')) LIKE LOWER(CONCAT('%', :keyword, '%')) OR
+                LOWER(COALESCE(p.name, '')) LIKE LOWER(CONCAT('%', :keyword, '%'))
+              )
+            """)
+    Page<Booking> searchAdminBookings(@Param("status") BookingStatus status,
+                                      @Param("branchId") Long branchId,
+                                      @Param("keyword") String keyword,
+                                      Pageable pageable);
+
     @Query("SELECT COUNT(b) FROM Booking b WHERE b.status = :status")
     long countByStatus(@Param("status") BookingStatus status);
 
