@@ -5,6 +5,7 @@ import com.example.smartgarage.service.PartService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -15,7 +16,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/v1/parts")
 @CrossOrigin("*")
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize("hasAnyRole('ADMIN', 'SUPERADMIN')")
 public class PartController {
     private final PartService partService;
     public PartController(PartService partService) {
@@ -24,8 +25,11 @@ public class PartController {
 
     @Operation(summary="Admin lấy danh sách quản lý linh kiện")
     @GetMapping
-    public ResponseEntity<List<Part>> getAllParts() {
-        return ResponseEntity.ok(partService.findAll());
+    public ResponseEntity<Page<Part>> getAllParts(@RequestParam(required = false) String keyword,
+                                                  @RequestParam(required = false) String stockStatus,
+                                                  @RequestParam(defaultValue = "0") int page,
+                                                  @RequestParam(defaultValue = "10") int size) {
+        return ResponseEntity.ok(partService.findAll(keyword, stockStatus, page, size));
     }
 
     @Operation(summary="Admin lấy thông tin chi tiết linh kiện theo id")

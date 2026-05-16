@@ -4,6 +4,10 @@ import com.example.smartgarage.entity.Part;
 import com.example.smartgarage.exception.BadRequestException;
 import com.example.smartgarage.exception.ResourceNotFoundException;
 import com.example.smartgarage.repository.PartRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -16,6 +20,24 @@ public class PartService {
     }
     public List<Part> findAll() {
         return partRepository.findAll();
+    }
+
+    public Page<Part> findAll(String keyword, String stockStatus, int page, int size) {
+        if (page < 0) {
+            throw new BadRequestException("page phải lớn hơn hoặc bằng 0");
+        }
+        if (size <= 0) {
+            throw new BadRequestException("size phải lớn hơn 0");
+        }
+        if (stockStatus != null && !stockStatus.isBlank()
+                && !"in-stock".equals(stockStatus)
+                && !"out-of-stock".equals(stockStatus)) {
+            throw new BadRequestException("Trạng thái kho không hợp lệ.");
+        }
+
+        int safeSize = Math.min(size, 100);
+        Pageable pageable = PageRequest.of(page, safeSize, Sort.by(Sort.Direction.ASC, "name"));
+        return partRepository.searchParts(keyword == null ? null : keyword.trim(), stockStatus, pageable);
     }
 
     public Part findById(Long id) {

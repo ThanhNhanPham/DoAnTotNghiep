@@ -2,9 +2,15 @@ package com.example.smartgarage.service;
 
 import com.example.smartgarage.entity.User;
 import com.example.smartgarage.entity.Vehicle;
+import com.example.smartgarage.enums.VehicleType;
+import com.example.smartgarage.exception.BadRequestException;
 import com.example.smartgarage.repository.UserRepository;
 import com.example.smartgarage.repository.VehicleRepository;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -45,6 +51,26 @@ public class VehicleService {
         return vehicleRepository.findAll();
     }
 
+    public Page<Vehicle> getAllVehicles(Long userId, VehicleType type, Boolean isActive, String brand, String keyword, int page, int size) {
+        if (page < 0) {
+            throw new BadRequestException("page phải lớn hơn hoặc bằng 0");
+        }
+        if (size <= 0) {
+            throw new BadRequestException("size phải lớn hơn 0");
+        }
+
+        int safeSize = Math.min(size, 100);
+        Pageable pageable = PageRequest.of(page, safeSize, Sort.by(Sort.Direction.ASC, "licensePlate"));
+        return vehicleRepository.searchVehicles(
+                userId,
+                type,
+                isActive,
+                brand == null ? null : brand.trim(),
+                keyword == null ? null : keyword.trim(),
+                pageable
+        );
+    }
+
     public Optional<Vehicle> updateVehicle(Long id, Vehicle vehicleDetails) {
         return vehicleRepository.findById(id).map(vehicle -> {
             vehicle.setLicensePlate(vehicleDetails.getLicensePlate());
@@ -56,7 +82,9 @@ public class VehicleService {
             return vehicleRepository.save(vehicle);
         });
     }
-
+    public Vehicle getVehicleById(Long id) {
+        return vehicleRepository.findById(id).orElse(null);
+    }
     public List<Vehicle> getVehiclesByUserId(Long userId) {
         return vehicleRepository.findByUserId(userId);
     }
