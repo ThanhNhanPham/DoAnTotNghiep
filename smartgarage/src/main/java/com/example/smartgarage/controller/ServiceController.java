@@ -32,6 +32,13 @@ public class ServiceController {
         return ResponseEntity.ok(services);
     }
 
+    @Operation(summary="lấy thông tin chi tiết của một dịch vụ theo id")
+    @GetMapping("/{id}")
+    public ResponseEntity<Service> getServiceById(@PathVariable Long id) {
+       Service result = serviceService.getServiceById(id);
+       return result != null ? ResponseEntity.ok(result) : ResponseEntity.notFound().build();
+    }
+
     @Operation(summary="thêm dịch vụ mới cho cửa hàng")
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")

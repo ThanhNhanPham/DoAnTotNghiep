@@ -21,6 +21,9 @@ public class ServiceService {
         }
         return serviceRepository.findAll();
     }
+    public Service getServiceById(Long id) {
+        return serviceRepository.findById(id).orElse(null);
+    }
 
     public Service createService(Service service) {
         return serviceRepository.save(service);
