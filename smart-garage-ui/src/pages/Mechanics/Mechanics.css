@@ -111,6 +111,14 @@
   white-space: nowrap;
 }
 
+.specialization-tag {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
 /* Cell with icon */
 .cell-with-icon {
   display: flex;
@@ -121,6 +129,19 @@
 .cell-with-icon svg {
   color: #1890ff;
   flex-shrink: 0;
+}
+
+.mechanic-detail-name {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-weight: 600;
+}
+
+.mechanic-detail-muted {
+  margin-top: 4px;
+  color: #8c8c8c;
+  font-size: 12px;
 }
 
 /* Experience cell */
