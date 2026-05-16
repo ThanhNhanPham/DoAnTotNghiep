@@ -1,5 +1,4 @@
-import { Modal, Form, Input, Select, Button, InputNumber, Upload, Checkbox } from 'antd';
-import { PlusOutlined } from '@ant-design/icons';
+import { Modal, Form, Input, Select, InputNumber, Checkbox } from 'antd';
 import { useEffect } from 'react';
 
 const ServicesForm = ({ visible, editingService, onClose, onSave, loading }) => {
@@ -7,15 +6,13 @@ const ServicesForm = ({ visible, editingService, onClose, onSave, loading }) => 
 
   useEffect(() => {
     if (editingService) {
-      console.log('Editing service:', editingService);
-      // Set đầy đủ dữ liệu khi edit
       form.setFieldsValue({
         name: editingService.name,
         description: editingService.description,
         price: editingService.price,
         durationMinutes: editingService.durationMinutes,
         imageUrl: editingService.imageUrl,
-        suggestedParts: editingService.suggestedParts || 0,
+        type: editingService.type,
         isActive: editingService.isActive === true || editingService.isActive === 1,
       });
     } else {
@@ -26,8 +23,7 @@ const ServicesForm = ({ visible, editingService, onClose, onSave, loading }) => 
   const handleOk = async () => {
     try {
       const values = await form.validateFields();
-      console.log('Form values:', values);
-      onSave(values);
+      await onSave(values);
       form.resetFields();
     } catch (error) {
       console.log('Validation failed:', error);
@@ -38,13 +34,6 @@ const ServicesForm = ({ visible, editingService, onClose, onSave, loading }) => 
     form.resetFields();
     onClose();
   };
-
-  const categories = [
-    'Bảo dưỡng',
-    'Sửa chữa',
-    'Vệ sinh',
-    'Khác',
-  ];
 
   return (
     <Modal
@@ -64,7 +53,7 @@ const ServicesForm = ({ visible, editingService, onClose, onSave, loading }) => 
           isActive: true,
           durationMinutes: 30,
           price: 100000,
-          suggestedParts: 0,
+          type: 'MOTORBIKE',
         }}
       >
         <Form.Item
@@ -73,6 +62,20 @@ const ServicesForm = ({ visible, editingService, onClose, onSave, loading }) => 
           rules={[{ required: true, message: 'Vui lòng nhập tên dịch vụ' }]}
         >
           <Input placeholder="VD: Bảo dưỡng định kỳ" />
+        </Form.Item>
+
+        <Form.Item
+          label="Loại xe áp dụng"
+          name="type"
+          rules={[{ required: true, message: 'Vui lòng chọn loại xe áp dụng' }]}
+        >
+          <Select
+            placeholder="Chọn loại xe"
+            options={[
+              { label: 'Xe máy', value: 'MOTORBIKE' },
+              { label: 'Ô tô', value: 'CAR' },
+            ]}
+          />
         </Form.Item>
 
         <Form.Item
@@ -140,17 +143,6 @@ const ServicesForm = ({ visible, editingService, onClose, onSave, loading }) => 
           ]}
         >
           <Input placeholder="https://example.com/image.jpg" />
-        </Form.Item>
-
-        <Form.Item
-          label="Số lượng phụ tùng gợi ý"
-          name="suggestedParts"
-        >
-          <InputNumber
-            min={0}
-            placeholder="Nhập số lượng phụ tùng"
-            style={{ width: '100%' }}
-          />
         </Form.Item>
 
         <Form.Item name="isActive" valuePropName="checked">
