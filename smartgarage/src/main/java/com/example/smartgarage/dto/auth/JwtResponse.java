@@ -1,4 +1,4 @@
-package com.example.smartgarage.dto;
+package com.example.smartgarage.dto.auth;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
