@@ -1,6 +1,6 @@
 package com.example.smartgarage.controller;
 
-import com.example.smartgarage.dto.BookingResponse;
+import com.example.smartgarage.dto.booking.BookingResponse;
 import com.example.smartgarage.dto.DashboardStatusDTO;
 import com.example.smartgarage.entity.Mechanic;
 import com.example.smartgarage.service.BookingService;
@@ -30,13 +30,6 @@ public class AdminController {
     public AdminController(BookingService bookingService, MechanicService mechanicService) {
         this.bookingService = bookingService;
         this.mechanicService = mechanicService;
-    }
-
-    @Operation(summary = "Xem tất cả lịch hẹn", description = "Có thể lọc theo trạng thái: PENDING, CONFIRMED, COMPLETED, CANCELLED")
-    @GetMapping("/bookings")
-    public ResponseEntity<List<BookingResponse>> getAllBookings(@RequestParam(required = false) String status) {
-        List<BookingResponse> results=bookingService.getAllBookings(status);
-        return ResponseEntity.ok().body(results);
     }
 
     @Operation(summary = "Lấy dữ liệu thống kê Dashboard", description = "Trả về số lượng đơn, doanh thu và top dịch vụ")
