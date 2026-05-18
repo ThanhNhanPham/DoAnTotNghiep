@@ -1,30 +1,76 @@
 package com.example.smartgarage.service;
 
+import com.example.smartgarage.dto.NotificationResponse;
 import com.example.smartgarage.entity.Notification;
+import com.example.smartgarage.entity.User;
+import com.example.smartgarage.exception.ResourceNotFoundException;
 import com.example.smartgarage.repository.NotificationRepository;
+import com.example.smartgarage.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 public class NotificationService {
     private final NotificationRepository notificationRepository;
-    public NotificationService(@Autowired NotificationRepository notificationRepository) {
+    private final UserRepository userRepository;
+
+    public NotificationService(@Autowired NotificationRepository notificationRepository,
+                               @Autowired UserRepository userRepository) {
         this.notificationRepository = notificationRepository;
-    }
-    // dưới đây là lấy danh sách thông báo cho người dùng, sắp xếp theo thời gian tạo mới nhất
-    public List<Notification> getNotificationsForUser(Long userId) {
-        return notificationRepository.findByUserIdOrderByCreatedAtDesc(userId);
+        this.userRepository = userRepository;
     }
 
-    // dưới đây là đếm số thông báo chưa đọc
+    public List<NotificationResponse> getNotificationsForUser(String email) {
+        User user = getUserByEmail(email);
+        return notificationRepository.findByUserIdOrderByCreatedAtDesc(user.getId()).stream()
+                .map(this::mapToResponse)
+                .collect(Collectors.toList());
+    }
+
+    public long countUnreadNotifications(String email) {
+        User user = getUserByEmail(email);
+        return notificationRepository.countByUserIdAndIsReadFalse(user.getId());
+    }
+    public NotificationResponse getNotificationById(Long notificationId, String email) {
+        User user = getUserByEmail(email);
+        Notification notification = notificationRepository.findByIdAndUserId(notificationId, user.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy thông báo ID: " + notificationId));
+        return mapToResponse(notification);
+    }
+
     @Transactional
-    public void markAsRead(Long notificationId) {
-        Notification notification = notificationRepository.findById(notificationId)
-                .orElseThrow(() -> new RuntimeException("Notification not found with ID: " + notificationId));
+    public void markAsRead(Long notificationId, String email) {
+        User user = getUserByEmail(email);
+        Notification notification = notificationRepository.findByIdAndUserId(notificationId, user.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy thông báo ID: " + notificationId));
         notification.setRead(true);
         notificationRepository.save(notification);
+    }
+
+    @Transactional
+    public void markAllAsRead(String email) {
+        User user = getUserByEmail(email);
+        List<Notification> unreadNotifications = notificationRepository.findByUserIdAndIsReadFalse(user.getId());
+        unreadNotifications.forEach(notification -> notification.setRead(true));
+        notificationRepository.saveAll(unreadNotifications);
+    }
+
+    private User getUserByEmail(String email) {
+        return userRepository.findByEmail(email)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy người dùng đăng nhập"));
+    }
+
+    private NotificationResponse mapToResponse(Notification notification) {
+        return NotificationResponse.builder()
+                .id(notification.getId())
+                .title(notification.getTitle())
+                .content(notification.getContent())
+                .isRead(notification.isRead())
+                .createdAt(notification.getCreatedAt())
+                .build();
     }
 }

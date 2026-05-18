@@ -5,11 +5,16 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface NotificationRepository extends JpaRepository<Notification,Long> {
     // lấy thông báo của user theo thứ tự mới nhất trước
     List<Notification> findByUserIdOrderByCreatedAtDesc(Long userId);
+
+    Optional<Notification> findByIdAndUserId(Long id, Long userId);
+
+    List<Notification> findByUserIdAndIsReadFalse(Long userId);
 
     // đếm số thông báo chưa đọc của user
     long countByUserIdAndIsReadFalse(Long userId);
