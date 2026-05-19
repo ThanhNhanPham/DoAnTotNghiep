@@ -1,16 +1,134 @@
-import { useState } from 'react';
-import { Bell, Search, User, LogOut, Settings, Menu } from 'lucide-react';
-import { Dropdown } from 'antd';
+import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Bell, User, LogOut, Settings, Menu, KeyRound, Car, Bike } from 'lucide-react';
+import { Dropdown, message, Modal } from 'antd';
+import { ExclamationCircleOutlined } from '@ant-design/icons';
+import authService from '../../services/authService';
+import notificationService from '../../services/notificationService';
+import ChangePasswordModal from './ChangePasswordModal';
+import ProfileModal from './ProfileModal';
 import './Header.css';
 
-const Header = ({ onMenuClick }) => {
-  const [searchValue, setSearchValue] = useState('');
+const NOTIFICATION_POLL_INTERVAL = 10000;
 
-  // Mock user data - thay thế bằng dữ liệu thực từ context/store
-  const user = {
+const Header = ({ onMenuClick }) => {
+  const [changePasswordVisible, setChangePasswordVisible] = useState(false);
+  const [profileVisible, setProfileVisible] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [notificationLoading, setNotificationLoading] = useState(false);
+  const [user, setUser] = useState({
     name: 'Admin User',
     email: 'admin@smartgarage.com',
     avatar: null,
+  });
+  const navigate = useNavigate();
+
+  const fetchNotifications = useCallback(async ({ showLoading = false } = {}) => {
+    if (showLoading) {
+      setNotificationLoading(true);
+    }
+
+    try {
+      const [items, countData] = await Promise.all([
+        notificationService.getNotifications(),
+        notificationService.getUnreadCount(),
+      ]);
+      setNotifications(Array.isArray(items) ? items : []);
+      setUnreadCount(Number(countData?.unreadCount || 0));
+    } catch (error) {
+      console.error('Error fetching notifications:', error);
+    } finally {
+      if (showLoading) {
+        setNotificationLoading(false);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    // Lấy thông tin user từ backend
+    const fetchUserInfo = async () => {
+      try {
+        const userData = await authService.getCurrentUser();
+        if (userData) {
+          setUser({
+            name: userData.fullName || userData.email.split('@')[0],
+            email: userData.email,
+            avatar: userData.avatar || null,
+            phone: userData.phone || '',
+            houseNumber: userData.houseNumber || '',
+            ward: userData.ward || '',
+            province: userData.province || '',
+          });
+          // Lưu vào localStorage
+          localStorage.setItem('userPhone', userData.phone || '');
+          localStorage.setItem('userHouseNumber', userData.houseNumber || '');
+          localStorage.setItem('userWard', userData.ward || '');
+          localStorage.setItem('userProvince', userData.province || '');
+        }
+      } catch (error) {
+        console.log('Error fetching user info:', error);
+        // Fallback nếu API thất bại, lấy từ localStorage
+        const userInfo = authService.getUserInfo();
+        if (userInfo.email) {
+          setUser((prev) => ({
+            ...prev,
+            email: userInfo.email,
+            name: userInfo.email.split('@')[0],
+          }));
+        }
+      }
+    };
+
+    if (authService.isAuthenticated()) {
+      fetchUserInfo();
+      fetchNotifications({ showLoading: true });
+    }
+  }, [fetchNotifications]);
+
+  useEffect(() => {
+    if (!authService.isAuthenticated()) return undefined;
+
+    const refreshWhenVisible = () => {
+      if (!document.hidden) {
+        fetchNotifications();
+      }
+    };
+
+    const intervalId = window.setInterval(refreshWhenVisible, NOTIFICATION_POLL_INTERVAL);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
+  }, [fetchNotifications]);
+
+  useEffect(() => {
+    if (!authService.isAuthenticated()) return undefined;
+
+    const refreshAfterFocus = () => {
+      fetchNotifications();
+    };
+
+    window.addEventListener('focus', refreshAfterFocus);
+
+    return () => {
+      window.removeEventListener('focus', refreshAfterFocus);
+    };
+  }, [fetchNotifications]);
+
+  const refreshNotifications = () => {
+    if (authService.isAuthenticated()) {
+      fetchNotifications({ showLoading: true });
+    }
+  };
+
+  const formatNotificationTime = (value) => {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleString('vi-VN');
   };
 
   const userMenuItems = [
@@ -35,6 +153,16 @@ const Header = ({ onMenuClick }) => {
     {
       type: 'divider',
     },
+    // đổi mặt khẩu
+    {
+      key: 'change-password',
+      label: (
+        <div className="menu-item">
+          <KeyRound size={16} />
+          <span>Đổi mật khẩu</span>
+        </div>
+      ),
+    },
     {
       key: 'logout',
       label: (
@@ -46,76 +174,136 @@ const Header = ({ onMenuClick }) => {
     },
   ];
 
-  const notificationItems = [
-    {
-      key: '1',
-      label: (
-        <div className="notification-item">
-          <div className="notification-title">Đặt lịch mới</div>
-          <div className="notification-time">5 phút trước</div>
-        </div>
-      ),
-    },
-    {
-      key: '2',
-      label: (
-        <div className="notification-item">
-          <div className="notification-title">Dịch vụ hoàn thành</div>
-          <div className="notification-time">1 giờ trước</div>
-        </div>
-      ),
-    },
-    {
-      key: '3',
-      label: (
-        <div className="notification-item">
-          <div className="notification-title">Thanh toán thành công</div>
-          <div className="notification-time">2 giờ trước</div>
-        </div>
-      ),
-    },
-  ];
+  const notificationItems = notificationLoading
+    ? [
+        {
+          key: 'loading',
+          disabled: true,
+          label: <div className="notification-empty">Đang tải thông báo...</div>,
+        },
+      ]
+    : [
+        ...(notifications.length > 0
+          ? notifications.slice(0, 8).map((item) => ({
+              key: String(item.id),
+              label: (
+                <div className={`notification-item ${item.isRead ? '' : 'unread'}`}>
+                  <div className="notification-title">{item.title || 'Thông báo'}</div>
+                  {item.content && <div className="notification-content">{item.content}</div>}
+                  <div className="notification-time">{formatNotificationTime(item.createdAt)}</div>
+                </div>
+              ),
+            }))
+          : [
+              {
+                key: 'empty',
+                disabled: true,
+                label: <div className="notification-empty">Chưa có thông báo</div>,
+              },
+            ]),
+        ...(notifications.length > 0
+          ? [
+              { type: 'divider' },
+              {
+                key: 'read-all',
+                label: <div className="notification-read-all">Đánh dấu tất cả đã đọc</div>,
+              },
+            ]
+          : []),
+      ];
+
+  const handleNotificationClick = async ({ key }) => {
+    if (key === 'empty' || key === 'loading') return;
+
+    try {
+      if (key === 'read-all') {
+        await notificationService.markAllAsRead();
+        setNotifications((prev) => prev.map((item) => ({ ...item, isRead: true })));
+        setUnreadCount(0);
+        return;
+      }
+
+      const notificationId = Number(key);
+      const selected = notifications.find((item) => item.id === notificationId);
+      if (!selected || selected.isRead) return;
+
+      await notificationService.markAsRead(notificationId);
+      setNotifications((prev) =>
+        prev.map((item) => (item.id === notificationId ? { ...item, isRead: true } : item))
+      );
+      setUnreadCount((prev) => Math.max(prev - 1, 0));
+    } catch (error) {
+      console.error('Error updating notification:', error);
+      message.error('Không thể cập nhật thông báo!');
+    }
+  };
 
   const handleMenuClick = ({ key }) => {
     if (key === 'logout') {
-      // Handle logout
-      console.log('Logging out...');
+      // Mở modal xác nhận đăng xuất
+      Modal.confirm({
+        title: 'Xác Nhận Đăng Xuất',
+        icon: <ExclamationCircleOutlined />,
+        content: 'Bạn có chắc chắn muốn đăng xuất khỏi hệ thống không?',
+        okText: 'Đăng xuất',
+        cancelText: 'Hủy',
+        okType: 'danger',
+        centered: true,
+        onOk() {
+          authService.logout();
+          message.success('Đăng xuất thành công!');
+          navigate('/login');
+        },
+        onCancel() {
+          console.log('Cancel logout');
+        },
+      });
     } else if (key === 'profile') {
-      // Navigate to profile
-      console.log('Navigate to profile');
+      // Mở modal hồ sơ
+      setProfileVisible(true);
     } else if (key === 'settings') {
       // Navigate to settings
-      console.log('Navigate to settings');
+      navigate('/admin/settings');
+    } else if (key === 'change-password') {
+      // Mở modal đổi mật khẩu
+      setChangePasswordVisible(true);
     }
   };
 
   return (
     <header className="admin-header">
+      <div className="car-track">
+        <Car size={32} className="car car-1" />
+        <Bike size={28} className="car bike-1" />
+        <Car size={32} className="car car-2" />
+        <Bike size={28} className="car bike-2" />
+        <Car size={32} className="car car-3" />
+        <Bike size={28} className="car bike-3" />
+        <Car size={32} className="car car-4" />
+      </div>
+
       <div className="header-left">
         <button className="mobile-menu-btn" onClick={onMenuClick}>
           <Menu size={20} />
         </button>
-        <div className="search-box">
-          <Search size={18} className="search-icon" />
-          <input
-            type="text"
-            placeholder="Tìm kiếm..."
-            value={searchValue}
-            onChange={(e) => setSearchValue(e.target.value)}
-            className="search-input"
-          />
-        </div>
       </div>
 
       <div className="header-right">
         <Dropdown
-          menu={{ items: notificationItems }}
+          menu={{ items: notificationItems, onClick: handleNotificationClick }}
           trigger={['click']}
           placement="bottomRight"
+          onOpenChange={(open) => {
+            if (open && authService.isAuthenticated()) {
+              refreshNotifications();
+            }
+          }}
         >
           <button className="header-icon-btn">
             <Bell size={20} />
-            <span className="notification-badge">3</span>
+            {unreadCount > 0 && (
+              <span className="notification-badge">{unreadCount > 99 ? '99+' : unreadCount}</span>
+            )}
           </button>
         </Dropdown>
 
@@ -134,11 +322,21 @@ const Header = ({ onMenuClick }) => {
             </div>
             <div className="user-info">
               <div className="user-name">{user.name}</div>
-              <div className="user-role">Administrator</div>
+              <div className="user-role">SUPERADMIN</div>
             </div>
           </div>
         </Dropdown>
       </div>
+
+      <ChangePasswordModal 
+        visible={changePasswordVisible} 
+        onClose={() => setChangePasswordVisible(false)} 
+      />
+      <ProfileModal 
+        visible={profileVisible} 
+        onClose={() => setProfileVisible(false)} 
+        userEmail={user.email}
+      />
     </header>
   );
 };

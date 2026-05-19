@@ -1,22 +1,40 @@
-import { createBrowserRouter } from 'react-router-dom';
+import { createBrowserRouter, Navigate } from 'react-router-dom';
 import MainLayout from '../components/layout/MainLayout';
 import Dashboard from '../pages/Dashboard/Dashboard';
 import Users from '../pages/Users/Users';
-import Motorbikes from '../pages/Motorbikes/Motorbikes';
+import Vehicles from '../pages/Vehicles/Vehicles';
 import Mechanics from '../pages/Mechanics/Mechanics';
 import Services from '../pages/Services/Services';
 import Branches from '../pages/Branches/Branches';
 import Bookings from '../pages/Bookings/Bookings';
 import Parts from '../pages/Parts/Parts';
+import Settings from '../pages/Settings/Settings';
+import Login from '../pages/Login/Login';
+import authService from '../services/authService';
 
-// Placeholder components - tạo các trang này sau
-const Settings = () => <div style={{ padding: 24 }}><h2>Cài đặt hệ thống</h2></div>;
+// Protected Route Component
+const ProtectedRoute = ({ children }) => {
+  const isAuthenticated = authService.isAuthenticated();
+  return isAuthenticated ? children : <Navigate to="/login" replace />;
+};
 
 const router = createBrowserRouter([
   {
+    path: '/login',
+    element: <Login />,
+  },  
+  {
     path: '/admin',
-    element: <MainLayout />,
+    element: (
+      <ProtectedRoute>
+        <MainLayout />
+      </ProtectedRoute>
+    ),
     children: [
+            {
+              index: true,
+              element: <Navigate to="/admin/dashboard" replace />,
+            },
       {
         path: 'dashboard',
         element: <Dashboard />,
@@ -26,8 +44,8 @@ const router = createBrowserRouter([
         element: <Bookings />,
       },
       {
-        path: 'motorbikes',
-        element: <Motorbikes />,
+        path: 'vehicles',
+        element: <Vehicles />,
       },
       {
         path: 'users',
@@ -57,7 +75,7 @@ const router = createBrowserRouter([
   },
   {
     path: '/',
-    element: <div>Redirect to /admin/dashboard</div>,
+    element: <Navigate to="/login" replace />,
   },
 ]);
 

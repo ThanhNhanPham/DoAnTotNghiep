@@ -21,9 +21,9 @@ const Sidebar = ({ collapsed, onToggle }) => {
   const menuItems = [
     { path: '/admin/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { path: '/admin/bookings', icon: Calendar, label: 'Đặt lịch' },
-    { path: '/admin/users', icon: Users, label: 'Người dùng' },
+    { path: '/admin/users', icon: Users, label: 'Quản lý Tài khoản' },
     { path: '/admin/mechanics', icon: Wrench, label: 'Thợ sửa xe' },
-    { path: '/admin/motorbikes', icon: Car, label: 'Xe máy' },
+    { path: '/admin/vehicles', icon: Car, label: 'Phương tiện' },
     { path: '/admin/services', icon: FileText, label: 'Dịch vụ' },
     { path: '/admin/parts', icon: Package, label: 'Phụ tùng' },
     { path: '/admin/branches', icon: Store, label: 'Chi nhánh' },

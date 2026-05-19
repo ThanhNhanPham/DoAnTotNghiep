@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Card,
   Table,
@@ -12,77 +12,77 @@ import {
   Col,
   Select,
   message,
+  Descriptions,
 } from 'antd';
 import {
   PlusOutlined,
   DeleteOutlined,
   EditOutlined,
   SearchOutlined,
+  EyeOutlined,
 } from '@ant-design/icons';
 import { Package, DollarSign } from 'lucide-react';
 import PartsForm from './PartsForm';
+import partService from '../../services/partService';
 import './Parts.css';
 
 const Parts = () => {
-  const [parts, setParts] = useState([
-    {
-      id: 1,
-      name: 'Nhớt Castrol 10W40',
-      description: 'Nhớt tổng hợp cao cấp cho động cơ xe máy',
-      quantity: 50,
-      price: 120000,
-      unit: 'Lít',
-    },
-    {
-      id: 2,
-      name: 'Lốp Michelin Pilot Street 2',
-      description: 'Lốp xe máy cao cấp, độ bám đường tốt',
-      quantity: 8,
-      price: 450000,
-      unit: 'Cái',
-    },
-    {
-      id: 3,
-      name: 'Phanh trước AB-100',
-      description: 'Má phanh chính hãng cho xe tay ga',
-      quantity: 3,
-      price: 250000,
-      unit: 'Bộ',
-    },
-    {
-      id: 4,
-      name: 'Bugi NGK CPR7EA-9',
-      description: 'Bugi chuẩn cho động cơ 150cc',
-      quantity: 0,
-      price: 45000,
-      unit: 'Cái',
-    },
-    {
-      id: 5,
-      name: 'Dây curoa đai',
-      description: 'Dây đai truyền động chính hãng Honda',
-      quantity: 25,
-      price: 180000,
-      unit: 'Sợi',
-    },
-  ]);
-
+  const [parts, setParts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [searchText, setSearchText] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState(undefined);
+  const [partPagination, setPartPagination] = useState({
+    current: 1,
+    pageSize: 10,
+    total: 0,
+  });
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [editingPart, setEditingPart] = useState(null);
+  const [isDetailModalVisible, setIsDetailModalVisible] = useState(false);
+  const [partDetail, setPartDetail] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
 
-  // Lọc danh sách phụ tùng
-  const filteredParts = parts.filter((part) => {
-    const matchSearch =
-      part.name.toLowerCase().includes(searchText.toLowerCase()) ||
-      (part.description && part.description.toLowerCase().includes(searchText.toLowerCase()));
-    const matchStatus = !statusFilter || 
-      (statusFilter === 'in-stock' && part.quantity > 0) ||
-      (statusFilter === 'out-of-stock' && part.quantity === 0);
-    return matchSearch && matchStatus;
-  });
+  useEffect(() => {
+    fetchParts();
+  }, [partPagination.current, partPagination.pageSize, searchText, statusFilter]);
+
+  const formatCurrency = (value) => {
+    const amount = Number(value || 0);
+    return `${amount.toLocaleString('vi-VN')} đ`;
+  };
+
+  const fetchParts = async () => {
+    setLoading(true);
+    try {
+      const data = await partService.getPartsPage({
+        page: partPagination.current,
+        size: partPagination.pageSize,
+        keyword: searchText,
+        stockStatus: statusFilter,
+      });
+
+      if (Array.isArray(data)) {
+        setParts(data);
+        setPartPagination((prev) => ({ ...prev, total: data.length }));
+      } else {
+        setParts(data?.content || []);
+        setPartPagination((prev) => ({
+          ...prev,
+          current: (data?.number ?? prev.current - 1) + 1,
+          pageSize: data?.size || prev.pageSize,
+          total: data?.totalElements || 0,
+        }));
+      }
+    } catch {
+      message.error('Không thể tải danh sách phụ tùng!');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resetPartPagination = () => {
+    setPartPagination((prev) => ({ ...prev, current: 1 }));
+  };
 
   // Mở modal thêm phụ tùng
   const handleAddPart = () => {
@@ -94,6 +94,21 @@ const Parts = () => {
   const handleEditPart = (part) => {
     setEditingPart(part);
     setIsModalVisible(true);
+  };
+
+  const openDetailModal = async (partId) => {
+    setIsDetailModalVisible(true);
+    setPartDetail(null);
+    setDetailLoading(true);
+    try {
+      const data = await partService.getPartById(partId);
+      setPartDetail(data);
+    } catch {
+      message.error('Không thể tải chi tiết phụ tùng!');
+      setIsDetailModalVisible(false);
+    } finally {
+      setDetailLoading(false);
+    }
   };
 
   // Xóa phụ tùng
@@ -138,7 +153,7 @@ const Parts = () => {
       key: 'stt',
       width: 60,
       align: 'center',
-      render: (text, record, index) => index + 1,
+      render: (_, __, index) => index + 1,
     },
     {
       title: 'Tên phụ tùng',
@@ -186,7 +201,7 @@ const Parts = () => {
       render: (price) => (
         <div className="price-cell">
           <DollarSign size={14} />
-          <span>{price.toLocaleString('vi-VN')} đ</span>
+          <span>{formatCurrency(price)}</span>
         </div>
       ),
     },
@@ -206,6 +221,11 @@ const Parts = () => {
       fixed: 'right',
       render: (_, record) => (
         <Space>
+          <Button
+            size="small"
+            icon={<EyeOutlined />}
+            onClick={() => openDetailModal(record.id)}
+          />
           <Button
             type="primary"
             size="small"
@@ -236,22 +256,28 @@ const Parts = () => {
       <Card className="parts-card" bordered={false}>
         {/* Filters and Actions */}
         <div className="parts-toolbar">
-          <Row gutter={[16, 16]} align="middle">
-            <Col xs={24} sm={12} md={10}>
+          <Row gutter={[8, 16]} align="middle">
+            <Col xs={24} sm={12} md={8}>
               <Input
                 placeholder="Tìm kiếm theo tên, mô tả..."
                 prefix={<SearchOutlined />}
                 value={searchText}
-                onChange={(e) => setSearchText(e.target.value)}
+                onChange={(e) => {
+                  setSearchText(e.target.value);
+                  resetPartPagination();
+                }}
                 allowClear
               />
             </Col>
 
-            <Col xs={24} sm={12} md={6}>
+            <Col xs={24} sm={12} md={5}>
               <Select
                 placeholder="Trạng thái kho"
                 value={statusFilter}
-                onChange={setStatusFilter}
+                onChange={(value) => {
+                  setStatusFilter(value);
+                  resetPartPagination();
+                }}
                 allowClear
                 style={{ width: '100%' }}
                 options={[
@@ -261,7 +287,7 @@ const Parts = () => {
               />
             </Col>
 
-            <Col xs={24} sm={12} md={8} className="text-right">
+            <Col xs={24} sm={12} md={11} className="text-right">
               <Button
                 type="primary"
                 icon={<PlusOutlined />}
@@ -277,7 +303,7 @@ const Parts = () => {
         <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
           <Col xs={12} sm={8}>
             <div className="stat-item">
-              <div className="stat-value">{parts.length}</div>
+              <div className="stat-value">{partPagination.total}</div>
               <div className="stat-label">Tổng phụ tùng</div>
             </div>
           </Col>
@@ -302,18 +328,55 @@ const Parts = () => {
         {/* Table */}
         <Table
           columns={columns}
-          dataSource={filteredParts}
+          dataSource={parts}
           loading={loading}
           rowKey="id"
           pagination={{
-            pageSize: 10,
+            current: partPagination.current,
+            pageSize: partPagination.pageSize,
+            total: partPagination.total,
             showTotal: (total) => `Tổng ${total} phụ tùng`,
             showSizeChanger: true,
             showQuickJumper: true,
           }}
+          onChange={(pagination) => {
+            setPartPagination((prev) => ({
+              ...prev,
+              current: pagination.current || 1,
+              pageSize: pagination.pageSize || prev.pageSize,
+            }));
+          }}
           scroll={{ x: 1600 }}
         />
       </Card>
+
+      <Modal
+        title="Chi tiết phụ tùng"
+        open={isDetailModalVisible}
+        onCancel={() => setIsDetailModalVisible(false)}
+        footer={null}
+        width={720}
+        loading={detailLoading}
+      >
+        {partDetail && (
+          <Descriptions bordered column={1} size="small">
+            <Descriptions.Item label="Mã phụ tùng">#{partDetail.id}</Descriptions.Item>
+            <Descriptions.Item label="Tên phụ tùng">
+              <div className="part-detail-name">
+                <Package size={16} className="part-icon" />
+                <span>{partDetail.name || 'N/A'}</span>
+              </div>
+            </Descriptions.Item>
+            <Descriptions.Item label="Mô tả">{partDetail.description || 'N/A'}</Descriptions.Item>
+            <Descriptions.Item label="Giá">{formatCurrency(partDetail.price)}</Descriptions.Item>
+            <Descriptions.Item label="Số lượng tồn kho">{partDetail.quantity ?? 'N/A'}</Descriptions.Item>
+            <Descriptions.Item label="Đơn vị tính">{partDetail.unit || 'N/A'}</Descriptions.Item>
+            <Descriptions.Item label="Trạng thái">
+              <Tag color={getStockStatus(partDetail).color}>{getStockStatus(partDetail).text}</Tag>
+            </Descriptions.Item>
+          </Descriptions>
+        )}
+      </Modal>
 
       {/* Part Form Modal */}
       <PartsForm
