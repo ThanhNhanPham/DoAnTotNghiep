@@ -1,7 +1,9 @@
 package com.example.smartgarage.service;
 
+import com.example.smartgarage.dto.auth.ResetPasswordRequest;
 import com.example.smartgarage.entity.PasswordResetToken;
 import com.example.smartgarage.entity.User;
+import com.example.smartgarage.exception.BadRequestException;
 import com.example.smartgarage.repository.PasswordResetTokenRepository;
 import com.example.smartgarage.repository.UserRepository;
 import jakarta.transaction.Transactional;
@@ -28,9 +30,9 @@ public class PasswordResetTokenService {
     public void requestPassReset(String email){
         // tìm theo email
         User user = userRepository.findByEmail(email)
-                .orElseThrow(()-> new RuntimeException("Không tìm thấy người dùng với email: " + email));
+                .orElseThrow(() -> new BadRequestException("Email không tồn tại trong hệ thống."));
         // xóa token cũ nếu có
-        tokenRepository.deleteByToken(user);
+        tokenRepository.deleteByUser(user);
         //Tạo token ngâu nhiên
         String token = java.util.UUID.randomUUID().toString();
         // Lưu token vào DB với thời hạn 15 phút
@@ -45,9 +47,12 @@ public class PasswordResetTokenService {
     }
     //2. Xử lý đổi mật khẩu mới
     @Transactional
-    public void resetPassword(String token, String newPassword) {
+    public void resetPassword(ResetPasswordRequest request) {
+        if (!request.newPassword().equals(request.confirmNewPassword())) {
+            throw new BadRequestException("Xác nhận mật khẩu mới không khớp.");
+        }
         // Kiểm tra token có tồn tại không
-        PasswordResetToken resetToken = tokenRepository.findByToken(token)
+        PasswordResetToken resetToken = tokenRepository.findByToken(request.token())
                 .orElseThrow(() -> new RuntimeException("Mã xác nhận không hợp lệ."));
 
         // Kiểm tra thời hạn của token
@@ -57,7 +62,7 @@ public class PasswordResetTokenService {
         }
         // Cập nhật mật khẩu mới cho User
         User user = resetToken.getUser();
-        user.setPassword(passwordEncoder.encode(newPassword)); // Mã hóa BCrypt
+        user.setPassword(passwordEncoder.encode(request.newPassword())); // Mã hóa BCrypt
         userRepository.save(user);
         // Xóa token sau khi sử dụng thành công
         tokenRepository.delete(resetToken);
