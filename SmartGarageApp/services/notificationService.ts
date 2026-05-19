@@ -8,10 +8,19 @@ export interface NotificationItem {
   createdAt?: string;
 }
 
+export interface UnreadNotificationCountResponse {
+  unreadCount: number;
+}
+
 const notificationService = {
   async getMyNotifications() {
     const response = await apiClient.get<NotificationItem[] | string>('/notifications');
     return response.data;
+  },
+
+  async getUnreadCount() {
+    const response = await apiClient.get<UnreadNotificationCountResponse>('/notifications/unread-count');
+    return response.data.unreadCount;
   },
 
   async markAsRead(id: number) {
