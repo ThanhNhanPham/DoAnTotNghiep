@@ -20,6 +20,18 @@ public interface BookingRepository extends JpaRepository<Booking,Long> {
 
     List<Booking> findAllByBranchId(Long branchId);
 
+    @Query("""
+            SELECT b FROM Booking b
+            WHERE b.branch.id = :branchId
+              AND b.status IN :statuses
+              AND b.arrivalSlotStart < :rangeEnd
+              AND b.arrivalSlotEnd > :rangeStart
+            """)
+    List<Booking> findOverlappingBookings(@Param("branchId") Long branchId,
+                                          @Param("statuses") List<BookingStatus> statuses,
+                                          @Param("rangeStart") LocalDateTime rangeStart,
+                                          @Param("rangeEnd") LocalDateTime rangeEnd);
+
     // 1. Chuyển String sang BookingStatus để đồng nhất kiểu dữ liệu
     List<Booking> findByStatus(BookingStatus status);
 

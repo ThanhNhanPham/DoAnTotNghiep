@@ -1,6 +1,8 @@
-package com.example.smartgarage.dto;
+package com.example.smartgarage.dto.booking;
 
 import com.example.smartgarage.enums.BookingStatus;
+import com.example.smartgarage.enums.PaymentMethod;
+import com.example.smartgarage.enums.PaymentStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -18,13 +20,21 @@ public class BookingResponse {
     private Long id;
     private BookingStatus status;
     private LocalDateTime bookingTime;
+    private LocalDateTime arrivalSlotStart;
+    private LocalDateTime arrivalSlotEnd;
+    private LocalDateTime arrivalTime;
     private String customerName;
+    private String vehicleOwnerName;
     private String customerPhone;
-    private String bikeName; // VD: "Honda Sh 150i"
+    private String vehicleName; // VD: "Honda Sh 150i"
+    private String vehicleImageUrl;
     private String licensePlate;
     private String branchName;
     private String mechanicName;
     private List<String> serviceNames;
     private List<String> partNames;
+    private String cancelReason;
     private BigDecimal totalAmount;
+    private PaymentMethod paymentMethod;
+    private PaymentStatus paymentStatus;
 }

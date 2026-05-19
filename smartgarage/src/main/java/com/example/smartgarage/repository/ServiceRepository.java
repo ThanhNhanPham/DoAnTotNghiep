@@ -1,6 +1,7 @@
 package com.example.smartgarage.repository;
 
 import com.example.smartgarage.entity.Service;
+import com.example.smartgarage.enums.VehicleType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -11,6 +12,10 @@ import java.util.Optional;
 public interface ServiceRepository extends JpaRepository<Service,Long> {
     // 1. Tìm tất cả dịch vụ đang hoạt động để hiển thị lên App
     List<Service> findByIsActiveTrue();
+
+    List<Service> findByType(VehicleType type);
+
+    List<Service> findByIsActiveTrueAndType(VehicleType type);
 
     // 2. Tìm kiếm dịch vụ theo tên (Phục vụ cho việc mapping từ lời khuyên của AI)
     Optional<Service> findByNameContainingIgnoreCase(String name);

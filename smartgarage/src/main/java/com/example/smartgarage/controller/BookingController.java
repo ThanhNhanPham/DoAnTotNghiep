@@ -1,116 +1,88 @@
 package com.example.smartgarage.controller;
 
-import com.example.smartgarage.dto.BookingHistoryDTO;
-import com.example.smartgarage.dto.BookingRequest;
-import com.example.smartgarage.dto.BookingResponse;
+import com.example.smartgarage.dto.booking.AvailableBookingSlotResponse;
+import com.example.smartgarage.dto.booking.BookingRequest;
+import com.example.smartgarage.dto.booking.BookingResponse;
+import com.example.smartgarage.dto.booking.CustomerCancelBookingRequest;
+import com.example.smartgarage.dto.booking.UpdateBookingRequest;
 import com.example.smartgarage.entity.Booking;
 import com.example.smartgarage.service.BookingService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.List;
 
-@Tag(name = "Booking API", description = "Quản lý lịch hẹn sửa xe")
+@Tag(name = "Booking API", description = "Quản lý lịch hẹn của khách hàng")
 @RestController
 @RequestMapping("/api/v1/bookings")
 @CrossOrigin("*")
+@PreAuthorize("hasRole('CUSTOMER')")
+@Validated
 public class BookingController {
 
     private final BookingService bookingService;
+
     public BookingController(BookingService bookingService) {
         this.bookingService = bookingService;
     }
 
-    // 1. API Đặt lịch mới: Lấy danh tính từ Token, không truyền userId qua URL
-    @Operation(summary = "Đặt lịch sửa xe mới", description = "Khách hàng gửi thông tin xe và dịch vụ để đặt lịch")
+    @Operation(summary = "Đặt lịch sửa xe mới")
     @PostMapping
-    public ResponseEntity<?> createBooking(@Valid @RequestBody BookingRequest bookingRequest,
-                                           Authentication authentication) {
-        String currentEmail = authentication.getName();
-        Booking createdBooking = bookingService.createBooking(currentEmail, bookingRequest);
-        return ResponseEntity.ok(createdBooking);
+    public ResponseEntity<BookingResponse> createBooking(@Valid @RequestBody BookingRequest bookingRequest,
+                                                         Authentication authentication) {
+        Booking createdBooking = bookingService.createBooking(authentication.getName(), bookingRequest);
+        return ResponseEntity.status(HttpStatus.CREATED).body(bookingService.mapToResponse(createdBooking));
     }
 
-    // 2. API Xem lịch sử đặt lịch của CHÍNH khách hàng đang đăng nhập
-    @Operation(summary = "Xem lại lịch sử đặt lịch  ", description = "Khách hàng xem lại lịch sử đặt lịch của mình")
-    @GetMapping("/my-history")
-    public ResponseEntity<List<BookingHistoryDTO>> getMyBookings(Authentication authentication) {
-        // 1. Lấy email từ Token (đã được Filter giải mã và nạp vào Authentication)
-        String email = authentication.getName();
-
-        // 2. Gọi service xử lý
-        List<BookingHistoryDTO> history = bookingService.getMyBookings(email);
-        // 3. Trả về kết quả
-        return ResponseEntity.ok(history);
-    }
-    // 3. API Hủy lịch hẹn: Phải kiểm tra đúng chủ sở hữu (Email)
-    @Operation(summary = "Hủy lịch hẹn", description = "Khách hàng hủy lịch hẹn của mình")
-    @DeleteMapping("/{id}")
-    public ResponseEntity<?> cancelBooking(@PathVariable Long id, Authentication authentication) {
-        try {
-            bookingService.cancelBooking(id, authentication.getName());
-            return ResponseEntity.ok("Đã hủy lịch hẹn thành công.");
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
+    @Operation(summary = "Xem danh sách booking của tôi")
+    @GetMapping
+    public ResponseEntity<List<BookingResponse>> getMyBookings(Authentication authentication) {
+        return ResponseEntity.ok(bookingService.getMyBookingResponses(authentication.getName()));
     }
 
-    @Operation(summary="admin xác nhận lịch hẹn cho khách hàng")
-    @PatchMapping("/{bookingId}/confirm")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<?> confirm(@PathVariable Long bookingId, @RequestParam Long mechanicId) {
-        try {
-            BookingResponse confirmedBooking = bookingService.confirmBooking(bookingId, mechanicId);
-            return ResponseEntity.ok(confirmedBooking);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
+    @Operation(summary = "Xem chi tiết booking của tôi")
+    @GetMapping("/{id}")
+    public ResponseEntity<BookingResponse> getBooking(@PathVariable Long id, Authentication authentication) {
+        return ResponseEntity.ok(bookingService.getBookingById(id, authentication.getName()));
     }
 
-
-    @GetMapping("/admin/all")
-    @PreAuthorize("hasRole('ADMIN')")
-    @Operation(summary = "Admin xem toàn bộ lịch hẹn", description = "Có thể lọc theo status (PENDING, CONFIRMED...)")
-    public ResponseEntity<?> getAllBookings(@RequestParam(required = false) String status) {
-        try {
-            return ResponseEntity.ok(bookingService.getAllBookings(status));
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
+    @Operation(summary = "Lấy danh sách khung giờ còn trống của chi nhánh trong ngày",
+            description = "Dùng để khách hàng chọn khung giờ khi đặt lịch")
+    @GetMapping("/available-slots")
+    public ResponseEntity<AvailableBookingSlotResponse> getAvailableSlots(
+            @RequestParam Long branchId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @RequestParam(defaultValue = "60") @Min(30) @Max(240) int slotDurationMinutes,
+            @RequestParam(defaultValue = "60") @Min(15) @Max(240) int slotIntervalMinutes) {
+        return ResponseEntity.ok(
+                bookingService.getAvailableSlots(branchId, date, slotDurationMinutes, slotIntervalMinutes)
+        );
+    }
+    @Operation(summary = "Cập nhật booking khi còn chờ xử lý")
+    @PatchMapping("/{id}")
+    public ResponseEntity<BookingResponse> updateBooking(@PathVariable Long id,
+                                                         @Valid @RequestBody UpdateBookingRequest request,
+                                                         Authentication authentication) {
+        return ResponseEntity.ok(bookingService.updateBooking(id, authentication.getName(), request));
     }
 
-    @Operation(summary="Admin xem toàn bộ lịch hẹn", description="không lọc theo filter")
-    @GetMapping("/admin/bookings")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<List<BookingResponse>> getAllBookings() {
-        List<BookingResponse> results = bookingService.getAllBookings(null);
-        return ResponseEntity.ok().body(results);
-    }
-    @Operation(summary="Xác nhận lịch hẹn cho khách hàng")
-    @PatchMapping("/{bookingId}/complete")
-    public ResponseEntity<?> complete(@PathVariable Long bookingId) {
-        try {
-            BookingResponse completedBooking = bookingService.completeBooking(bookingId);
-            return ResponseEntity.ok(completedBooking);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
-    }
-
-    @Operation(summary="api admin thêm linh kiện vào đơn hàng")
-    @PostMapping("/{bookingId}/Part/{partId}")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<String> addPartToBooking(@PathVariable Long bookingId, @PathVariable Long partId, @RequestParam int quantity) {
-        try {
-            bookingService.addPartToBooking(bookingId, partId,quantity);
-            return ResponseEntity.ok("Đã thêm linh kiện vào đơn hàng thành công.");
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
+    @Operation(summary = "Hủy booking của tôi")
+    @PatchMapping("/{id}/cancel")
+    public ResponseEntity<BookingResponse> cancelBooking(@PathVariable Long id,
+                                                         @Valid @RequestBody CustomerCancelBookingRequest request,
+                                                         Authentication authentication) {
+        bookingService.cancelBooking(id, authentication.getName(), request.getCancelReason());
+        return ResponseEntity.ok(bookingService.getBookingById(id, authentication.getName()));
     }
 }

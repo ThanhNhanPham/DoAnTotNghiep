@@ -9,6 +9,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -30,6 +31,7 @@ public class MechanicController {
 
     @Operation(summary="Lấy danh sách tất cả thợ trong hệ thống")
     @GetMapping
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<List<Mechanic>> getAllMechanics() {
         List<Mechanic>  mechanics = mechanicRepository.findAll();
         return  ResponseEntity.ok().body(mechanics);
@@ -37,6 +39,7 @@ public class MechanicController {
 
     @Operation(summary="Lấy danh sách thợ theo chi nhánh")
     @GetMapping("/branch/{branchId}")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<List<Mechanic>> getMechanicsByBranch(@PathVariable Long branchId) {
         List<Mechanic> mechanics=mechanicRepository.findByBranchId(branchId);
         return  ResponseEntity.ok().body(mechanics);
@@ -44,6 +47,7 @@ public class MechanicController {
 
     @Operation(summary="Thêm một thợ sửa xe vào chi nhánh cụ thể")
     @PostMapping("/branch/{branchId}")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<?> createMechanic(@PathVariable Long branchId,@Valid @RequestBody Mechanic mechanic) {
         return branchRepository.findById(branchId).map(branch -> {
             mechanic.setBranch(branch);
@@ -52,6 +56,7 @@ public class MechanicController {
     }
     @Operation(summary="Cập nhật trạng thái thợ")
     @PatchMapping("/{id}/status")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<?> updateStatus(@PathVariable Long id, @RequestParam MechanicStatus status) {
         return mechanicRepository.findById(id).map(m -> {
             m.setStatus(status);
@@ -60,6 +65,7 @@ public class MechanicController {
     }
     @Operation(summary="chuyển trạng thái thợ sửa xe sang đã nghỉ việc")
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<?> softDeleteMechanic(@PathVariable Long id) {
         return mechanicRepository.findById(id).map(mechanic -> {
             // Chuyển trạng thái để thợ không xuất hiện trong danh sách phân công nữa
@@ -71,6 +77,7 @@ public class MechanicController {
 
     @Operation(summary = "cập nhật thợ sửa xe")
     @PutMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<?> updateMechanic(@PathVariable Long id, @Valid @RequestBody Mechanic updatedMechanic) {
         Mechanic result = mechanicService.updateMechanic(id, updatedMechanic);
         return ResponseEntity.ok(result);
