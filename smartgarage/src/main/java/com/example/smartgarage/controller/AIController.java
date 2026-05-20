@@ -2,7 +2,6 @@ package com.example.smartgarage.controller;
 
 import com.example.smartgarage.dto.AIConsultationRequest;
 import com.example.smartgarage.entity.ConsultationHistory;
-import com.example.smartgarage.repository.ConsultationHistoryRepository;
 import com.example.smartgarage.service.AIService;
 import com.example.smartgarage.service.ConsultationHistoryService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -73,16 +72,11 @@ public class AIController {
         }
     }
 
-    @Operation(summary = "Xóa lịch sử truy vấn AI của user đang đăng nhập")
-    @DeleteMapping("/history/me")
-    public ResponseEntity<String> deleteMyHistory(Authentication auth) {
-        try {
-            String username = auth.getName();
-            consultationHistoryService.deleteByCustomerEmail(username);
-            return ResponseEntity.ok("Lịch sử truy vấn của bạn được xoá thành công");
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Lỗi hệ thống: " + e.getMessage());
-        }
-
+    @Operation(summary = "Xóa lịch sử truy vấn AI của user đang đăng nhập theo id")
+    @DeleteMapping("/history/{id}/me")
+    public ResponseEntity<String> deleteMyHistory(@PathVariable Long id, Authentication auth) {
+        String username = auth.getName();
+        consultationHistoryService.deleteMyHistoryById(id, username);
+        return ResponseEntity.ok("Lịch sử truy vấn của bạn được xóa thành công.");
     }
 }

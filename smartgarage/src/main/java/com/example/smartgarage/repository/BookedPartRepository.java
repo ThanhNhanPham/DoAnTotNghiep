@@ -10,4 +10,5 @@ import java.util.List;
 public interface BookedPartRepository extends JpaRepository<BookedPart,Long> {
     List<BookedPart> findByBookingId(Long bookingId);
     void deleteByBookingId(Long bookingId);
+    boolean existsByPartId(Long partId);
 }

@@ -147,6 +147,7 @@ public class BookingService {
             notification.setUser(admin);
             notification.setTitle("Đặt lịch mới");
             notification.setContent(customerName + " vừa đặt lịch cho xe " + licensePlate + " tại " + branchName + ".");
+            notification.setBookingId(booking.getId());
             return notification;
         }).collect(Collectors.toList());
 
@@ -170,6 +171,7 @@ public class BookingService {
         notification.setTitle("Lịch hẹn đã bị hủy");
         notification.setContent("Lịch hẹn cho xe " + licensePlate + " tại " + branchName
                 + " đã bị hủy. Lý do: " + reason);
+        notification.setBookingId(booking.getId());
         notificationRepository.save(notification);
     }
 
@@ -182,6 +184,7 @@ public class BookingService {
         notification.setUser(booking.getUser());
         notification.setTitle(title);
         notification.setContent(content);
+        notification.setBookingId(booking.getId());
         notificationRepository.save(notification);
     }
 
@@ -231,6 +234,7 @@ public class BookingService {
             notification.setTitle("Khách hàng hủy lịch");
             notification.setContent(customerName + " đã hủy lịch cho xe " + licensePlate
                     + " tại " + branchName + ". Lý do: " + reason);
+            notification.setBookingId(booking.getId());
             return notification;
         }).collect(Collectors.toList());
 
@@ -345,6 +349,7 @@ public class BookingService {
     public void cancelBooking(Long bookingId, String currentUserEmail, String reason) {
         Booking booking = getOwnedBooking(bookingId, currentUserEmail);
         ensureBookingPending(booking, "Chỉ có thể hủy lịch hẹn đang ở trạng thái PENDING.");
+        restorePartStock(booking);
         booking.setStatus(BookingStatus.CANCELLED);
         booking.setCancelReason(reason);
         if (booking.getPaymentStatus() == PaymentStatus.PENDING) {
@@ -363,6 +368,7 @@ public class BookingService {
             throw new ConflictException("Chỉ có thể hủy lịch hẹn chưa hoàn tất và chưa bị hủy.");
         }
 
+        restorePartStock(booking);
         booking.setStatus(BookingStatus.CANCELLED);
         if (booking.getPaymentStatus() == PaymentStatus.PENDING) {
             booking.setPaymentStatus(PaymentStatus.CANCELLED);
@@ -590,6 +596,10 @@ public class BookingService {
         if (request.getBranchId() != null) {
             Branch branch = branchRepository.findById(request.getBranchId())
                     .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy chi nhánh"));
+            if (booking.getBookedParts() != null && !booking.getBookedParts().isEmpty()
+                    && !Objects.equals(booking.getBranch().getId(), branch.getId())) {
+                throw new ConflictException("Không thể đổi chi nhánh khi booking đã có linh kiện.");
+            }
             booking.setBranch(branch);
         }
 
@@ -805,7 +815,12 @@ public class BookingService {
 
         // Tạo các dòng cho Linh kiện (Nếu có)
         String partRows = booking.getBookedParts().stream()
-                .map(p -> String.format("<tr><td style='padding:8px; border-bottom:1px solid #eee;'>%s (Linh kiện)</td><td style='text-align:right;'>%,.0f VNĐ</td></tr>", p.getPart().getName(), p.getPriceAtBooking()))
+                .map(p -> String.format(
+                        "<tr><td style='padding:8px; border-bottom:1px solid #eee;'>%s (Linh kiện) x%d</td><td style='text-align:right;'>%,.0f VNĐ</td></tr>",
+                        p.getPart().getName(),
+                        p.getQuantity(),
+                        p.getPriceAtBooking().multiply(BigDecimal.valueOf(p.getQuantity())).doubleValue()
+                ))
                 .collect(Collectors.joining());
 
         String htmlContent = "<html><body style='font-family: \"Segoe UI\", Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #444; background-color: #f9f9f9; padding: 20px;'>" +
@@ -896,6 +911,7 @@ public class BookingService {
         if (catalogPart.getQuantity() < quantity) {
             throw new ConflictException("Kho chỉ còn " + catalogPart.getQuantity() + " sản phẩm, không đủ để thêm.");
         }
+        validatePartForBooking(catalogPart, booking);
         BookedPart bookedPart = findBookedPart(booking, partId).orElseGet(() -> {
             BookedPart newBookedPart = new BookedPart();
             newBookedPart.setBooking(booking);
@@ -1028,6 +1044,28 @@ public class BookingService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
+    private void validatePartForBooking(Part part, Booking booking) {
+        if (part.getBranch() == null || booking.getBranch() == null
+                || !Objects.equals(part.getBranch().getId(), booking.getBranch().getId())) {
+            throw new ConflictException("Chỉ có thể thêm linh kiện thuộc cùng chi nhánh với booking.");
+        }
+    }
+
+    private void restorePartStock(Booking booking) {
+        if (booking.getBookedParts() == null || booking.getBookedParts().isEmpty()) {
+            return;
+        }
+
+        for (BookedPart bookedPart : booking.getBookedParts()) {
+            if (bookedPart.getPart() == null || bookedPart.getQuantity() == null || bookedPart.getQuantity() <= 0) {
+                continue;
+            }
+            Part part = bookedPart.getPart();
+            part.setQuantity(part.getQuantity() + bookedPart.getQuantity());
+            partRepository.save(part);
+        }
+    }
+
     private java.util.Optional<BookedPart> findBookedPart(Booking booking, Long partId) {
         return booking.getBookedParts().stream()
                 .filter(bookedPart -> bookedPart.getPart() != null && Objects.equals(bookedPart.getPart().getId(), partId))
@@ -1045,6 +1083,7 @@ public class BookingService {
         BookedPart bookedPart = findBookedPart(booking, partId)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy linh kiện trong đơn hàng"));
         Part catalogPart = bookedPart.getPart();
+        validatePartForBooking(catalogPart, booking);
 
         int currentQuantity = bookedPart.getQuantity();
         int delta = quantity - currentQuantity;

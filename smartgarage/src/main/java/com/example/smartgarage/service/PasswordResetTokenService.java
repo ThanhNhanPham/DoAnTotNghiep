@@ -11,9 +11,11 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.security.SecureRandom;
 
 @Service
 public class PasswordResetTokenService {
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
     private final UserRepository userRepository;
     private final PasswordResetTokenRepository tokenRepository;
     private final EmailTemplateService emailTemplateService ;
@@ -33,8 +35,8 @@ public class PasswordResetTokenService {
                 .orElseThrow(() -> new BadRequestException("Email không tồn tại trong hệ thống."));
         // xóa token cũ nếu có
         tokenRepository.deleteByUser(user);
-        //Tạo token ngâu nhiên
-        String token = java.util.UUID.randomUUID().toString();
+        // Tạo mã xác nhận 6 chữ số
+        String token = String.format("%06d", SECURE_RANDOM.nextInt(1_000_000));
         // Lưu token vào DB với thời hạn 15 phút
         PasswordResetToken resetToken = new PasswordResetToken();
         resetToken.setToken(token);

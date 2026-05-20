@@ -1,6 +1,7 @@
 package com.example.smartgarage.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.*;
 import lombok.*;
@@ -31,6 +32,12 @@ public class Part {
     private Integer quantity;    // Số lượng tồn kho
     @NotBlank(message = "Đơn vị tính không được để trống")
     private String unit;         // Đơn vị tính (Cái, Lít, Bộ...)
+
+    @ManyToOne
+    @JoinColumn(name = "branch_id", nullable = false)
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+    private Branch branch;
+
     @OneToMany(mappedBy = "part", cascade = CascadeType.ALL)
     @JsonIgnore
     private List<BookedPart> bookedParts;

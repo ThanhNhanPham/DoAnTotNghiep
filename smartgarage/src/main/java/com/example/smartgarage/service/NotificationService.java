@@ -59,6 +59,14 @@ public class NotificationService {
         notificationRepository.saveAll(unreadNotifications);
     }
 
+    @Transactional
+    public void deleteNotification(Long notificationId, String email) {
+        User user = getUserByEmail(email);
+        Notification notification = notificationRepository.findByIdAndUserId(notificationId, user.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy thông báo ID: " + notificationId));
+        notificationRepository.delete(notification);
+    }
+
     private User getUserByEmail(String email) {
         return userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy người dùng đăng nhập"));
@@ -69,6 +77,7 @@ public class NotificationService {
                 .id(notification.getId())
                 .title(notification.getTitle())
                 .content(notification.getContent())
+                .bookingId(notification.getBookingId())
                 .isRead(notification.isRead())
                 .createdAt(notification.getCreatedAt())
                 .build();

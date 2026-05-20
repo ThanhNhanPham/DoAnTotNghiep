@@ -52,4 +52,12 @@ public class NotificationController {
         notificationService.markAllAsRead(auth.getName());
         return ResponseEntity.ok(Map.of("message", "Đã đánh dấu tất cả thông báo là đã đọc"));
     }
+
+    @Operation(summary = "Xóa một thông báo")
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Map<String, String>> deleteNotification(@PathVariable Long id, Authentication auth){
+        String username = auth.getName();
+        notificationService.deleteNotification(id, username);
+        return ResponseEntity.ok(Map.of("message", "Đã xóa thông báo"));
+    }
 }
