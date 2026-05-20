@@ -25,6 +25,8 @@ export default function NotificationsScreen() {
   const [rawMessage, setRawMessage] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isMarkingAllRead, setIsMarkingAllRead] = useState(false);
+  const [deletingNotificationId, setDeletingNotificationId] = useState<number | null>(null);
 
   const isDark = colorScheme === 'dark';
   const palette = {
@@ -36,7 +38,11 @@ export default function NotificationsScreen() {
     text: isDark ? '#E2E8F0' : '#0F172A',
     subtext: isDark ? '#94A3B8' : '#475569',
     action: isDark ? '#14B8A6' : '#0F766E',
+    unreadSoft: isDark ? '#12362F' : '#ECFDF5',
+    readSoft: isDark ? '#111827' : '#F1F5F9',
   };
+
+  const unreadCount = notifications.filter((item) => !item.isRead).length;
 
   const loadNotifications = useCallback(async (refreshing = false) => {
     try {
@@ -75,6 +81,8 @@ export default function NotificationsScreen() {
   );
 
   const handleMarkAsRead = async (item: NotificationItem) => {
+    if (item.isRead) return;
+
     try {
       await notificationService.markAsRead(item.id);
       setNotifications((prev) =>
@@ -90,6 +98,56 @@ export default function NotificationsScreen() {
         'Không thể cập nhật trạng thái thông báo.';
       Alert.alert('Lỗi', String(serverMessage));
     }
+  };
+
+  const handleMarkAllAsRead = async () => {
+    if (unreadCount === 0 || isMarkingAllRead) return;
+
+    try {
+      setIsMarkingAllRead(true);
+      await notificationService.markAllAsRead();
+      setNotifications((prev) => prev.map((notification) => ({ ...notification, isRead: true })));
+    } catch (error: any) {
+      console.error('Mark all notifications read failed:', error);
+      const serverMessage =
+        error?.response?.data?.message ||
+        error?.response?.data ||
+        'Không thể đánh dấu tất cả thông báo là đã đọc.';
+      Alert.alert('Lỗi', String(serverMessage));
+    } finally {
+      setIsMarkingAllRead(false);
+    }
+  };
+
+  const handleDeleteNotification = (item: NotificationItem) => {
+    if (deletingNotificationId !== null) {
+      return;
+    }
+
+    Alert.alert('Xoá thông báo', 'Bạn có chắc muốn xoá thông báo này không?', [
+      { text: 'Huỷ', style: 'cancel' },
+      {
+        text: 'Xoá',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            setDeletingNotificationId(item.id);
+            await notificationService.deleteNotification(item.id);
+            setNotifications((prev) => prev.filter((notification) => notification.id !== item.id));
+            Alert.alert('Thành công', 'Đã xoá thông báo thành công');
+          } catch (error: any) {
+            console.error('Delete notification failed:', error);
+            const serverMessage =
+              error?.response?.data?.message ||
+              error?.response?.data ||
+              'Không thể xoá thông báo lúc này.';
+            Alert.alert('Xoá thất bại', String(serverMessage));
+          } finally {
+            setDeletingNotificationId(null);
+          }
+        },
+      },
+    ]);
   };
 
   return (
@@ -132,44 +190,113 @@ export default function NotificationsScreen() {
           </View>
         ) : notifications.length > 0 ? (
           <View style={[styles.card, { backgroundColor: palette.card }]}>
-            <Text style={[styles.sectionTitle, { color: palette.text }]}>Danh sách thông báo</Text>
+            <View style={styles.sectionHeader}>
+              <View>
+                <Text style={[styles.sectionTitle, { color: palette.text }]}>Danh sách thông báo</Text>
+                <Text style={[styles.sectionMeta, { color: palette.subtext }]}>
+                  {unreadCount} chưa đọc / {notifications.length} thông báo
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={[
+                  styles.markAllButton,
+                  {
+                    backgroundColor: unreadCount > 0 ? palette.action : palette.readSoft,
+                  },
+                ]}
+                activeOpacity={0.85}
+                disabled={unreadCount === 0 || isMarkingAllRead}
+                onPress={handleMarkAllAsRead}>
+                {isMarkingAllRead ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text
+                    style={[
+                      styles.markAllButtonText,
+                      { color: unreadCount > 0 ? '#FFFFFF' : palette.subtext },
+                    ]}>
+                    Đọc tất cả
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
             {notifications.map((item, index) => {
               const isLast = index === notifications.length - 1;
+              const isRead = item.isRead ?? item.read ?? false;
 
               return (
                 <TouchableOpacity
                   key={item.id}
                   style={[
                     styles.notificationRow,
-                    { borderBottomColor: palette.border },
+                    {
+                      borderBottomColor: palette.border,
+                      backgroundColor: isRead ? 'transparent' : palette.unreadSoft,
+                    },
                     isLast && styles.notificationRowLast,
                   ]}
                   activeOpacity={0.9}
                   onPress={() => {
-                    if (!item.isRead) {
+                    if (!isRead) {
                       handleMarkAsRead(item);
                     }
                   }}>
-                  <View
-                    style={[
-                      styles.notificationIconWrap,
-                      { backgroundColor: item.isRead ? (isDark ? '#111827' : '#F1F5F9') : '#ECFDF5' },
-                    ]}>
-                    <Ionicons
-                      name={item.isRead ? 'mail-open-outline' : 'notifications-outline'}
-                      size={20}
-                      color={item.isRead ? '#94A3B8' : '#0F766E'}
-                    />
+                  <View style={styles.notificationIconColumn}>
+                    <View
+                      style={[
+                        styles.notificationIconWrap,
+                        { backgroundColor: isRead ? palette.readSoft : '#CCFBF1' },
+                      ]}>
+                      <Ionicons
+                        name={isRead ? 'mail-open-outline' : 'notifications-outline'}
+                        size={20}
+                        color={isRead ? '#94A3B8' : '#0F766E'}
+                      />
+                    </View>
+                    <TouchableOpacity
+                      style={[
+                        styles.deleteButton,
+                        deletingNotificationId !== null && styles.deleteButtonDisabled,
+                      ]}
+                      activeOpacity={0.8}
+                      disabled={deletingNotificationId !== null}
+                      onPress={(event) => {
+                        event.stopPropagation();
+                        handleDeleteNotification(item);
+                      }}>
+                      {deletingNotificationId === item.id ? (
+                        <ActivityIndicator size="small" color="#DC2626" />
+                      ) : (
+                        <Ionicons name="trash-outline" size={17} color="#DC2626" />
+                      )}
+                    </TouchableOpacity>
                   </View>
                   <View style={styles.notificationTextWrap}>
-                    <Text style={[styles.notificationTitle, { color: palette.text }]}>
-                      {item.title || 'Thông báo từ Smart Garage'}
-                    </Text>
+                    <View style={styles.notificationTitleRow}>
+                      <Text style={[styles.notificationTitle, { color: palette.text }]}>
+                        {item.title || 'Thông báo từ Smart Garage'}
+                      </Text>
+                      <View
+                        style={[
+                          styles.statusPill,
+                          { backgroundColor: isRead ? palette.readSoft : '#CCFBF1' },
+                        ]}>
+                        <Text
+                          style={[
+                            styles.statusPillText,
+                            { color: isRead ? palette.subtext : '#0F766E' },
+                          ]}>
+                          {isRead ? 'Đã đọc' : 'Chưa đọc'}
+                        </Text>
+                      </View>
+                    </View>
                     <Text style={[styles.notificationContent, { color: palette.subtext }]}>
                       {item.content || 'Nội dung thông báo sẽ hiển thị ở đây.'}
                     </Text>
                   </View>
-                  {!item.isRead ? <View style={styles.unreadDot} /> : null}
+                  <View style={styles.notificationActions}>
+                    {!isRead ? <View style={styles.unreadDot} /> : null}
+                  </View>
                 </TouchableOpacity>
               );
             })}
@@ -253,9 +380,33 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 22,
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  sectionMeta: {
+    marginTop: 4,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  markAllButton: {
+    minWidth: 92,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  markAllButtonText: {
+    fontSize: 13,
+    fontWeight: '800',
+  },
   notificationRow: {
     marginTop: 16,
-    paddingBottom: 16,
+    padding: 12,
+    borderRadius: 18,
     borderBottomWidth: 1,
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -263,7 +414,10 @@ const styles = StyleSheet.create({
   },
   notificationRowLast: {
     borderBottomWidth: 0,
-    paddingBottom: 0,
+  },
+  notificationIconColumn: {
+    alignItems: 'center',
+    gap: 8,
   },
   notificationIconWrap: {
     width: 42,
@@ -275,8 +429,26 @@ const styles = StyleSheet.create({
   notificationTextWrap: {
     flex: 1,
   },
+  notificationTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
   notificationTitle: {
+    flex: 1,
     fontSize: 15,
+    fontWeight: '800',
+  },
+  statusPill: {
+    flexShrink: 0,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+  },
+  statusPillText: {
+    fontSize: 11,
+    lineHeight: 13,
     fontWeight: '800',
   },
   notificationContent: {
@@ -289,6 +461,22 @@ const styles = StyleSheet.create({
     height: 10,
     borderRadius: 999,
     backgroundColor: '#14B8A6',
-    marginTop: 6,
+  },
+  notificationActions: {
+    alignItems: 'center',
+    paddingTop: 4,
+  },
+  deleteButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  deleteButtonDisabled: {
+    opacity: 0.45,
   },
 });

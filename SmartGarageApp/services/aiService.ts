@@ -45,6 +45,11 @@ const aiService = {
     const response = await apiClient.get<AIConsultationHistoryItem[]>('/ai/history/me');
     return response.data;
   },
+
+  async deleteHistoryItem(id: number) {
+    const response = await apiClient.delete<string>(`/ai/history/${id}/me`);
+    return response.data;
+  },
 };
 
 export default aiService;

@@ -5,6 +5,7 @@ export interface NotificationItem {
   title?: string;
   content?: string;
   isRead?: boolean;
+  read?: boolean;
   createdAt?: string;
 }
 
@@ -15,7 +16,14 @@ export interface UnreadNotificationCountResponse {
 const notificationService = {
   async getMyNotifications() {
     const response = await apiClient.get<NotificationItem[] | string>('/notifications');
-    return response.data;
+    if (!Array.isArray(response.data)) {
+      return response.data;
+    }
+
+    return response.data.map((notification) => ({
+      ...notification,
+      isRead: notification.isRead ?? notification.read ?? false,
+    }));
   },
 
   async getUnreadCount() {
@@ -25,6 +33,16 @@ const notificationService = {
 
   async markAsRead(id: number) {
     const response = await apiClient.put(`/notifications/${id}/read`);
+    return response.data;
+  },
+
+  async markAllAsRead() {
+    const response = await apiClient.put('/notifications/read-all');
+    return response.data;
+  },
+
+  async deleteNotification(id: number) {
+    const response = await apiClient.delete(`/notifications/${id}`);
     return response.data;
   },
 };
