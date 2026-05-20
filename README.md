@@ -106,5 +106,7 @@ AI Engine: 	Google Gemini API (v3 Flash/Pro)
 | **📧 Email** | nhanpham.04122004@gmail.com |
 | **🚀 Linked** | https://www.linkedin.com/in/ph%E1%BA%A1m-th%C3%A0nh-nh%C3%A2n-3353b3286/ |
 
+Liên hệ Zalo: 0364554249 để được hướng dẫn cài đặt và toàn bộ sourceCode chi tiết.
+
 
 
