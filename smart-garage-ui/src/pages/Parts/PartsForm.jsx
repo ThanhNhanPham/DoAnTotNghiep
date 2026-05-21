@@ -1,12 +1,15 @@
 import { Modal, Form, Input, Select, InputNumber } from 'antd';
 import { useEffect } from 'react';
 
-const PartsForm = ({ visible, editingPart, onClose, onSave }) => {
+const PartsForm = ({ visible, editingPart, branches = [], saving = false, onClose, onSave }) => {
   const [form] = Form.useForm();
 
   useEffect(() => {
     if (editingPart) {
-      form.setFieldsValue(editingPart);
+      form.setFieldsValue({
+        ...editingPart,
+        branchId: editingPart.branch?.id || editingPart.branchId,
+      });
     } else {
       form.resetFields();
     }
@@ -15,7 +18,7 @@ const PartsForm = ({ visible, editingPart, onClose, onSave }) => {
   const handleOk = async () => {
     try {
       const values = await form.validateFields();
-      onSave(values);
+      await onSave(values);
       form.resetFields();
     } catch (error) {
       console.log('Validation failed:', error);
@@ -30,9 +33,10 @@ const PartsForm = ({ visible, editingPart, onClose, onSave }) => {
   return (
     <Modal
       title={editingPart ? 'Sửa phụ tùng' : 'Thêm phụ tùng mới'}
-      visible={visible}
+      open={visible}
       onOk={handleOk}
       onCancel={handleCancel}
+      confirmLoading={saving}
       width={750}
       okText="Lưu"
       cancelText="Hủy"
@@ -46,6 +50,30 @@ const PartsForm = ({ visible, editingPart, onClose, onSave }) => {
           unit: 'Cái',
         }}
       >
+        {!editingPart && (
+          <Form.Item
+            label="Thuộc chi nhánh"
+            name="branchId"
+            rules={[{ required: true, message: 'Vui lòng chọn chi nhánh' }]}
+          >
+            <Select
+              placeholder="Chọn chi nhánh nhập phụ tùng"
+              options={branches.map((branch) => ({ label: branch.name, value: branch.id }))}
+              showSearch
+              optionFilterProp="label"
+            />
+          </Form.Item>
+        )}
+
+        {editingPart && (
+          <Form.Item label="Thuộc chi nhánh" name="branchId">
+            <Select
+              disabled
+              options={branches.map((branch) => ({ label: branch.name, value: branch.id }))}
+            />
+          </Form.Item>
+        )}
+
         <Form.Item
           label="Tên phụ tùng"
           name="name"
@@ -73,6 +101,7 @@ const PartsForm = ({ visible, editingPart, onClose, onSave }) => {
               { label: 'Cái', value: 'Cái' },
               { label: 'Bộ', value: 'Bộ' },
               { label: 'Lít', value: 'Lít' },
+              { label: 'Chai', value: 'Chai' },
               { label: 'Sợi', value: 'Sợi' },
               { label: 'Hộp', value: 'Hộp' },
               { label: 'Chiếc', value: 'Chiếc' },
@@ -98,12 +127,12 @@ const PartsForm = ({ visible, editingPart, onClose, onSave }) => {
           rules={[{ required: true, message: 'Vui lòng nhập giá' }]}
         >
           <InputNumber
-            min={0}
+            min={1}
             step={10000}
             placeholder="Nhập giá"
             style={{ width: '100%' }}
             formatter={(value) => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-            parser={(value) => value.replace(/\$\s?|(,*)/g, '')}
+            parser={(value) => value?.replace(/\$\s?|(,*)/g, '')}
           />
         </Form.Item>
       </Form>

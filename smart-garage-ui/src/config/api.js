@@ -11,6 +11,7 @@ export const API_ENDPOINTS = {
   parts: `${API_BASE_URL}/parts`,
   users: `${API_BASE_URL}/users`,
   vehicles: `${API_BASE_URL}/vehicles`,
+  reviews: `${API_BASE_URL}/reviews`,
 };
 
 export const getAuthToken = () => localStorage.getItem('authToken') || localStorage.getItem('token');

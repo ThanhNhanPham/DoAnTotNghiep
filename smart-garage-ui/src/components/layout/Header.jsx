@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, User, LogOut, Settings, Menu, KeyRound, Car, Bike } from 'lucide-react';
+import { Bell, User, LogOut, Settings, Menu, KeyRound, Car, Bike, Trash2 } from 'lucide-react';
 import { Dropdown, message, Modal } from 'antd';
 import { ExclamationCircleOutlined } from '@ant-design/icons';
 import authService from '../../services/authService';
@@ -174,6 +174,33 @@ const Header = ({ onMenuClick }) => {
     },
   ];
 
+  const handleDeleteNotification = (item) => {
+    Modal.confirm({
+      title: 'Xóa thông báo',
+      icon: <ExclamationCircleOutlined />,
+      content: 'Bạn có chắc chắn muốn xóa thông báo này không?',
+      okText: 'Xóa',
+      cancelText: 'Hủy',
+      okType: 'danger',
+      centered: true,
+      async onOk() {
+        try {
+          await notificationService.deleteNotification(item.id);
+          const isUnread = !(item.isRead ?? item.read ?? false);
+
+          setNotifications((prev) => prev.filter((notification) => notification.id !== item.id));
+          if (isUnread) {
+            setUnreadCount((prev) => Math.max(prev - 1, 0));
+          }
+          message.success('Đã xóa thông báo!');
+        } catch (error) {
+          console.error('Error deleting notification:', error);
+          message.error('Không thể xóa thông báo!');
+        }
+      },
+    });
+  };
+
   const notificationItems = notificationLoading
     ? [
         {
@@ -184,16 +211,40 @@ const Header = ({ onMenuClick }) => {
       ]
     : [
         ...(notifications.length > 0
-          ? notifications.slice(0, 8).map((item) => ({
-              key: String(item.id),
-              label: (
-                <div className={`notification-item ${item.isRead ? '' : 'unread'}`}>
-                  <div className="notification-title">{item.title || 'Thông báo'}</div>
-                  {item.content && <div className="notification-content">{item.content}</div>}
-                  <div className="notification-time">{formatNotificationTime(item.createdAt)}</div>
-                </div>
-              ),
-            }))
+          ? notifications.slice(0, 8).map((item) => {
+              const isRead = item.isRead ?? item.read ?? false;
+
+              return {
+                key: String(item.id),
+                label: (
+                  <div className={`notification-item ${isRead ? 'read' : 'unread'}`}>
+                    <div className="notification-heading">
+                      <span className="notification-title">{item.title || 'Thông báo'}</span>
+                      <div className="notification-actions">
+                        <span className={`notification-status ${isRead ? 'read' : 'unread'}`}>
+                          {isRead ? 'Đã đọc' : 'Chưa đọc'}
+                        </span>
+                        <button
+                          type="button"
+                          className="notification-delete-btn"
+                          aria-label="Xóa thông báo"
+                          title="Xóa thông báo"
+                          onClick={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            handleDeleteNotification(item);
+                          }}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
+                    {item.content && <div className="notification-content">{item.content}</div>}
+                    <div className="notification-time">{formatNotificationTime(item.createdAt)}</div>
+                  </div>
+                ),
+              };
+            })
           : [
               {
                 key: 'empty',
@@ -225,13 +276,21 @@ const Header = ({ onMenuClick }) => {
 
       const notificationId = Number(key);
       const selected = notifications.find((item) => item.id === notificationId);
-      if (!selected || selected.isRead) return;
+      if (!selected) return;
 
-      await notificationService.markAsRead(notificationId);
-      setNotifications((prev) =>
-        prev.map((item) => (item.id === notificationId ? { ...item, isRead: true } : item))
-      );
-      setUnreadCount((prev) => Math.max(prev - 1, 0));
+      if (!(selected.isRead ?? selected.read ?? false)) {
+        await notificationService.markAsRead(notificationId);
+        setNotifications((prev) =>
+          prev.map((item) => (item.id === notificationId ? { ...item, isRead: true } : item))
+        );
+        setUnreadCount((prev) => Math.max(prev - 1, 0));
+      }
+
+      if (selected.bookingId) {
+        navigate(`/admin/bookings?bookingId=${selected.bookingId}`);
+      } else {
+        message.info('Thông báo này chưa liên kết với đơn hàng.');
+      }
     } catch (error) {
       console.error('Error updating notification:', error);
       message.error('Không thể cập nhật thông báo!');

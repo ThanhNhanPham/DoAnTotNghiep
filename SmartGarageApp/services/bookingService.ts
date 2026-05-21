@@ -18,8 +18,22 @@ export interface BookingResponse {
   bookingTime?: string;
   arrivalSlotStart?: string;
   arrivalSlotEnd?: string;
+  arrivalTime?: string | null;
+  customerName?: string;
+  vehicleOwnerName?: string | null;
+  customerPhone?: string;
+  vehicleName?: string;
+  vehicleImageUrl?: string | null;
+  licensePlate?: string;
+  branchId?: number | null;
+  branchName?: string;
+  mechanicName?: string;
+  serviceNames?: string[];
+  partNames?: string[];
+  cancelReason?: string | null;
   totalAmount?: number;
-  note?: string;
+  paymentMethod?: PaymentMethod;
+  paymentStatus?: string;
 }
 
 export interface AvailableBookingSlot {
@@ -38,6 +52,16 @@ export interface AvailableBookingSlotResponse {
 }
 
 const bookingService = {
+  async getMyBookings() {
+    const response = await apiClient.get<BookingResponse[]>('/bookings');
+    return response.data;
+  },
+
+  async getBookingById(id: number) {
+    const response = await apiClient.get<BookingResponse>(`/bookings/${id}`);
+    return response.data;
+  },
+
   async getAvailableSlots(branchId: number, date: string, slotDurationMinutes = 60, slotIntervalMinutes = 60) {
     const response = await apiClient.get<AvailableBookingSlotResponse>('/bookings/available-slots', {
       params: {

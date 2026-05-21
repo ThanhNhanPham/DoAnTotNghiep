@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useUnreadNotificationCount } from '@/hooks/use-unread-notification-count';
+import bookingService from '@/services/bookingService';
 import vehicleService from '@/services/vehicleService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -25,6 +26,7 @@ export default function HomeScreen() {
   const [isAddressExpanded, setIsAddressExpanded] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [vehicleCount, setVehicleCount] = useState(0);
+  const [bookingCount, setBookingCount] = useState(0);
 
   const fetchUserData = useCallback(async () => {
     try {
@@ -43,11 +45,17 @@ export default function HomeScreen() {
 
       if (userId) {
         try {
-          const vehicles = await vehicleService.getVehiclesByUserId(Number(userId));
+          const [vehicles, bookings] = await Promise.all([
+            vehicleService.getVehiclesByUserId(Number(userId)),
+            bookingService.getMyBookings(),
+          ]);
+
           setVehicleCount(Array.isArray(vehicles) ? vehicles.filter((vehicle) => vehicle.isActive !== false).length : 0);
-        } catch (vehicleError) {
-          console.error('Error fetching vehicle count:', vehicleError);
+          setBookingCount(Array.isArray(bookings) ? bookings.length : 0);
+        } catch (summaryError) {
+          console.error('Error fetching home summary:', summaryError);
           setVehicleCount(0);
+          setBookingCount(0);
         }
       }
     } catch (error) {
@@ -171,9 +179,10 @@ export default function HomeScreen() {
             <MenuCard
               icon="time"
               title="Lịch sử"
-              subtitle="15 lượt sửa chữa"
+              subtitle={bookingCount > 0 ? `${bookingCount} lịch hẹn` : 'Chưa có lịch hẹn'}
               color="#FFF7ED"
               iconColor="#F59E0B"
+              onPress={() => router.push('/booking-history')}
             />
             <MenuCard
               icon="settings"

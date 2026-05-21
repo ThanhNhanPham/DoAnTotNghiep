@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Card,
   Table,
@@ -17,6 +18,7 @@ import {
   Descriptions,
   Divider,
   InputNumber,
+  Rate,
 } from 'antd';
 import {
   SearchOutlined,
@@ -36,9 +38,11 @@ import branchService from '../../services/branchService';
 import mechanicService from '../../services/mechanicService';
 import serviceService from '../../services/serviceService';
 import partService from '../../services/partService';
+import reviewService, { getApiErrorMessage } from '../../services/reviewService';
 import './Bookings.css';
 
 const Bookings = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [bookings, setBookings] = useState([]);
   const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -71,6 +75,11 @@ const Bookings = () => {
   const [partCatalog, setPartCatalog] = useState([]);
   const [selectedServiceIds, setSelectedServiceIds] = useState([]);
   const [bookingItemLoading, setBookingItemLoading] = useState(false);
+  const [bookingReview, setBookingReview] = useState(null);
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [reviewReplyText, setReviewReplyText] = useState('');
+  const [reviewReplyLoading, setReviewReplyLoading] = useState(false);
+  const bookingIdFromNotification = searchParams.get('bookingId');
 
   useEffect(() => {
     fetchBranches();
@@ -80,6 +89,19 @@ const Bookings = () => {
   useEffect(() => {
     fetchBookings();
   }, [bookingPagination.current, bookingPagination.pageSize, statusFilter, branchFilter, searchText]);
+
+  useEffect(() => {
+    if (!bookingIdFromNotification) return;
+
+    const bookingId = Number(bookingIdFromNotification);
+    if (!Number.isFinite(bookingId)) {
+      setSearchParams({}, { replace: true });
+      return;
+    }
+
+    openDetailModal(bookingId);
+    setSearchParams({}, { replace: true });
+  }, [bookingIdFromNotification, setSearchParams]);
 
   const fetchBookings = async () => {
     setLoading(true);
@@ -230,20 +252,41 @@ const Bookings = () => {
   const openDetailModal = async (bookingId) => {
     setIsDetailModalVisible(true);
     setDetailLoading(true);
+    setReviewLoading(true);
+    setBookingReview(null);
+    setReviewReplyText('');
     try {
-      const data = await bookingService.getBookingById(bookingId);
+      const [bookingResult, reviewResult] = await Promise.allSettled([
+        bookingService.getBookingById(bookingId),
+        reviewService.getReviewByBooking(bookingId),
+      ]);
+
+      if (bookingResult.status === 'rejected') {
+        throw bookingResult.reason;
+      }
+
+      const data = bookingResult.value;
       setBookingDetail(data);
       setSelectedServiceIds(
         serviceCatalog
           .filter((service) => data.serviceNames?.includes(service.name))
           .map((service) => service.id)
       );
+
+      if (reviewResult.status === 'fulfilled') {
+        setBookingReview(reviewResult.value);
+        setReviewReplyText(reviewResult.value.adminReply || '');
+      } else if (reviewResult.reason?.response?.status !== 404) {
+        message.warning('Không tải được đánh giá của đơn hàng.');
+      }
+
       partForm.resetFields();
     } catch {
       message.error('Lỗi khi tải chi tiết lịch hẹn!');
       setIsDetailModalVisible(false);
     } finally {
       setDetailLoading(false);
+      setReviewLoading(false);
     }
   };
 
@@ -430,6 +473,22 @@ const Bookings = () => {
       message.error('Lỗi khi hoàn thành lịch hẹn!');
     }
   };
+
+  const handleReplyToReview = async () => {
+    if (!bookingReview) return;
+
+    setReviewReplyLoading(true);
+    try {
+      const updatedReview = await reviewService.replyToReview(bookingReview.id, reviewReplyText);
+      setBookingReview(updatedReview);
+      setReviewReplyText(updatedReview.adminReply || '');
+      message.success('Đã gửi phản hồi đánh giá!');
+    } catch (error) {
+      message.error(getApiErrorMessage(error, 'Lỗi khi gửi phản hồi đánh giá!'));
+    } finally {
+      setReviewReplyLoading(false);
+    }
+  };
   
   // Logic to show confirm modal
   const openConfirmModal = async (booking) => {
@@ -515,6 +574,56 @@ const Bookings = () => {
           </Tag>
         ))}
       </Space>
+    );
+  };
+
+  const renderBookingReview = () => {
+    if (reviewLoading) {
+      return <div className="review-empty">Đang tải đánh giá...</div>;
+    }
+
+    if (!bookingReview) {
+      return <div className="review-empty">Khách hàng chưa đánh giá đơn hàng này.</div>;
+    }
+
+    return (
+      <div className="booking-review-box">
+        <div className="review-header">
+          <div>
+            <div className="review-title">Đánh giá của khách hàng</div>
+            <Rate disabled value={bookingReview.rating || 0} />
+          </div>
+          <span className="review-time">{formatDateTime(bookingReview.createdAt)}</span>
+        </div>
+
+        <div className="review-comment">
+          {bookingReview.comment || 'Khách hàng đã đánh giá nhưng chưa để lại bình luận.'}
+        </div>
+
+        {bookingReview.adminReply && (
+          <div className="admin-reply-box">
+            <div className="admin-reply-title">Phản hồi hiện tại</div>
+            <div>{bookingReview.adminReply}</div>
+            {bookingReview.repliedAt && (
+              <div className="review-time">Phản hồi lúc {formatDateTime(bookingReview.repliedAt)}</div>
+            )}
+          </div>
+        )}
+
+        <Input.TextArea
+          rows={4}
+          maxLength={2000}
+          showCount
+          value={reviewReplyText}
+          onChange={(event) => setReviewReplyText(event.target.value)}
+          placeholder="Nhập phản hồi cho đánh giá của khách hàng"
+        />
+        <div className="review-actions">
+          <Button type="primary" loading={reviewReplyLoading} onClick={handleReplyToReview}>
+            {bookingReview.adminReply ? 'Cập nhật phản hồi' : 'Gửi phản hồi'}
+          </Button>
+        </div>
+      </div>
     );
   };
 
@@ -1152,6 +1261,8 @@ const Bookings = () => {
         )}
         {bookingDetail && (
           <>
+            <Divider />
+            {renderBookingReview()}
             <Divider />
             <p style={{ color: '#8c8c8c', marginBottom: 0 }}>
               Bấm dấu x trên tag để xóa dịch vụ hoặc linh kiện khỏi lịch hẹn.
