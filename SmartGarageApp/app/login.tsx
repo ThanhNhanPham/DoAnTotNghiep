@@ -63,7 +63,10 @@ export default function LoginScreen() {
       
       if (error.response) {
         // Lỗi từ server (401, 400, v.v.)
-        errorMessage = error.response.data || 'Email hoặc mật khẩu không chính xác!';
+        const responseData = error.response.data;
+        errorMessage = typeof responseData === 'string'
+          ? responseData
+          : responseData?.message || 'Email hoặc mật khẩu không chính xác!';
       } else if (error.request) {
         // Lỗi không kết nối được server
         errorMessage = 'Không thể kết nối đến máy chủ. Kiểm tra lại kết nối mạng hoặc server.';
@@ -161,7 +164,7 @@ export default function LoginScreen() {
                     <Text style={styles.rememberText}>Duy trì đăng nhập</Text>
                   </TouchableOpacity>
 
-                  <TouchableOpacity>
+                  <TouchableOpacity onPress={() => router.push('/forgot-password')}>
                     <Text style={styles.forgotText}>Quên mật khẩu?</Text>
                   </TouchableOpacity>
                 </View>

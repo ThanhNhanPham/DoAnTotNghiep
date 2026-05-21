@@ -3,6 +3,7 @@ package com.example.smartgarage.exception;
 import com.example.smartgarage.dto.ErrorMessage;
 import jakarta.validation.ConstraintViolationException;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -33,6 +34,17 @@ public class GlobalExceptionHandler {
     @ResponseStatus(value = HttpStatus.FORBIDDEN)
     public ErrorMessage handleForbiddenException(ForbiddenException ex, WebRequest request) {
         return new ErrorMessage(HttpStatus.FORBIDDEN.value(), LocalDateTime.now(), ex.getMessage(), request.getDescription(false));
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    @ResponseStatus(value = HttpStatus.FORBIDDEN)
+    public ErrorMessage handleAccessDeniedException(AccessDeniedException ex, WebRequest request) {
+        return new ErrorMessage(
+                HttpStatus.FORBIDDEN.value(),
+                LocalDateTime.now(),
+                "Bạn không có quyền thực hiện thao tác này",
+                request.getDescription(false)
+        );
     }
 
     @ExceptionHandler(ConflictException.class)

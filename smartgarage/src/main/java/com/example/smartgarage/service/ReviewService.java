@@ -1,23 +1,36 @@
 package com.example.smartgarage.service;
 
+import com.example.smartgarage.dto.ReviewSummaryResponse;
 import com.example.smartgarage.dto.ReviewRequest;
 import com.example.smartgarage.entity.Booking;
 import com.example.smartgarage.entity.Notification;
 import com.example.smartgarage.entity.Review;
 import com.example.smartgarage.entity.User;
+import com.example.smartgarage.exception.ConflictException;
+import com.example.smartgarage.exception.ForbiddenException;
+import com.example.smartgarage.exception.ResourceNotFoundException;
 import com.example.smartgarage.enums.BookingStatus;
+import com.example.smartgarage.enums.Role;
 import com.example.smartgarage.repository.BookingRepository;
 import com.example.smartgarage.repository.NotificationRepository;
 import com.example.smartgarage.repository.ReviewRepository;
 import com.example.smartgarage.repository.UserRepository;
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 
 @Service
 public class ReviewService {
+    private static final Logger logger = LoggerFactory.getLogger(ReviewService.class);
+
     @Autowired  private ReviewRepository reviewRepository;
     @Autowired  private UserRepository userRepository;
     @Autowired  private BookingRepository bookingRepository;
@@ -26,69 +39,102 @@ public class ReviewService {
     @Autowired private EmailTemplateService templateService;
     @Transactional
     public Review createReview(String email, ReviewRequest request) {
-        // 1. Tìm đơn hàng
         Booking booking = bookingRepository.findById(request.getBookingId())
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy đơn hàng có ID: " + request.getBookingId()));
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy đơn hàng có ID: " + request.getBookingId()));
 
-        // 2. KIỂM TRA QUYỀN SỞ HỮU (Quan trọng cho bảo mật)
         if (!booking.getUser().getEmail().equals(email)) {
-            throw new RuntimeException("Bạn không có quyền đánh giá đơn hàng của người khác!");
+            throw new ForbiddenException("Bạn không có quyền đánh giá đơn hàng của người khác");
         }
 
-        // 3. KIỂM TRA LOGIC: Chỉ đơn hàng COMPLETED mới được đánh giá
         if (booking.getStatus() != BookingStatus.COMPLETED) {
-            throw new RuntimeException("Bạn chỉ có thể đánh giá sau khi xe đã sửa xong!");
+            throw new ConflictException("Bạn chỉ có thể đánh giá sau khi đơn hàng hoàn thành");
         }
 
-        // 4. Kiểm tra xem đã đánh giá chưa
         if (reviewRepository.existsByBookingId(booking.getId())) {
-            throw new RuntimeException("Đơn hàng này đã được đánh giá trước đó.");
+            throw new ConflictException("Đơn hàng này đã được đánh giá trước đó");
         }
 
-        // 5. Tìm user an toàn hơn
         User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("Tài khoản không tồn tại"));
+                .orElseThrow(() -> new ResourceNotFoundException("Tài khoản không tồn tại"));
 
         Review review = new Review();
         review.setBooking(booking);
         review.setUser(user);
         review.setRating(request.getRating());
-        review.setComment(request.getComment());
+        review.setComment(StringUtils.hasText(request.getComment()) ? request.getComment().trim() : null);
 
-        return reviewRepository.save(review);
+        Review savedReview = reviewRepository.save(review);
+        notifyBranchAdminsForNewReview(savedReview);
+        return savedReview;
     }
-    public Double getAverageRating(Long mechanicId) {
-        Double average = reviewRepository.getAverageRatingByMechanicId(mechanicId);
-        if (average == null) return 0.0;
 
-        // Làm tròn đến 1 chữ số thập phân để hiển thị đẹp hơn
-        return Math.round(average * 10.0) / 10.0;
+    public Review getReviewByBooking(Long bookingId) {
+        return reviewRepository.findByBookingId(bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Đơn hàng này chưa có đánh giá"));
     }
+
+    public Page<Review> getReviews(int page, int size) {
+        Pageable pageable = PageRequest.of(page, size);
+        return reviewRepository.findAllByOrderByCreatedAtDesc(pageable);
+    }
+
+    public ReviewSummaryResponse getReviewSummary() {
+        Double average = reviewRepository.getAverageRating();
+        double roundedAverage = average == null ? 0.0 : Math.round(average * 10.0) / 10.0;
+        return new ReviewSummaryResponse(reviewRepository.countAllReviews(), roundedAverage);
+    }
+
+    private void notifyBranchAdminsForNewReview(Review review) {
+        Booking booking = review.getBooking();
+        if (booking.getBranch() == null || booking.getBranch().getId() == null) {
+            return;
+        }
+
+        String customerName = review.getUser() != null ? review.getUser().getFullName() : "Khách hàng";
+        String title = "Đơn hàng có đánh giá mới";
+        String content = String.format(
+                "%s vừa đánh giá đơn hàng #%d với %d sao",
+                customerName,
+                booking.getId(),
+                review.getRating()
+        );
+
+        for (User admin : userRepository.findByRoleAndBranchId(Role.ADMIN, booking.getBranch().getId())) {
+            Notification notification = new Notification();
+            notification.setUser(admin);
+            notification.setBookingId(booking.getId());
+            notification.setTitle(title);
+            notification.setContent(content);
+            notificationRepository.save(notification);
+        }
+    }
+
     @Transactional
     public Review updateAdminReply(Long reviewId, String reply) {
         Review review = reviewRepository.findById(reviewId)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy đánh giá để phản hồi"));
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy đánh giá để phản hồi"));
 
-        review.setAdminReply(reply);
+        review.setAdminReply(reply.trim());
         review.setRepliedAt(LocalDateTime.now());
-        // 2. Lưu thông báo vào Database (Để hiện "chuông" trên App)
+
         Notification notify = new Notification();
         notify.setUser(review.getUser());
         notify.setTitle("Gara đã phản hồi đánh giá của bạn");
-        notify.setContent("Phản hồi: " + reply);
+        notify.setContent("Phản hồi: " + reply.trim());
         notificationRepository.save(notify);
 
-        // Gửi Email cho khách
         Review savedReview = reviewRepository.save(review);
-        // 4. Gửi Email (Nên được xử lý Bất đồng bộ - Async)
-        // Sử dụng Template HTML để chuyên nghiệp hơn
         String htmlContent = templateService.buildAdminReplyEmail(
                 review.getUser().getFullName(),
                 review.getComment(),
-                reply
+                reply.trim()
         );
 
-        emailService.sendHtmlEmail(review.getUser().getEmail(), "Phản hồi từ Smart Gara", htmlContent);
+        try {
+            emailService.sendHtmlEmail(review.getUser().getEmail(), "Phản hồi từ Smart Gara", htmlContent);
+        } catch (RuntimeException ex) {
+            logger.warn("Không gửi được email phản hồi đánh giá {}: {}", reviewId, ex.getMessage());
+        }
         return savedReview;
     }
 }

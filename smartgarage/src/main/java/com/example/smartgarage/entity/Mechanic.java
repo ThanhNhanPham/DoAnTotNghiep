@@ -36,6 +36,11 @@ public class Mechanic {
     @Size(max = 500, message = "Địa chỉ không quá 500 ký tự")
     @Column(columnDefinition = "TEXT")
     private String address;
+
+    @Size(max = 255, message = "Chuyên môn không quá 255 ký tự")
+    @Column(name = "specialization", length = 255)
+    private String specialization;
+
     @NotNull(message = "Trạng thái không được để trống")
     @Enumerated(EnumType.STRING)
     @Column(length = 20)

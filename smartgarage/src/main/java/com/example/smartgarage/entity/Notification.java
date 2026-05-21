@@ -14,6 +14,7 @@ public class Notification {
     private  Long id;
     private String title;
     private String content;
+    private Long bookingId;
     private boolean isRead=false;
     private LocalDateTime createdAt = LocalDateTime.now();
     @ManyToOne

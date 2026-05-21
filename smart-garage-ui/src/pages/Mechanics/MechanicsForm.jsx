@@ -1,4 +1,4 @@
-import { Modal, Form, Input, Select, Button } from 'antd';
+import { Modal, Form, Input, Select } from 'antd';
 import { useEffect } from 'react';
 
 const MechanicsForm = ({ visible, editingMechanic, onClose, onSave, branches }) => {
@@ -9,9 +9,10 @@ const MechanicsForm = ({ visible, editingMechanic, onClose, onSave, branches }) 
       form.setFieldsValue({
         fullName: editingMechanic.fullName,
         phone: editingMechanic.phone,
+        specialization: editingMechanic.specialization,
         address: editingMechanic.address,
         status: editingMechanic.status,
-        branchId: editingMechanic.branch.id,
+        branchId: editingMechanic.branch?.id,
       });
     } else {
       form.resetFields();
@@ -21,7 +22,7 @@ const MechanicsForm = ({ visible, editingMechanic, onClose, onSave, branches }) 
   const handleOk = async () => {
     try {
       const values = await form.validateFields();
-      onSave(values);
+      await onSave(values);
       form.resetFields();
     } catch (error) {
       console.log('Validation failed:', error);
@@ -36,7 +37,7 @@ const MechanicsForm = ({ visible, editingMechanic, onClose, onSave, branches }) 
   return (
     <Modal
       title={editingMechanic ? 'Sửa thông tin thợ sửa xe' : 'Thêm thợ sửa xe mới'}
-      visible={visible}
+      open={visible}
       onOk={handleOk}
       onCancel={handleCancel}
       width={600}
@@ -77,6 +78,20 @@ const MechanicsForm = ({ visible, editingMechanic, onClose, onSave, branches }) 
           ]}
         >
           <Input placeholder="VD: 0901234567" maxLength={15} />
+        </Form.Item>
+        <Form.Item
+          label="Chuyên môn"
+          name="specialization"
+          rules={[
+            { required: true, whitespace: true, message: 'Vui lòng nhập chuyên môn' },
+            {
+              min: 2,
+              max: 255,
+              message: 'Chuyên môn từ 2 đến 255 ký tự',
+            },
+          ]}
+        >
+          <Input placeholder="VD: Sửa xe điện, động cơ, phanh ABS" maxLength={255} />
         </Form.Item>
 
         <Form.Item

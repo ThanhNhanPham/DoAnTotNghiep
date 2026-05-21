@@ -17,11 +17,13 @@ import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 
 import { useThemePreference } from '@/contexts/theme-preference';
+import { useUnreadNotificationCount } from '@/hooks/use-unread-notification-count';
 import vehicleService from '@/services/vehicleService';
 
 type ProfileData = {
   email: string | null;
   fullName: string | null;
+  phone: string | null;
   address: string | null;
   userId: string | null;
 };
@@ -29,6 +31,7 @@ type ProfileData = {
 const INITIAL_PROFILE: ProfileData = {
   email: null,
   fullName: null,
+  phone: null,
   address: null,
   userId: null,
 };
@@ -36,6 +39,7 @@ const INITIAL_PROFILE: ProfileData = {
 export default function ProfileScreen() {
   const router = useRouter();
   const { colorScheme, preference, setPreference } = useThemePreference();
+  const unreadNotificationCount = useUnreadNotificationCount();
   const [profile, setProfile] = useState<ProfileData>(INITIAL_PROFILE);
   const [vehicleCount, setVehicleCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -47,9 +51,10 @@ export default function ProfileScreen() {
         setIsRefreshing(true);
       }
 
-      const [email, fullName, address, userId] = await Promise.all([
+      const [email, fullName, phone, address, userId] = await Promise.all([
         AsyncStorage.getItem('userEmail'),
         AsyncStorage.getItem('fullName'),
+        AsyncStorage.getItem('userPhone'),
         AsyncStorage.getItem('fullAddress'),
         AsyncStorage.getItem('userId'),
       ]);
@@ -62,6 +67,7 @@ export default function ProfileScreen() {
       setProfile({
         email,
         fullName,
+        phone,
         address,
         userId,
       });
@@ -161,9 +167,23 @@ export default function ProfileScreen() {
               <View style={styles.avatar}>
                 <Text style={styles.avatarText}>{initials || 'SG'}</Text>
               </View>
-              <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-                <Ionicons name="log-out-outline" size={20} color="#FFFFFF" />
-              </TouchableOpacity>
+              <View style={styles.heroActions}>
+                <TouchableOpacity
+                  style={styles.iconButton}
+                  onPress={() => router.push('/notifications')}>
+                  <Ionicons name="notifications-outline" size={20} color="#FFFFFF" />
+                  {unreadNotificationCount > 0 ? (
+                    <View style={styles.notificationBadge}>
+                      <Text style={styles.notificationBadgeText}>
+                        {unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}
+                      </Text>
+                    </View>
+                  ) : null}
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.iconButton} onPress={handleLogout}>
+                  <Ionicons name="log-out-outline" size={20} color="#FFFFFF" />
+                </TouchableOpacity>
+              </View>
             </View>
 
             <Text style={styles.heroName}>{displayName}</Text>
@@ -175,17 +195,7 @@ export default function ProfileScreen() {
             </View>
           </LinearGradient>
 
-          <View style={styles.statsRow}>
-            <StatCard
-              icon="car-sport-outline"
-              label="Xe đã đăng ký"
-              value={String(vehicleCount)}
-              accent={isDark ? '#5EEAD4' : '#0F766E'}
-              background={isDark ? '#0B2A26' : '#ECFDF5'}
-              textColor={palette.text}
-              labelColor={palette.subtext}
-            />
-          </View>
+        
 
           <View style={[styles.card, { backgroundColor: palette.card, shadowOpacity: isDark ? 0 : 0.06 }]}>
             <Text style={[styles.sectionTitle, { color: palette.text }]}>Thông tin tài khoản</Text>
@@ -196,6 +206,7 @@ export default function ProfileScreen() {
               palette={palette}
             />
             <InfoRow icon="person-outline" label="Họ và tên" value={displayName} palette={palette} />
+            <InfoRow icon="call-outline" label="Số điện thoại" value={profile.phone || 'Chưa cập nhật'} palette={palette} />
             <InfoRow icon="shield-outline" label="Vai trò" value={displayRole} palette={palette} />
             <InfoRow
               icon="location-outline"
@@ -214,6 +225,13 @@ export default function ProfileScreen() {
 
           <View style={[styles.card, { backgroundColor: palette.card, shadowOpacity: isDark ? 0 : 0.06 }]}>
             <Text style={[styles.sectionTitle, { color: palette.text }]}>Tiện ích nhanh</Text>
+            <QuickActionRow
+              icon="create-outline"
+              title="Cập nhật thông tin cá nhân"
+              subtitle="Chỉnh sửa họ tên, số điện thoại và địa chỉ của bạn"
+              onPress={() => router.push('/edit-profile')}
+              palette={palette}
+            />
             <QuickActionRow
               icon="car-outline"
               title="Quản lý xe"
@@ -475,13 +493,39 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#FFFFFF',
   },
-  logoutButton: {
+  heroActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  iconButton: {
     width: 42,
     height: 42,
     borderRadius: 14,
     backgroundColor: 'rgba(255,255,255,0.16)',
     justifyContent: 'center',
     alignItems: 'center',
+    position: 'relative',
+  },
+  notificationBadge: {
+    position: 'absolute',
+    top: -5,
+    right: -5,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#EF4444',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  notificationBadgeText: {
+    fontSize: 9,
+    lineHeight: 12,
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
   heroName: {
     marginTop: 16,

@@ -1,0 +1,335 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+.login-container {
+  min-height: 100vh;
+  display: flex;
+  background-color: #f8fafc;
+  overflow: hidden;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+/* LEFT SIDE - VISUAL SECTION */
+.login-visual-section {
+  flex: 1.4;
+  background-color: #0f172a;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  color: white;
+  overflow: hidden;
+  box-shadow: inset -10px 0 30px rgba(0,0,0,0.5);
+}
+
+.visual-background {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  z-index: 1;
+  /* Cinematic movement to bring the static image to life */
+  animation: cinematicPan 20s ease-in-out infinite alternate;
+}
+
+@keyframes cinematicPan {
+  0% { transform: scale(1) translateX(0) translateY(0) rotate(0deg); }
+  50% { transform: scale(1.08) translateX(-15px) translateY(10px) rotate(5deg); }
+  100% { transform: scale(1.15) translateX(15px) translateY(-10px) rotate(-5deg); }
+}
+
+.visual-overlay {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  /* Dark vertical gradient to ensure text readability while letting the car pop */
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.4) 0%, rgba(15, 23, 42, 0.8) 100%);
+  z-index: 5;
+  pointer-events: none;
+}
+
+.visual-content {
+  z-index: 10;
+  text-align: center;
+  /* Shifted upwards to not obscure the beautiful car model */
+  margin-top: -30vh;
+  padding: 0 40px;
+  animation: fadeInDown 1s ease-out;
+}
+
+.visual-content h1 {
+  font-size: 3.5rem;
+  font-weight: 800;
+  margin-bottom: 20px;
+  background: linear-gradient(120deg, #38bdf8 0%, #818cf8 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  text-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
+}
+
+.visual-content p {
+  font-size: 1.25rem;
+  color: #e2e8f0;
+  line-height: 1.6;
+  font-weight: 500;
+  text-shadow: 0 4px 10px rgba(0, 0, 0, 0.8);
+}
+
+/* RIGHT SIDE - FORM SECTION */
+.login-form-section {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  background: white;
+  position: relative;
+  z-index: 10;
+  box-shadow: -20px 0 50px rgba(0, 0, 0, 0.2);
+}
+
+.login-card {
+  width: 100%;
+  max-width: 440px;
+  animation: slideInRight 0.6s ease-out;
+}
+
+/* HEADER & LOGO */
+.login-header {
+  text-align: center;
+  margin-bottom: 48px;
+}
+
+.logo-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 80px;
+  height: 80px;
+  background: linear-gradient(135deg, #38bdf8 0%, #4f46e5 100%);
+  border-radius: 20px;
+  margin-bottom: 24px;
+  box-shadow: 0 10px 25px rgba(79, 70, 229, 0.35);
+}
+
+.logo-icon {
+  color: white;
+  z-index: 2;
+}
+
+.logo-icon-cog {
+  position: absolute;
+  color: rgba(255, 255, 255, 0.5);
+  right: -6px;
+  top: -6px;
+}
+
+.spinning {
+  animation: spin 8s linear infinite;
+}
+
+@keyframes spin {
+  100% { transform: rotate(360deg); }
+}
+
+.login-header h2 {
+  font-size: 32px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 12px 0;
+}
+
+.login-header p {
+  color: #64748b;
+  font-size: 16px;
+  margin: 0;
+}
+
+/* FORM STYLES */
+.login-form .ant-input-affix-wrapper,
+.login-form .ant-input-password {
+  padding: 14px 20px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  background-color: #f8fafc;
+  transition: all 0.3s ease;
+}
+
+.login-form .ant-input-affix-wrapper:hover {
+  border-color: #cbd5e1;
+}
+
+.login-form .ant-input-affix-wrapper:focus,
+.login-form .ant-input-affix-wrapper-focused {
+  border-color: #38bdf8;
+  background-color: white;
+  box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.15);
+}
+
+.login-form .ant-input {
+  background-color: transparent;
+  font-size: 16px;
+}
+
+.login-form .ant-input-prefix {
+  color: #94a3b8;
+  margin-right: 14px;
+  font-size: 18px;
+}
+
+.login-form .ant-form-item {
+  margin-bottom: 28px;
+}
+
+.form-options {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.login-form .ant-checkbox-wrapper {
+  color: #475569;
+  font-size: 15px;
+}
+
+.login-form .ant-checkbox-inner {
+  border-radius: 4px;
+  width: 18px;
+  height: 18px;
+}
+
+.login-form .ant-checkbox-checked .ant-checkbox-inner {
+  background-color: #4f46e5;
+  border-color: #4f46e5;
+}
+
+.forgot-password {
+  color: #4f46e5;
+  font-weight: 600;
+  font-size: 15px;
+  transition: all 0.2s;
+}
+
+.forgot-password:hover {
+  color: #3730a3;
+  text-decoration: underline;
+}
+
+/* BUTTON */
+.login-button {
+  height: 56px;
+  font-size: 18px;
+  font-weight: 600;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #38bdf8 0%, #4f46e5 100%);
+  border: none;
+  box-shadow: 0 10px 20px rgba(79, 70, 229, 0.25);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  margin-top: 10px;
+}
+
+.login-button:hover,
+.login-button:focus {
+  transform: translateY(-3px);
+  box-shadow: 0 15px 30px rgba(79, 70, 229, 0.35);
+  color: white;
+}
+
+.login-button:active {
+  transform: translateY(0);
+}
+
+.login-button.ant-btn-loading {
+  opacity: 0.9;
+}
+
+/* FOOTER */
+.login-footer {
+  text-align: center;
+  margin-top: 40px;
+  color: #64748b;
+  font-size: 15px;
+}
+
+.login-footer a {
+  color: #4f46e5;
+  font-weight: 600;
+  transition: color 0.3s;
+}
+
+.login-footer a:hover {
+  color: #3730a3;
+}
+
+/* Error messages */
+.login-form .ant-form-item-explain-error {
+  font-size: 14px;
+  margin-top: 6px;
+  color: #ef4444;
+}
+
+/* ANIMATIONS */
+@keyframes fadeInDown {
+  from { opacity: 0; transform: translateY(-40px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(50px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+/* RESPONSIVE */
+@media (max-width: 1024px) {
+  .login-visual-section {
+    flex: 1;
+  }
+  .visual-content h1 {
+    font-size: 2.5rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .login-container {
+    flex-direction: column;
+  }
+  
+  .login-visual-section {
+    display: none;
+  }
+  
+  .login-form-section {
+    padding: 24px;
+    background: #f8fafc;
+  }
+  
+  .login-card {
+    padding: 40px 32px;
+    background: white;
+    border-radius: 24px;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.08); 
+  }
+}
+
+@media (max-width: 480px) {
+  .login-card {
+    padding: 32px 24px;
+  }
+  
+  .logo-wrapper {
+    width: 64px;
+    height: 64px;
+    border-radius: 16px;
+  }
+  
+  .login-header h2 {
+    font-size: 26px;
+  }
+  
+  .login-button {
+    height: 50px;
+    font-size: 16px;
+  }
+}

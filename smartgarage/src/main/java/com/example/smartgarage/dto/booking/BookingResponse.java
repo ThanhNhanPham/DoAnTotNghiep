@@ -29,6 +29,7 @@ public class BookingResponse {
     private String vehicleName; // VD: "Honda Sh 150i"
     private String vehicleImageUrl;
     private String licensePlate;
+    private Long branchId;
     private String branchName;
     private String mechanicName;
     private List<String> serviceNames;

@@ -81,6 +81,27 @@
   color: #1f1f1f;
 }
 
+.vehicle-image-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.vehicle-thumbnail {
+  border-radius: 4px;
+  object-fit: cover;
+}
+
+.vehicle-image-empty {
+  color: #8c8c8c;
+  font-size: 12px;
+}
+
+.vehicle-detail-image {
+  border-radius: 6px;
+  object-fit: cover;
+}
+
 .text-right {
   text-align: right;
 }

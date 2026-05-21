@@ -1,8 +1,11 @@
 package com.example.smartgarage.repository;
 
 import com.example.smartgarage.entity.Part;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -12,6 +15,22 @@ public interface PartRepository extends JpaRepository<Part,Long> {
     // 1. Tìm kiếm linh kiện theo tên (hỗ trợ tính năng tìm kiếm ở giao diện)
     List<Part> findByNameContainingIgnoreCase(String name);
 
+    @Query("""
+            SELECT p FROM Part p
+            WHERE (:keyword IS NULL OR :keyword = '' OR
+                LOWER(COALESCE(p.name, '')) LIKE LOWER(CONCAT('%', :keyword, '%')) OR
+                LOWER(COALESCE(p.description, '')) LIKE LOWER(CONCAT('%', :keyword, '%'))
+            )
+            AND (
+                :stockStatus IS NULL OR
+                (:stockStatus = 'in-stock' AND p.quantity > 0) OR
+                (:stockStatus = 'out-of-stock' AND p.quantity = 0)
+            )
+            """)
+    Page<Part> searchParts(@Param("keyword") String keyword,
+                           @Param("stockStatus") String stockStatus,
+                           Pageable pageable);
+
     // 2. Thống kê các linh kiện sắp hết hàng (số lượng thấp hơn mức quy định)
     // Giúp Admin biết để nhập thêm hàng
     @Query("SELECT p FROM Part p WHERE p.quantity < :threshold")
@@ -19,6 +38,8 @@ public interface PartRepository extends JpaRepository<Part,Long> {
 
     // 3. Lấy danh sách linh kiện còn hàng (để hiển thị khi chọn cho đơn hàng)
     List<Part> findByQuantityGreaterThan(int quantity);
+    List<Part> findByBranchId(Long branchId);
     // 4. Kiểm tra tồn tại theo tên (Hữu ích khi thêm mới để tránh trùng lặp)
     boolean existsByNameIgnoreCase(String name);
+    boolean existsByNameIgnoreCaseAndIdNot(String name, Long id);
 }

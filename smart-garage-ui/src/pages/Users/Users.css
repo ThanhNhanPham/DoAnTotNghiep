@@ -103,16 +103,35 @@
   color: #8c8c8c;
 }
 
+.user-detail-name {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-weight: 600;
+}
+
 /* Cell with icon */
 .cell-with-icon {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
+  flex-wrap: nowrap;
+  overflow-wrap: break-word;
+}
+
+.email-cell {
+  word-break: break-all;
+}
+
+.no-wrap-text {
+  white-space: nowrap;
+  word-break: keep-all;
 }
 
 .cell-with-icon svg {
   color: #1890ff;
   flex-shrink: 0;
+  margin-top: 3px;
 }
 
 /* Table styling */

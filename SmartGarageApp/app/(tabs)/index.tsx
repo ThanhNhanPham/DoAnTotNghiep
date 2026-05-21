@@ -1,38 +1,39 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, ScrollView, SafeAreaView, Dimensions, Alert, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useUnreadNotificationCount } from '@/hooks/use-unread-notification-count';
+import bookingService from '@/services/bookingService';
+import vehicleService from '@/services/vehicleService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export default function HomeScreen() {
   const router = useRouter();
+  const unreadNotificationCount = useUnreadNotificationCount();
   const [userData, setUserData] = useState<{
     email: string | null;
     fullName: string | null;
-    role: string | null;
     address: string | null;
   }>({
     email: null,
     fullName: null,
-    role: null,
     address: null,
   });
   const [isAddressExpanded, setIsAddressExpanded] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [vehicleCount, setVehicleCount] = useState(0);
+  const [bookingCount, setBookingCount] = useState(0);
 
-  useEffect(() => {
-    fetchUserData();
-  }, []);
-
-  const fetchUserData = async () => {
+  const fetchUserData = useCallback(async () => {
     try {
       const email = await AsyncStorage.getItem('userEmail');
       const fullName = await AsyncStorage.getItem('fullName');
-      const role = await AsyncStorage.getItem('userRole');
       const address = await AsyncStorage.getItem('fullAddress');
+      const userId = await AsyncStorage.getItem('userId');
 
       if (!email) {
         // Nếu không có email (chưa đăng nhập), chuyển về trang login
@@ -40,13 +41,35 @@ export default function HomeScreen() {
         return;
       }
 
-      setUserData({ email, fullName, role, address });
+      setUserData({ email, fullName, address });
+
+      if (userId) {
+        try {
+          const [vehicles, bookings] = await Promise.all([
+            vehicleService.getVehiclesByUserId(Number(userId)),
+            bookingService.getMyBookings(),
+          ]);
+
+          setVehicleCount(Array.isArray(vehicles) ? vehicles.filter((vehicle) => vehicle.isActive !== false).length : 0);
+          setBookingCount(Array.isArray(bookings) ? bookings.length : 0);
+        } catch (summaryError) {
+          console.error('Error fetching home summary:', summaryError);
+          setVehicleCount(0);
+          setBookingCount(0);
+        }
+      }
     } catch (error) {
       console.error('Error fetching user data:', error);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [router]);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchUserData();
+    }, [fetchUserData])
+  );
 
   const handleLogout = () => {
     Alert.alert(
@@ -89,21 +112,29 @@ export default function HomeScreen() {
               <Text style={styles.greetingText}>Xin chào,</Text>
               <Text style={styles.userNameText}>{userData.fullName || 'Người dùng'}</Text>
             </View>
-            <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-              <Ionicons name="log-out-outline" size={24} color="#FFFFFF" />
-            </TouchableOpacity>
+            <View style={styles.headerActions}>
+              <TouchableOpacity
+                style={styles.actionButton}
+                onPress={() => router.push('/notifications')}>
+                <Ionicons name="notifications-outline" size={22} color="#FFFFFF" />
+                {unreadNotificationCount > 0 ? (
+                  <View style={styles.notificationBadge}>
+                    <Text style={styles.notificationBadgeText}>
+                      {unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}
+                    </Text>
+                  </View>
+                ) : null}
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.actionButton} onPress={handleLogout}>
+                <Ionicons name="log-out-outline" size={24} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
           </View>
 
           <View style={styles.roleBadgeContainer}>
             <View style={styles.roleBadge}>
-              <Ionicons
-                name={userData.role === 'ADMIN' ? 'shield-checkmark' : 'person'}
-                size={14}
-                color="#6366F1"
-              />
-              <Text style={styles.roleText}>
-                {userData.role === 'ADMIN' ? 'Quản trị viên' : 'Khách hàng'}
-              </Text>
+              <Ionicons name="person" size={14} color="#6366F1" />
+              <Text style={styles.roleText}>Khách hàng</Text>
             </View>
           </View>
         </LinearGradient>
@@ -132,9 +163,10 @@ export default function HomeScreen() {
             <MenuCard
               icon="car-sport"
               title="Xe của tôi"
-              subtitle="2 xe đang đăng ký"
+              subtitle={vehicleCount > 0 ? `${vehicleCount} xe đang đăng ký` : 'Chưa đăng ký xe'}
               color="#EEF2FF"
               iconColor="#6366F1"
+              onPress={() => router.push('/(tabs)/vehicles')}
             />
             <MenuCard
               icon="calendar"
@@ -142,13 +174,15 @@ export default function HomeScreen() {
               subtitle="Đặt lịch sửa chữa"
               color="#ECFDF5"
               iconColor="#10B981"
+              onPress={() => router.push('/(tabs)/explore')}
             />
             <MenuCard
               icon="time"
               title="Lịch sử"
-              subtitle="15 lượt sửa chữa"
+              subtitle={bookingCount > 0 ? `${bookingCount} lịch hẹn` : 'Chưa có lịch hẹn'}
               color="#FFF7ED"
               iconColor="#F59E0B"
+              onPress={() => router.push('/booking-history')}
             />
             <MenuCard
               icon="settings"
@@ -156,6 +190,7 @@ export default function HomeScreen() {
               subtitle="Tài khoản & App"
               color="#F5F3FF"
               iconColor="#8B5CF6"
+              onPress={() => router.push('/settings')}
             />
           </View>
 
@@ -179,9 +214,9 @@ export default function HomeScreen() {
   );
 }
 
-function MenuCard({ icon, title, subtitle, color, iconColor }: any) {
+function MenuCard({ icon, title, subtitle, color, iconColor, onPress }: any) {
   return (
-    <TouchableOpacity style={[styles.menuCard, { backgroundColor: color }]}>
+    <TouchableOpacity style={[styles.menuCard, { backgroundColor: color }]} onPress={onPress} activeOpacity={0.85}>
       <View style={[styles.iconContainer, { backgroundColor: '#FFFFFF' }]}>
         <Ionicons name={icon} size={24} color={iconColor} />
       </View>
@@ -228,13 +263,39 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     marginTop: 4,
   },
-  logoutButton: {
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  actionButton: {
     width: 44,
     height: 44,
     borderRadius: 12,
     backgroundColor: 'rgba(255,255,255,0.2)',
     justifyContent: 'center',
     alignItems: 'center',
+    position: 'relative',
+  },
+  notificationBadge: {
+    position: 'absolute',
+    top: -5,
+    right: -5,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#EF4444',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  notificationBadgeText: {
+    fontSize: 9,
+    lineHeight: 12,
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
   roleBadgeContainer: {
     marginTop: 20,

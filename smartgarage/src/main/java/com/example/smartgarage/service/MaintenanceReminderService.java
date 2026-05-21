@@ -25,7 +25,7 @@ public class MaintenanceReminderService {
         for (Booking booking : listReminders) {
             String htmlContent = templateService.buildMaintenanceReminderEmail(
                     booking.getUser().getFullName(),
-                    booking.getMotorbike().getModel() // Giả sử bạn có field này trong Booking
+                    booking.getVehicle().getModel() // Giả sử bạn có field này trong Booking
             );
 
             emailService.sendHtmlEmail(

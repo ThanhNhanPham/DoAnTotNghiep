@@ -6,17 +6,16 @@ import com.example.smartgarage.service.BookingService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 
 @Tag(name = "Admin Booking API", description = "Quản lý lịch hẹn phía quản trị")
 @RestController
 @RequestMapping("/api/v1/admin/bookings")
 @CrossOrigin("*")
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize("hasAnyRole('ADMIN', 'SUPERADMIN')")
 public class AdminBookingController {
 
     private final BookingService bookingService;
@@ -27,8 +26,12 @@ public class AdminBookingController {
 
     @Operation(summary = "Admin xem toàn bộ lịch hẹn", description = "Có thể lọc theo status như: PENDING, CONFIRMED, COMPLETED, CANCELLED")
     @GetMapping
-    public ResponseEntity<List<BookingResponse>> getAllBookings(@RequestParam(required = false) String status) {
-        return ResponseEntity.ok(bookingService.getAllBookings(status));
+    public ResponseEntity<Page<BookingResponse>> getAllBookings(@RequestParam(required = false) String status,
+                                                                @RequestParam(required = false) Long branchId,
+                                                                @RequestParam(required = false) String keyword,
+                                                                @RequestParam(defaultValue = "0") int page,
+                                                                @RequestParam(defaultValue = "10") int size) {
+        return ResponseEntity.ok(bookingService.getAllBookings(status, branchId, keyword, page, size));
     }
 
     @Operation(summary = "Admin xem chi tiết lịch hẹn")
@@ -48,6 +51,25 @@ public class AdminBookingController {
     @PatchMapping("/{bookingId}/complete")
     public ResponseEntity<BookingResponse> completeBooking(@PathVariable Long bookingId) {
         return ResponseEntity.ok(bookingService.completeBooking(bookingId));
+    }
+
+    @Operation(summary = "Admin xác nhận khách hàng đã tới cửa hàng")
+    @PatchMapping("/{bookingId}/arrive")
+    public ResponseEntity<BookingResponse> markArrived(@PathVariable Long bookingId) {
+        return ResponseEntity.ok(bookingService.markBookingArrived(bookingId));
+    }
+
+    @Operation(summary = "Admin bắt đầu xử lý xe")
+    @PatchMapping("/{bookingId}/start")
+    public ResponseEntity<BookingResponse> startBooking(@PathVariable Long bookingId) {
+        return ResponseEntity.ok(bookingService.startBooking(bookingId));
+    }
+
+    @Operation(summary = "Admin đổi thợ phụ trách booking")
+    @PatchMapping("/{bookingId}/reassign-mechanic")
+    public ResponseEntity<BookingResponse> reassignMechanic(@PathVariable Long bookingId,
+                                                            @Valid @RequestBody ReassignMechanicRequest request) {
+        return ResponseEntity.ok(bookingService.reassignMechanic(bookingId, request.getMechanicId()));
     }
 
     @Operation(summary = "Admin hủy lịch hẹn")

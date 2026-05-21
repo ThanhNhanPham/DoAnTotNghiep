@@ -1,10 +1,12 @@
 package com.example.smartgarage.controller;
 
 import com.example.smartgarage.entity.Vehicle;
+import com.example.smartgarage.enums.VehicleType;
 import com.example.smartgarage.service.VehicleService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.bind.annotation.*;
@@ -25,10 +27,22 @@ public class VehicleController {
 
     @Operation(summary="admin lấy danh sách xe của hệ thống")
     @GetMapping
-    public ResponseEntity<List<Vehicle>> getAllVehicles() {
-        return ResponseEntity.ok(vehicleService.getAllVehicles());
+    public ResponseEntity<Page<Vehicle>> getAllVehicles(@RequestParam(required = false) Long userId,
+                                                        @RequestParam(required = false) VehicleType type,
+                                                        @RequestParam(required = false) Boolean isActive,
+                                                        @RequestParam(required = false) String brand,
+                                                        @RequestParam(required = false) String keyword,
+                                                        @RequestParam(defaultValue = "0") int page,
+                                                        @RequestParam(defaultValue = "10") int size) {
+        return ResponseEntity.ok(vehicleService.getAllVehicles(userId, type, isActive, brand, keyword, page, size));
     }
 
+    @Operation(summary="Lấy thông tin xe theo id")
+    @GetMapping("/{id}")
+    public ResponseEntity<Vehicle> getVehicleById(@PathVariable Long id) {
+        Vehicle vehicle = vehicleService.getVehicleById(id);
+        return vehicle != null ? ResponseEntity.ok(vehicle) : ResponseEntity.notFound().build();
+    }
     @Operation(summary="khách hàng cập nhật thông tin xe")
     @PutMapping("/{id}")
     public ResponseEntity<?> updateVehicle(@PathVariable Long id, @Valid @RequestBody Vehicle vehicleDetails) {
