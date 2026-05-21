@@ -67,7 +67,7 @@ AI Engine: 	Google Gemini API (v3 Flash/Pro)
     <td align="center">
       <img width="300" alt="Màn hình Mobile 5" src="https://github.com/user-attachments/assets/8bdc180b-1c29-48d5-aee5-e66c5eb8abb2" />
       <br>
-      <em>Trang chủ</em>
+      <em>Lịch sử đặt lịch</em>
     </td>
         <td align="center">
       <img width="300" alt="Màn hình Mobile 6" src="https://github.com/user-attachments/assets/46f856ed-6551-4b9c-abf7-f9ebe9929a90" />
