@@ -119,6 +119,9 @@ public class ReviewService {
 
         Notification notify = new Notification();
         notify.setUser(review.getUser());
+        if (review.getBooking() != null) {
+            notify.setBookingId(review.getBooking().getId());
+        }
         notify.setTitle("Gara đã phản hồi đánh giá của bạn");
         notify.setContent("Phản hồi: " + reply.trim());
         notificationRepository.save(notify);

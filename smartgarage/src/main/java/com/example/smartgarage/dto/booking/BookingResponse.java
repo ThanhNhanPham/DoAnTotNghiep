@@ -1,6 +1,7 @@
 package com.example.smartgarage.dto.booking;
 
 import com.example.smartgarage.enums.BookingStatus;
+import com.example.smartgarage.enums.MembershipTier;
 import com.example.smartgarage.enums.PaymentMethod;
 import com.example.smartgarage.enums.PaymentStatus;
 import lombok.AllArgsConstructor;
@@ -35,6 +36,13 @@ public class BookingResponse {
     private List<String> serviceNames;
     private List<String> partNames;
     private String cancelReason;
+    private BigDecimal serviceAmount;
+    private BigDecimal partAmount;
+    private MembershipTier membershipTierApplied;
+    private BigDecimal membershipDiscountRate;
+    private BigDecimal membershipDiscountAmount;
+    private Integer pointsEarned;
+    private BigDecimal finalAmount;
     private BigDecimal totalAmount;
     private PaymentMethod paymentMethod;
     private PaymentStatus paymentStatus;

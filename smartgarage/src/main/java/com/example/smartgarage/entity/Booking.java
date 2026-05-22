@@ -1,6 +1,7 @@
 package com.example.smartgarage.entity;
 
 import com.example.smartgarage.enums.BookingStatus;
+import com.example.smartgarage.enums.MembershipTier;
 import com.example.smartgarage.enums.PaymentMethod;
 import com.example.smartgarage.enums.PaymentStatus;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
@@ -95,6 +96,33 @@ public class Booking {
     @Column(name = "payment_status", nullable = false, columnDefinition = "varchar(255) default 'UNPAID'")
     private PaymentStatus paymentStatus = PaymentStatus.UNPAID;
 
+    @Column(name = "service_amount", precision = 15, scale = 2)
+    private BigDecimal serviceAmount;
+
+    @Column(name = "part_amount", precision = 15, scale = 2)
+    private BigDecimal partAmount;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "membership_tier_applied", length = 20)
+    private MembershipTier membershipTierApplied;
+
+    @Column(name = "membership_discount_rate", precision = 5, scale = 2)
+    private BigDecimal membershipDiscountRate;
+
+    @Column(name = "membership_discount_amount", precision = 15, scale = 2)
+    private BigDecimal membershipDiscountAmount;
+
+    @Builder.Default
+    @Column(name = "points_earned", nullable = false)
+    private Integer pointsEarned = 0;
+
+    @Column(name = "final_amount", precision = 15, scale = 2)
+    private BigDecimal finalAmount;
+
+    @Builder.Default
+    @Column(name = "points_rewarded", nullable = false)
+    private Boolean pointsRewarded = false;
+
     @PrePersist
     public void applyPaymentDefaults() {
         if (status == null) {
@@ -108,6 +136,12 @@ public class Booking {
         }
         if (createdAt == null) {
             createdAt = LocalDateTime.now();
+        }
+        if (pointsEarned == null) {
+            pointsEarned = 0;
+        }
+        if (pointsRewarded == null) {
+            pointsRewarded = false;
         }
     }
 

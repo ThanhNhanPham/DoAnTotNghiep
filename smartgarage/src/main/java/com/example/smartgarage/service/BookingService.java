@@ -9,6 +9,7 @@ import com.example.smartgarage.dto.booking.UpdateBookingRequest;
 import com.example.smartgarage.entity.*;
 import com.example.smartgarage.enums.BookingStatus;
 import com.example.smartgarage.enums.MechanicStatus;
+import com.example.smartgarage.enums.MembershipTier;
 import com.example.smartgarage.enums.PaymentMethod;
 import com.example.smartgarage.enums.PaymentStatus;
 import com.example.smartgarage.enums.Role;
@@ -26,7 +27,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import com.deepoove.poi.XWPFTemplate;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -40,13 +40,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
-
-
-import org.springframework.core.io.ClassPathResource;
-import org.springframework.core.io.Resource;
-
-
-import java.io.InputStream;
 
 @Service
 public class BookingService {
@@ -73,6 +66,7 @@ public class BookingService {
     @Autowired private EmailService emailService;
     @Autowired private PartRepository partRepository;
     @Autowired private NotificationRepository notificationRepository;
+    @Autowired private MembershipService membershipService;
     @Transactional
     public Booking createBooking(String currentUserEmail, BookingRequest request) {
         // 1. Lấy User từ Email (đã xác thực qua JWT), không dùng ID từ Request để tránh giả mạo
@@ -119,7 +113,7 @@ public class BookingService {
         booking.setPaymentStatus(paymentMethod == PaymentMethod.MOMO ? PaymentStatus.PENDING : PaymentStatus.UNPAID);
 
         applyServicesToBooking(booking, request.getServiceIds(), vehicle);
-        booking.setTotalAmount(calculateBookingTotal(booking));
+        applyMembershipPricing(booking);
 
         Booking savedBooking = bookingRepository.save(booking);
         notifyAdminsAboutNewBooking(savedBooking);
@@ -304,12 +298,24 @@ public class BookingService {
                 : java.util.Collections.emptyList();
 
         // 1. Tính tiền dịch vụ (Service)
-        BigDecimal servicesTotal = calculateServicesTotal(bookedServices);
-
-    // 2. Tính tiền linh kiện (Part) - Nếu danh sách null hoặc trống thì mặc định là 0
-        BigDecimal partsTotal = calculatePartsTotal(bookedParts);
-    // 3. Tổng cộng cuối cùng
-        BigDecimal finalTotal = servicesTotal.add(partsTotal);
+        BigDecimal servicesTotal = booking.getServiceAmount() != null
+                ? booking.getServiceAmount()
+                : calculateServicesTotal(bookedServices);
+        BigDecimal partsTotal = booking.getPartAmount() != null
+                ? booking.getPartAmount()
+                : calculatePartsTotal(bookedParts);
+        MembershipTier tierApplied = booking.getMembershipTierApplied() != null
+                ? booking.getMembershipTierApplied()
+                : resolveBookingTier(booking);
+        BigDecimal discountRate = booking.getMembershipDiscountRate() != null
+                ? booking.getMembershipDiscountRate()
+                : membershipService.resolveDiscountRate(tierApplied);
+        BigDecimal discountAmount = booking.getMembershipDiscountAmount() != null
+                ? booking.getMembershipDiscountAmount()
+                : calculateMembershipDiscountAmount(servicesTotal, discountRate);
+        BigDecimal finalTotal = booking.getFinalAmount() != null
+                ? booking.getFinalAmount()
+                : servicesTotal.add(partsTotal).subtract(discountAmount);
         // 2. Map dữ liệu vào DTO
         return BookingResponse.builder()
                 .id(booking.getId())
@@ -339,6 +345,13 @@ public class BookingService {
                         .map(bp -> bp.getPart().getName())
                         .collect(Collectors.toList()))
                 .cancelReason(booking.getCancelReason())
+                .serviceAmount(servicesTotal)
+                .partAmount(partsTotal)
+                .membershipTierApplied(tierApplied)
+                .membershipDiscountRate(discountRate)
+                .membershipDiscountAmount(discountAmount)
+                .pointsEarned(booking.getPointsEarned())
+                .finalAmount(finalTotal)
                 .totalAmount(finalTotal)
                 .paymentMethod(booking.getPaymentMethod())
                 .paymentStatus(booking.getPaymentStatus())
@@ -624,7 +637,7 @@ public class BookingService {
             booking.setNote(request.getNote());
         }
 
-        booking.setTotalAmount(calculateBookingTotal(booking));
+        applyMembershipPricing(booking);
         return mapToResponse(bookingRepository.save(booking));
     }
 
@@ -780,8 +793,8 @@ public class BookingService {
         }
 
         // 2. Tính toán tổng tiền (Dịch vụ + Linh kiện)
-        BigDecimal finalTotal = calculateBookingTotal(booking);
-        booking.setTotalAmount(finalTotal);
+        applyMembershipPricing(booking);
+        BigDecimal finalTotal = booking.getFinalAmount() != null ? booking.getFinalAmount() : booking.getTotalAmount();
 
         // 3. Cập nhật trạng thái Booking và Giải phóng thợ
         booking.setStatus(BookingStatus.COMPLETED);
@@ -873,32 +886,6 @@ public class BookingService {
         emailService.sendHtmlEmail(booking.getUser().getEmail(), "Hóa đơn hoàn tất - " + licensePlate, htmlContent);
     }
 
-    public byte[] exportInvoiceWord(Long bookingId) throws IOException {
-        Booking booking = bookingRepository.findById(bookingId)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy đơn hàng"));
-
-        // 1. Chuẩn bị dữ liệu để điền vào template
-        Map<String, Object> data = new HashMap<>();
-        data.put("customerName", booking.getUser() != null ? booking.getUser().getFullName() : "Khách vãng lai");
-        data.put("licensePlate", booking.getVehicle() != null ? booking.getVehicle().getLicensePlate() : "N/A");
-        data.put("date", LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy")));
-
-        // Tính tổng tiền
-        BigDecimal total = booking.getBookedServices().stream()
-                .map(BookedService::getPriceAtBooking)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-        data.put("totalPrice", total + " VNĐ");
-        // 2. Đọc template và đổ dữ liệu
-        Resource resource = new ClassPathResource("templates/invoice_template.docx");
-        try (InputStream is = resource.getInputStream();
-             ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-
-            XWPFTemplate template = XWPFTemplate.compile(is).render(data);
-            template.write(out);
-            template.close();
-            return out.toByteArray();
-        }
-    }
     @Transactional
     public BookingResponse addPartToBooking(Long bookingId, Long partId, int quantity) {
         Booking booking = bookingRepository.findById(bookingId)
@@ -923,7 +910,7 @@ public class BookingService {
         });
         bookedPart.setQuantity(bookedPart.getQuantity() + quantity);
         catalogPart.setQuantity(catalogPart.getQuantity() - quantity);
-        booking.setTotalAmount(calculateBookingTotal(booking));
+        applyMembershipPricing(booking);
         partRepository.save(catalogPart); // Lưu lại số lượng kho mới
         bookingRepository.save(booking);
         return mapToResponse(booking);
@@ -1009,14 +996,57 @@ public class BookingService {
         booking.setBookedServices(bookedServices);
     }
 
+    private void applyMembershipPricing(Booking booking) {
+        BigDecimal serviceAmount = calculateServiceAmount(booking);
+        BigDecimal partAmount = calculatePartAmount(booking);
+        MembershipTier tierApplied = resolveBookingTier(booking);
+        BigDecimal discountRate = membershipService.resolveDiscountRate(tierApplied);
+        BigDecimal discountAmount = calculateMembershipDiscountAmount(serviceAmount, discountRate);
+        BigDecimal finalAmount = serviceAmount.add(partAmount).subtract(discountAmount);
+
+        booking.setServiceAmount(serviceAmount);
+        booking.setPartAmount(partAmount);
+        booking.setMembershipTierApplied(tierApplied);
+        booking.setMembershipDiscountRate(discountRate);
+        booking.setMembershipDiscountAmount(discountAmount);
+        booking.setFinalAmount(finalAmount);
+        booking.setTotalAmount(finalAmount);
+    }
+
+    private MembershipTier resolveBookingTier(Booking booking) {
+        if (booking.getUser() == null) {
+            return MembershipTier.REGULAR;
+        }
+        if (booking.getUser().getMembershipTier() != null) {
+            return booking.getUser().getMembershipTier();
+        }
+        int loyaltyPoints = booking.getUser().getLoyaltyPoints() != null ? booking.getUser().getLoyaltyPoints() : 0;
+        return membershipService.resolveTier(loyaltyPoints);
+    }
+
+    private BigDecimal calculateMembershipDiscountAmount(BigDecimal serviceAmount, BigDecimal discountRate) {
+        BigDecimal normalizedServiceAmount = serviceAmount != null ? serviceAmount : BigDecimal.ZERO;
+        BigDecimal normalizedDiscountRate = discountRate != null ? discountRate : BigDecimal.ZERO;
+        return normalizedServiceAmount.multiply(normalizedDiscountRate);
+    }
+
     private BigDecimal calculateBookingTotal(Booking booking) {
+        applyMembershipPricing(booking);
+        return booking.getFinalAmount();
+    }
+
+    private BigDecimal calculateServiceAmount(Booking booking) {
         List<BookedService> bookedServices = booking.getBookedServices() != null
                 ? booking.getBookedServices()
                 : java.util.Collections.emptyList();
+        return calculateServicesTotal(bookedServices);
+    }
+
+    private BigDecimal calculatePartAmount(Booking booking) {
         List<BookedPart> bookedParts = booking.getBookedParts() != null
                 ? booking.getBookedParts()
                 : java.util.Collections.emptyList();
-        return calculateServicesTotal(bookedServices).add(calculatePartsTotal(bookedParts));
+        return calculatePartsTotal(bookedParts);
     }
 
     private BigDecimal calculateServicesTotal(List<BookedService> bookedServices) {
@@ -1093,7 +1123,7 @@ public class BookingService {
 
         bookedPart.setQuantity(quantity);
         catalogPart.setQuantity(catalogPart.getQuantity() - delta);
-        booking.setTotalAmount(calculateBookingTotal(booking));
+        applyMembershipPricing(booking);
 
         partRepository.save(catalogPart);
         Booking savedBooking = bookingRepository.save(booking);
@@ -1121,7 +1151,7 @@ public class BookingService {
         catalogPart.setQuantity(catalogPart.getQuantity() + bookedPart.getQuantity());
 
         booking.getBookedParts().remove(bookedPart);
-        booking.setTotalAmount(calculateBookingTotal(booking));
+        applyMembershipPricing(booking);
 
         partRepository.save(catalogPart);
         Booking savedBooking = bookingRepository.save(booking);
@@ -1158,7 +1188,7 @@ public class BookingService {
                 .priceAtBooking(catalogService.getPrice())
                 .build();
         booking.getBookedServices().add(bookedService);
-        booking.setTotalAmount(calculateBookingTotal(booking));
+        applyMembershipPricing(booking);
         Booking savedBooking = bookingRepository.save(booking);
         notifyCustomerAboutAdminBookingUpdate(
                 savedBooking,
@@ -1176,7 +1206,7 @@ public class BookingService {
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy đơn hàng"));
         ensureBookingEditableForAdmin(booking, "Không thể cập nhật dịch vụ của đơn hàng đã hoàn tất hoặc đã hủy.");
         applyServicesToBooking(booking, serviceIds, booking.getVehicle());
-        booking.setTotalAmount(calculateBookingTotal(booking));
+        applyMembershipPricing(booking);
         Booking savedBooking = bookingRepository.save(booking);
         notifyCustomerAboutAdminBookingUpdate(
                 savedBooking,
@@ -1203,7 +1233,7 @@ public class BookingService {
         }
 
         booking.getBookedServices().remove(bookedService);
-        booking.setTotalAmount(calculateBookingTotal(booking));
+        applyMembershipPricing(booking);
         Booking savedBooking = bookingRepository.save(booking);
         notifyCustomerAboutAdminBookingUpdate(
                 savedBooking,
