@@ -110,7 +110,7 @@ public class BookingService {
         booking.setStatus(BookingStatus.PENDING);
         PaymentMethod paymentMethod = request.getPaymentMethod() != null ? request.getPaymentMethod() : PaymentMethod.CASH;
         booking.setPaymentMethod(paymentMethod);
-        booking.setPaymentStatus(paymentMethod == PaymentMethod.MOMO ? PaymentStatus.PENDING : PaymentStatus.UNPAID);
+        booking.setPaymentStatus(PaymentStatus.UNPAID);
 
         applyServicesToBooking(booking, request.getServiceIds(), vehicle);
         applyMembershipPricing(booking);
@@ -203,6 +203,28 @@ public class BookingService {
                     .append(booking.getArrivalSlotEnd().format(formatter));
         }
 
+        return summary.toString();
+    }
+    private String buildBookingSummarySuccess(Booking booking) {
+        String licensePlate = booking.getVehicle() != null && booking.getVehicle().getLicensePlate() != null
+                ? booking.getVehicle().getLicensePlate()
+                : "chưa rõ biển số";
+        String branchName = booking.getBranch() != null && booking.getBranch().getName() != null
+                ? booking.getBranch().getName()
+                : "chi nhánh";
+
+        StringBuilder summary = new StringBuilder("Xe của bạn với biển số")
+                .append(licensePlate)
+                .append(" tại ")
+                .append(branchName);
+
+        if (booking.getArrivalSlotStart() != null && booking.getArrivalSlotEnd() != null) {
+            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
+            summary.append(", thời gian ")
+                    .append(booking.getArrivalSlotStart().format(formatter))
+                    .append(" - ")
+                    .append(booking.getArrivalSlotEnd().format(formatter));
+        }
         return summary.toString();
     }
 
@@ -329,6 +351,7 @@ public class BookingService {
                 .customerPhone(booking.getUser() != null ? booking.getUser().getPhone() : "N/A")
                 .vehicleName(booking.getVehicle() != null ?
                         booking.getVehicle().getBrand() + " " + booking.getVehicle().getModel() : "N/A")
+                .vehicleType(booking.getVehicle() != null ? booking.getVehicle().getType() : null)
                 .vehicleImageUrl(booking.getVehicle() != null ? booking.getVehicle().getImageUrl() : null)
                 .licensePlate(booking.getVehicle() != null ? booking.getVehicle().getLicensePlate() : "N/A")
                 .branchId(booking.getBranch() != null ? booking.getBranch().getId() : null)
@@ -404,6 +427,9 @@ public class BookingService {
         // Kiểm tra nếu đơn hàng đã được xác nhận hoặc đã hoàn thành trước đó
         if (booking.getStatus() != BookingStatus.PENDING) {
             throw new ConflictException("Đơn hàng này không ở trạng thái chờ (PENDING) để xác nhận.");
+        }
+            if (booking.getArrivalSlotEnd() != null && booking.getArrivalSlotEnd().isBefore(LocalDateTime.now())) {
+            throw new ConflictException("Booking này đã quá hạn xác nhận vì lịch hẹn đã kết thúc.");
         }
 
         // 2. Tìm Thợ sửa xe (Mechanic)
@@ -677,109 +703,109 @@ public class BookingService {
         style.setBorderBottom(BorderStyle.THIN);
         return style;
     }
-
-    public byte[] exportBookingsToExcel() throws IOException {
-        List<Booking> bookings = bookingRepository.findAll();
-        try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-            Sheet sheet = workbook.createSheet("Danh sách lịch hẹn");
-            // 1. Tạo Styles
-            CellStyle headerStyle = createHeaderStyle(workbook);
-            CellStyle dateStyle = workbook.createCellStyle();
-            dateStyle.setDataFormat(workbook.createDataFormat().getFormat("dd/MM/yyyy HH:mm"));
-
-            CellStyle moneyStyle = workbook.createCellStyle();
-            moneyStyle.setDataFormat(workbook.createDataFormat().getFormat("#,##0")); // Định dạng phân cách hàng nghìn
-
-            // 1. Tạo Header (Dòng tiêu đề)
-            Row headerRow = sheet.createRow(0);
-            String[] columns = {"ID", "Khách hàng","Số điện thoại", "Biển số", "Ngày hẹn", "Trạng thái", "Tổng tiền"};
-
-            // Style cho Header (In đậm, nền xám)
-            Font font = workbook.createFont();
-            font.setBold(true);
-            headerStyle.setFont(font);
-            headerStyle.setFillForegroundColor(IndexedColors.GREY_25_PERCENT.getIndex());
-            headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
-
-            for (int i = 0; i < columns.length; i++) {
-                Cell cell = headerRow.createCell(i);
-                cell.setCellValue(columns[i]);
-                cell.setCellStyle(headerStyle);
-            }
-
-            // 2. Đổ dữ liệu vào các dòng tiếp theo
-            int rowIdx = 1;
-            for (Booking booking : bookings) {
-                Row row = sheet.createRow(rowIdx++);
-                row.createCell(0).setCellValue(booking.getId());
-                row.createCell(1).setCellValue(booking.getUser() != null ? booking.getUser().getFullName() : "N/A");
-                row.createCell(2).setCellValue(booking.getUser() != null ? booking.getUser().getPhone() : "N/A");
-                row.createCell(3).setCellValue(booking.getVehicle() != null ? booking.getVehicle().getLicensePlate() : "N/A");
-                Cell dateCell = row.createCell(4);
-                if (booking.getBookingTime() != null) {
-                    dateCell.setCellValue(java.sql.Timestamp.valueOf(booking.getBookingTime()));
-                    dateCell.setCellStyle(dateStyle);
-                }
-                row.createCell(5).setCellValue(booking.getStatus().toString());
-
-                // Cột Tổng tiền (Lấy từ field totalAmount đã tính sẵn hoặc tính lại bằng BigDecimal)
-                Cell totalCell = row.createCell(6);
-                BigDecimal total = booking.getTotalAmount() != null ? booking.getTotalAmount() : BigDecimal.ZERO;
-                totalCell.setCellValue(total.doubleValue()); // POI nhận double nhưng Style sẽ định dạng lại
-                totalCell.setCellStyle(moneyStyle);
-            }
-            // Tự động căn chỉnh độ rộng cột
-            for (int i = 0; i < columns.length; i++) {
-                sheet.autoSizeColumn(i);
-            }
-
-            workbook.write(out);
-            return out.toByteArray();
-        }
-    }
-     private BookingResponse convertToResponse(Booking booking) {
-        BookingResponse response = new BookingResponse();
-
-        response.setId(booking.getId());
-        response.setStatus(booking.getStatus());
-        response.setBookingTime(booking.getBookingTime());
-        response.setArrivalSlotStart(booking.getArrivalSlotStart());
-        response.setArrivalSlotEnd(booking.getArrivalSlotEnd());
-        response.setArrivalTime(booking.getArrivalTime());
-
-        // 1. Xử lý tên khách hàng (Lấy tên, nếu trống thì lấy Email như đã làm ở file Excel)
-        if (booking.getUser() != null) {
-            String name = (booking.getUser().getFullName() != null && !booking.getUser().getFullName().isEmpty())
-                    ? booking.getUser().getFullName()
-                    : booking.getUser().getEmail();
-            response.setCustomerName(name);
-        }
-
-        // 2. Lấy thông tin thợ sửa (Nếu đã gán thợ)
-        if (booking.getMechanic() != null) {
-            response.setMechanicName(booking.getMechanic().getFullName());
-        } else {
-            response.setMechanicName("Chưa gán thợ");
-        }
-
-        // 3. Lấy biển số xe
-        if (booking.getVehicle() != null) {
-            response.setLicensePlate(booking.getVehicle().getLicensePlate());
-        }
-
-        // 4. Tính tổng tiền từ danh sách dịch vụ (Dùng BigDecimal để chính xác)
-        BigDecimal total = BigDecimal.ZERO;
-        if (booking.getBookedServices() != null) {
-            total = booking.getBookedServices().stream()
-                    .map(BookedService::getPriceAtBooking)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-        }
-        response.setTotalAmount(total);
-        response.setPaymentMethod(booking.getPaymentMethod());
-        response.setPaymentStatus(booking.getPaymentStatus());
-
-        return response;
-    }
+//
+//    public byte[] exportBookingsToExcel() throws IOException {
+//        List<Booking> bookings = bookingRepository.findAll();
+//        try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+//            Sheet sheet = workbook.createSheet("Danh sách lịch hẹn");
+//            // 1. Tạo Styles
+//            CellStyle headerStyle = createHeaderStyle(workbook);
+//            CellStyle dateStyle = workbook.createCellStyle();
+//            dateStyle.setDataFormat(workbook.createDataFormat().getFormat("dd/MM/yyyy HH:mm"));
+//
+//            CellStyle moneyStyle = workbook.createCellStyle();
+//            moneyStyle.setDataFormat(workbook.createDataFormat().getFormat("#,##0")); // Định dạng phân cách hàng nghìn
+//
+//            // 1. Tạo Header (Dòng tiêu đề)
+//            Row headerRow = sheet.createRow(0);
+//            String[] columns = {"ID", "Khách hàng","Số điện thoại", "Biển số", "Ngày hẹn", "Trạng thái", "Tổng tiền"};
+//
+//            // Style cho Header (In đậm, nền xám)
+//            Font font = workbook.createFont();
+//            font.setBold(true);
+//            headerStyle.setFont(font);
+//            headerStyle.setFillForegroundColor(IndexedColors.GREY_25_PERCENT.getIndex());
+//            headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+//
+//            for (int i = 0; i < columns.length; i++) {
+//                Cell cell = headerRow.createCell(i);
+//                cell.setCellValue(columns[i]);
+//                cell.setCellStyle(headerStyle);
+//            }
+//
+//            // 2. Đổ dữ liệu vào các dòng tiếp theo
+//            int rowIdx = 1;
+//            for (Booking booking : bookings) {
+//                Row row = sheet.createRow(rowIdx++);
+//                row.createCell(0).setCellValue(booking.getId());
+//                row.createCell(1).setCellValue(booking.getUser() != null ? booking.getUser().getFullName() : "N/A");
+//                row.createCell(2).setCellValue(booking.getUser() != null ? booking.getUser().getPhone() : "N/A");
+//                row.createCell(3).setCellValue(booking.getVehicle() != null ? booking.getVehicle().getLicensePlate() : "N/A");
+//                Cell dateCell = row.createCell(4);
+//                if (booking.getBookingTime() != null) {
+//                    dateCell.setCellValue(java.sql.Timestamp.valueOf(booking.getBookingTime()));
+//                    dateCell.setCellStyle(dateStyle);
+//                }
+//                row.createCell(5).setCellValue(booking.getStatus().toString());
+//
+//                // Cột Tổng tiền (Lấy từ field totalAmount đã tính sẵn hoặc tính lại bằng BigDecimal)
+//                Cell totalCell = row.createCell(6);
+//                BigDecimal total = booking.getTotalAmount() != null ? booking.getTotalAmount() : BigDecimal.ZERO;
+//                totalCell.setCellValue(total.doubleValue()); // POI nhận double nhưng Style sẽ định dạng lại
+//                totalCell.setCellStyle(moneyStyle);
+//            }
+//            // Tự động căn chỉnh độ rộng cột
+//            for (int i = 0; i < columns.length; i++) {
+//                sheet.autoSizeColumn(i);
+//            }
+//
+//            workbook.write(out);
+//            return out.toByteArray();
+//        }
+//    }
+//     private BookingResponse convertToResponse(Booking booking) {
+//        BookingResponse response = new BookingResponse();
+//
+//        response.setId(booking.getId());
+//        response.setStatus(booking.getStatus());
+//        response.setBookingTime(booking.getBookingTime());
+//        response.setArrivalSlotStart(booking.getArrivalSlotStart());
+//        response.setArrivalSlotEnd(booking.getArrivalSlotEnd());
+//        response.setArrivalTime(booking.getArrivalTime());
+//
+//        // 1. Xử lý tên khách hàng (Lấy tên, nếu trống thì lấy Email như đã làm ở file Excel)
+//        if (booking.getUser() != null) {
+//            String name = (booking.getUser().getFullName() != null && !booking.getUser().getFullName().isEmpty())
+//                    ? booking.getUser().getFullName()
+//                    : booking.getUser().getEmail();
+//            response.setCustomerName(name);
+//        }
+//
+//        // 2. Lấy thông tin thợ sửa (Nếu đã gán thợ)
+//        if (booking.getMechanic() != null) {
+//            response.setMechanicName(booking.getMechanic().getFullName());
+//        } else {
+//            response.setMechanicName("Chưa gán thợ");
+//        }
+//
+//        // 3. Lấy biển số xe
+//        if (booking.getVehicle() != null) {
+//            response.setLicensePlate(booking.getVehicle().getLicensePlate());
+//        }
+//
+//        // 4. Tính tổng tiền từ danh sách dịch vụ (Dùng BigDecimal để chính xác)
+//        BigDecimal total = BigDecimal.ZERO;
+//        if (booking.getBookedServices() != null) {
+//            total = booking.getBookedServices().stream()
+//                    .map(BookedService::getPriceAtBooking)
+//                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+//        }
+//        response.setTotalAmount(total);
+//        response.setPaymentMethod(booking.getPaymentMethod());
+//        response.setPaymentStatus(booking.getPaymentStatus());
+//
+//        return response;
+//    }
 
     // Trong class BookingService
     @Transactional
@@ -798,6 +824,7 @@ public class BookingService {
 
         // 3. Cập nhật trạng thái Booking và Giải phóng thợ
         booking.setStatus(BookingStatus.COMPLETED);
+        rewardPointsIfNeeded(booking);
         if (booking.getMechanic() != null) {
             releaseMechanicIfIdle(booking.getMechanic(), booking.getId());
         }
@@ -805,8 +832,8 @@ public class BookingService {
         Booking savedBooking = bookingRepository.save(booking);
         notifyCustomerAboutAdminBookingUpdate(
                 savedBooking,
-                "Lịch hẹn đã hoàn tất",
-                buildBookingSummary(savedBooking) + " đã được hoàn tất. Tổng thanh toán: "
+                "Đon hàng đã hoàn tất",
+                buildBookingSummarySuccess(savedBooking) + " đã được hoàn tất. Tổng thanh toán: "
                         + String.format("%,.0f VNĐ", finalTotal) + "."
         );
 
@@ -814,6 +841,17 @@ public class BookingService {
         sendCompletionEmail(savedBooking, finalTotal);
         // 5. Chuyển đổi sang BookingResponse (Sử dụng Builder)
         return mapToResponse(savedBooking);
+    }
+
+    private void rewardPointsIfNeeded(Booking booking) {
+        if (!Boolean.TRUE.equals(booking.getPointsRewarded())) {
+            booking.setPointsEarned(MembershipService.POINTS_PER_COMPLETED_BOOKING);
+            membershipService.rewardPoints(booking.getUser(), booking.getPointsEarned());
+            booking.setPointsRewarded(true);
+            userRepository.save(booking.getUser());
+        } else if (booking.getPointsEarned() == null) {
+            booking.setPointsEarned(MembershipService.POINTS_PER_COMPLETED_BOOKING);
+        }
     }
     private void sendCompletionEmail(Booking booking, BigDecimal total) {
         if (booking.getUser() == null || booking.getUser().getEmail() == null) return;

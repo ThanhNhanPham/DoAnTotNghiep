@@ -14,5 +14,5 @@ public class BookingRequest {
     private LocalDateTime arrivalSlotEnd; // Kết thúc khung giờ khách dự kiến đến cửa hàng
     private List<Long> serviceIds; // Danh sách ID dịch vụ (AI gợi ý + khách chọn thêm)
     private String note; // ghi chú của khách hàng
-    private PaymentMethod paymentMethod; // CASH | MOMO
+    private PaymentMethod paymentMethod; // CASH | BANK_TRANSFER
 }

@@ -7,7 +7,6 @@ import com.example.smartgarage.service.BookingService;
 import com.example.smartgarage.service.MechanicService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -45,58 +44,30 @@ public class AdminController {
         return ResponseEntity.ok(mechanics);
     }
 
-    @Operation(summary = "Xác nhận lịch hẹn và gán thợ", description = "Chuyển trạng thái đơn sang CONFIRMED và gán thợ thực hiện")
-    @PutMapping("/bookings/{bookingId}/confirm")
-    public ResponseEntity<?> confirmBooking(@PathVariable Long bookingId, @RequestParam Long mechanicId) {
-        try {
-            BookingResponse confirmedBooking = bookingService.confirmBooking(bookingId, mechanicId);
-            return ResponseEntity.ok(confirmedBooking);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
-    }
-
-    @Operation(summary = "Hoàn thành lịch hẹn", description = "Chuyển trạng thái đơn sang COMPLETED và giải phóng thợ sửa xe")
-    @PutMapping("/bookings/{bookingId}/complete")
-    public ResponseEntity<?> completeBooking(@PathVariable Long bookingId) {
-        try {
-            BookingResponse completedBooking = bookingService.completeBooking(bookingId);
-            return ResponseEntity.ok(completedBooking);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
-    }
-    @Operation(summary="Xuất danh sách booking ra file Excel và cho người dùng tải xuống")
-    @GetMapping("/bookings/export/excel")
-    public ResponseEntity<byte[]> exportToExcel() {
-        try {
-            byte[] excelContent = bookingService.exportBookingsToExcel();
-
-            return ResponseEntity.ok()
-                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=bookings_report.xlsx")
-                    .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
-                    .body(excelContent);
-        } catch (IOException e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-        }
-    }
-    @Operation(summary="xuất hoá đơn ra file word")
-    @GetMapping("/bookings/{id}/export/word")
-    public ResponseEntity<byte[]> exportInvoice(@PathVariable Long id) {
-        try {
-            byte[] wordContent = bookingService.exportInvoiceWord(id);
-
-            HttpHeaders headers = new HttpHeaders();
-            headers.add(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=hoa_don_" + id + ".docx");
-
-            return ResponseEntity.ok()
-                    .headers(headers)
-                    .contentType(MediaType.valueOf("application/vnd.openxmlformats-officedocument.wordprocessingml.document"))
-                    .body(wordContent);
-        } catch (Exception e) {
-            e.printStackTrace();
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-        }
-    }
+//
+//    @Operation(summary = "Hoàn thành lịch hẹn", description = "Chuyển trạng thái đơn sang COMPLETED và giải phóng thợ sửa xe")
+//    @PutMapping("/bookings/{bookingId}/complete")
+//    public ResponseEntity<?> completeBooking(@PathVariable Long bookingId) {
+//        try {
+//            BookingResponse completedBooking = bookingService.completeBooking(bookingId);
+//            return ResponseEntity.ok(completedBooking);
+//        } catch (Exception e) {
+//            return ResponseEntity.badRequest().body(e.getMessage());
+//        }
+//    }
+//    @Operation(summary="Xuất danh sách booking ra file Excel và cho người dùng tải xuống")
+//    @GetMapping("/bookings/export/excel")
+//    public ResponseEntity<byte[]> exportToExcel() {
+//        try {
+//            byte[] excelContent = bookingService.exportBookingsToExcel();
+//
+//            return ResponseEntity.ok()
+//                    .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=bookings_report.xlsx")
+//                    .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+//                    .body(excelContent);
+//        } catch (IOException e) {
+//            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+//        }
+//    }
 
 }

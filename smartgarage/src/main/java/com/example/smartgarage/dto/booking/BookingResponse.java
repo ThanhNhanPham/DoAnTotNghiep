@@ -4,6 +4,7 @@ import com.example.smartgarage.enums.BookingStatus;
 import com.example.smartgarage.enums.MembershipTier;
 import com.example.smartgarage.enums.PaymentMethod;
 import com.example.smartgarage.enums.PaymentStatus;
+import com.example.smartgarage.enums.VehicleType;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -28,6 +29,7 @@ public class BookingResponse {
     private String vehicleOwnerName;
     private String customerPhone;
     private String vehicleName; // VD: "Honda Sh 150i"
+    private VehicleType vehicleType;
     private String vehicleImageUrl;
     private String licensePlate;
     private Long branchId;

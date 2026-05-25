@@ -1,5 +1,6 @@
 package com.example.smartgarage.dto.auth;
 
+import com.example.smartgarage.enums.MembershipTier;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -15,4 +16,6 @@ public class AuthMeResponse {
     private String phone;
     private String fullAddress;
     private Boolean isActive;
+    private Integer loyaltyPoints;
+    private MembershipTier membershipTier;
 }
