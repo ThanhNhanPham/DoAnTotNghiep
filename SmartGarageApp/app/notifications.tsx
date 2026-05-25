@@ -18,6 +18,16 @@ import { useRouter } from 'expo-router';
 import { useThemePreference } from '@/contexts/theme-preference';
 import notificationService, { NotificationItem } from '@/services/notificationService';
 
+const CHAT_NOTIFICATION_TITLES = new Set([
+  'Tin nhắn mới từ khách hàng',
+  'Tin nhắn mới từ gara',
+]);
+
+const isChatNotification = (item: NotificationItem) => {
+  const title = (item.title || '').trim();
+  return CHAT_NOTIFICATION_TITLES.has(title);
+};
+
 export default function NotificationsScreen() {
   const router = useRouter();
   const { colorScheme } = useThemePreference();
@@ -97,6 +107,32 @@ export default function NotificationsScreen() {
         error?.response?.data ||
         'Không thể cập nhật trạng thái thông báo.';
       Alert.alert('Lỗi', String(serverMessage));
+    }
+  };
+
+  const handleOpenNotification = async (item: NotificationItem) => {
+    const bookingId = Number(item.bookingId ?? item.booking_id ?? item.bookingID);
+    const hasBookingTarget = Number.isFinite(bookingId) && bookingId > 0;
+
+    if (!item.isRead && !item.read) {
+      await handleMarkAsRead(item);
+    }
+
+    if (hasBookingTarget && isChatNotification(item)) {
+      router.push({
+        pathname: '/chat/[bookingId]',
+        params: { bookingId: String(bookingId) },
+      });
+    } else if (hasBookingTarget) {
+      router.push({
+        pathname: '/booking-detail',
+        params: { id: String(bookingId) },
+      });
+    } else if (item.title === 'Gara đã phản hồi đánh giá của bạn') {
+      Alert.alert(
+        'Chưa có liên kết đơn hàng',
+        'Thông báo này chưa có mã booking. Hãy thử tạo phản hồi đánh giá mới sau khi backend đã được khởi động lại.'
+      );
     }
   };
 
@@ -237,9 +273,7 @@ export default function NotificationsScreen() {
                   ]}
                   activeOpacity={0.9}
                   onPress={() => {
-                    if (!isRead) {
-                      handleMarkAsRead(item);
-                    }
+                    handleOpenNotification(item);
                   }}>
                   <View style={styles.notificationIconColumn}>
                     <View
@@ -296,6 +330,9 @@ export default function NotificationsScreen() {
                   </View>
                   <View style={styles.notificationActions}>
                     {!isRead ? <View style={styles.unreadDot} /> : null}
+                    {item.bookingId || item.booking_id || item.bookingID ? (
+                      <Ionicons name="chevron-forward" size={18} color={palette.subtext} />
+                    ) : null}
                   </View>
                 </TouchableOpacity>
               );

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, View, Text, ScrollView, Dimensions, Alert, ActivityIndicator } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import apiClient from '@/constants/Api';
+import authService from '@/services/authService';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -43,15 +44,25 @@ export default function LoginScreen() {
         await AsyncStorage.setItem('userEmail', data.email);
         await AsyncStorage.setItem('userRole', data.role);
         await AsyncStorage.setItem('userId', data.userId.toString());
-        
-        // Lưu fullName từ backend
-        const fullName = data.fullName || data.full_name;
-        if (fullName) {
-          await AsyncStorage.setItem('fullName', fullName);
-        }
-        
-        if (data.fullAddress) {
-          await AsyncStorage.setItem('fullAddress', data.fullAddress);
+
+        try {
+          const me = await authService.getMe();
+          await Promise.all([
+            AsyncStorage.setItem('fullName', me.fullName || ''),
+            AsyncStorage.setItem('fullAddress', me.fullAddress || ''),
+            AsyncStorage.setItem('userPhone', me.phone || ''),
+            AsyncStorage.setItem('loyaltyPoints', String(me.loyaltyPoints ?? 0)),
+            AsyncStorage.setItem('membershipTier', me.membershipTier || 'REGULAR'),
+          ]);
+        } catch (meError) {
+          console.error('Load auth/me after login failed:', meError);
+          const fullName = data.fullName || data.full_name;
+          if (fullName) {
+            await AsyncStorage.setItem('fullName', fullName);
+          }
+          if (data.fullAddress) {
+            await AsyncStorage.setItem('fullAddress', data.fullAddress);
+          }
         }
 
         Alert.alert('Thành công', 'Đăng nhập thành công!');

@@ -37,7 +37,7 @@ const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
 
 const PAYMENT_LABELS: Record<string, string> = {
   CASH: 'Tiền mặt',
-  MOMO: 'MoMo',
+  BANK_TRANSFER: 'Chuyển khoản',
 };
 
 const PAYMENT_STATUS_LABELS: Record<string, string> = {
@@ -46,6 +46,13 @@ const PAYMENT_STATUS_LABELS: Record<string, string> = {
   SUCCESS: 'Đã thanh toán',
   FAILED: 'Thanh toán lỗi',
   CANCELLED: 'Đã hủy',
+};
+
+const MEMBERSHIP_LABELS: Record<string, string> = {
+  REGULAR: 'Thường',
+  BRONZE: 'Đồng',
+  SILVER: 'Bạc',
+  GOLD: 'Vàng',
 };
 
 const formatCurrency = (value?: number) =>
@@ -187,6 +194,7 @@ export default function BookingHistoryScreen() {
               const statusColor = STATUS_COLORS[status] || STATUS_COLORS.PENDING;
               const serviceNames = booking.serviceNames || [];
               const partNames = booking.partNames || [];
+              const amountToShow = booking.finalAmount ?? booking.totalAmount;
 
               return (
                 <TouchableOpacity
@@ -251,7 +259,7 @@ export default function BookingHistoryScreen() {
                   ) : null}
 
                   <View style={styles.footerRow}>
-                    <View>
+                    <View style={styles.footerInfoWrap}>
                       <Text style={styles.footerLabel}>Thanh toán</Text>
                       <Text style={styles.footerText}>
                         {PAYMENT_LABELS[booking.paymentMethod || ''] || booking.paymentMethod || 'Chưa chọn'} ·{' '}
@@ -259,8 +267,14 @@ export default function BookingHistoryScreen() {
                           booking.paymentStatus ||
                           'Chưa có trạng thái'}
                       </Text>
+                      {booking.membershipDiscountAmount && booking.membershipDiscountAmount > 0 ? (
+                        <Text style={styles.discountText}>
+                          Thành viên {MEMBERSHIP_LABELS[booking.membershipTierApplied || ''] || booking.membershipTierApplied} giảm{' '}
+                          {formatCurrency(booking.membershipDiscountAmount)}
+                        </Text>
+                      ) : null}
                     </View>
-                    <Text style={styles.totalText}>{formatCurrency(booking.totalAmount)}</Text>
+                    <Text style={styles.totalText}>{formatCurrency(amountToShow)}</Text>
                   </View>
                   <View style={styles.detailActionRow}>
                     <Text style={styles.detailActionText}>Xem chi tiết</Text>
@@ -481,6 +495,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 12,
   },
+  footerInfoWrap: {
+    flex: 1,
+  },
   footerLabel: {
     fontSize: 12,
     fontWeight: '800',
@@ -491,6 +508,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
     color: '#64748B',
+  },
+  discountText: {
+    marginTop: 6,
+    fontSize: 12,
+    lineHeight: 18,
+    color: '#15803D',
+    fontWeight: '800',
   },
   totalText: {
     fontSize: 16,

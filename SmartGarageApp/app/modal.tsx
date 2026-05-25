@@ -38,7 +38,7 @@ type DateOption = {
 
 const PAYMENT_OPTIONS: { label: string; value: PaymentMethod; icon: keyof typeof Ionicons.glyphMap }[] = [
   { label: 'Tiền mặt', value: 'CASH', icon: 'cash-outline' },
-  { label: 'MoMo', value: 'MOMO', icon: 'wallet-outline' },
+  { label: 'Chuyển khoản', value: 'BANK_TRANSFER', icon: 'card-outline' },
 ];
 
 const formatCurrency = (value?: number) =>
@@ -510,7 +510,7 @@ export default function BookingModalScreen() {
             </View>
           )}
 
-          <Text style={styles.fieldLabel}>Phương thức thanh toán dự kiến</Text>
+          <Text style={styles.fieldLabel}>Hình thức thanh toán</Text>
           <View style={styles.optionWrap}>
             {PAYMENT_OPTIONS.map((option) => {
               const isActive = paymentMethod === option.value;

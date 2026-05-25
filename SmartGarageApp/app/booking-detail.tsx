@@ -40,7 +40,7 @@ const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
 
 const PAYMENT_LABELS: Record<string, string> = {
   CASH: 'Tiền mặt',
-  MOMO: 'MoMo',
+  BANK_TRANSFER: 'Chuyển khoản',
 };
 
 const PAYMENT_STATUS_LABELS: Record<string, string> = {
@@ -49,6 +49,13 @@ const PAYMENT_STATUS_LABELS: Record<string, string> = {
   SUCCESS: 'Đã thanh toán',
   FAILED: 'Thanh toán lỗi',
   CANCELLED: 'Đã hủy',
+};
+
+const MEMBERSHIP_LABELS: Record<string, string> = {
+  REGULAR: 'Thường',
+  BRONZE: 'Đồng',
+  SILVER: 'Bạc',
+  GOLD: 'Vàng',
 };
 
 const formatCurrency = (value?: number) =>
@@ -331,6 +338,13 @@ export default function BookingDetailScreen() {
               />
               <InfoRow icon="business-outline" label="Chi nhánh" value={booking.branchName || 'Chưa có'} />
               <InfoRow icon="construct-outline" label="Thợ phụ trách" value={booking.mechanicName || 'Chưa có'} />
+              <TouchableOpacity
+                style={styles.chatButton}
+                activeOpacity={0.85}
+                onPress={() => router.push(`/chat/${booking.id}` as any)}>
+                <Ionicons name="chatbubble-ellipses-outline" size={18} color="#FFFFFF" />
+                <Text style={styles.chatButtonText}>Nhắn với chi nhánh</Text>
+              </TouchableOpacity>
             </View>
 
             <NameList title="Dịch vụ đã chọn" names={booking.serviceNames} />
@@ -360,10 +374,44 @@ export default function BookingDetailScreen() {
                   </Text>
                 </View>
               </View>
-              <View style={styles.totalRow}>
-                <Text style={styles.totalLabel}>Tổng tiền</Text>
-                <Text style={styles.totalValue}>{formatCurrency(booking.totalAmount)}</Text>
+              <View style={styles.amountBreakdown}>
+                <View style={styles.amountRow}>
+                  <Text style={styles.amountLabel}>Tiền dịch vụ</Text>
+                  <Text style={styles.amountValue}>{formatCurrency(booking.serviceAmount)}</Text>
+                </View>
+                <View style={styles.amountRow}>
+                  <Text style={styles.amountLabel}>Tiền linh kiện</Text>
+                  <Text style={styles.amountValue}>{formatCurrency(booking.partAmount)}</Text>
+                </View>
+                <View style={styles.amountRow}>
+                  <Text style={styles.amountLabel}>Hạng thành viên</Text>
+                  <Text style={styles.amountValue}>
+                    {MEMBERSHIP_LABELS[booking.membershipTierApplied || ''] || 'Thường'}
+                  </Text>
+                </View>
+                <View style={styles.amountRow}>
+                  <Text style={styles.amountLabel}>Giảm giá thành viên</Text>
+                  <Text style={styles.discountAmountValue}>
+                    - {formatCurrency(booking.membershipDiscountAmount)}
+                  </Text>
+                </View>
               </View>
+              <View style={styles.totalRow}>
+                <Text style={styles.totalLabel}>Thanh toán cuối</Text>
+                <Text style={styles.totalValue}>{formatCurrency(booking.finalAmount ?? booking.totalAmount)}</Text>
+              </View>
+              {(booking.pointsEarned ?? 0) > 0 ? (
+                <Text style={styles.pointsEarnedText}>Điểm cộng thêm sau giao dịch: +{booking.pointsEarned}</Text>
+              ) : null}
+              {booking.paymentStatus === 'SUCCESS' ? (
+                <TouchableOpacity
+                  style={styles.invoiceButton}
+                  activeOpacity={0.85}
+                  onPress={() => router.push(`/invoice-detail?bookingId=${booking.id}` as any)}>
+                  <Ionicons name="receipt-outline" size={18} color="#FFFFFF" />
+                  <Text style={styles.invoiceButtonText}>Xem hóa đơn</Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
 
             <View style={styles.card}>
@@ -678,6 +726,35 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#C2410C',
   },
+  amountBreakdown: {
+    marginTop: 16,
+    borderRadius: 18,
+    backgroundColor: '#FFF7ED',
+    padding: 14,
+    gap: 10,
+  },
+  amountRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
+  },
+  amountLabel: {
+    flex: 1,
+    fontSize: 13,
+    color: '#92400E',
+    fontWeight: '700',
+  },
+  amountValue: {
+    fontSize: 13,
+    color: '#334155',
+    fontWeight: '800',
+  },
+  discountAmountValue: {
+    fontSize: 13,
+    color: '#15803D',
+    fontWeight: '800',
+  },
   totalRow: {
     marginTop: 16,
     paddingTop: 16,
@@ -696,6 +773,43 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '800',
     color: '#9A3412',
+  },
+  pointsEarnedText: {
+    marginTop: 10,
+    fontSize: 13,
+    lineHeight: 18,
+    color: '#15803D',
+    fontWeight: '800',
+  },
+  invoiceButton: {
+    marginTop: 16,
+    borderRadius: 16,
+    backgroundColor: '#F59E0B',
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  chatButton: {
+    marginTop: 18,
+    borderRadius: 16,
+    backgroundColor: '#0F766E',
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  chatButtonText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  invoiceButtonText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
   reviewStarsRow: {
     marginTop: 16,

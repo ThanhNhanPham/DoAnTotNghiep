@@ -1,5 +1,19 @@
 import apiClient from '@/constants/Api';
 
+export type MembershipTier = 'REGULAR' | 'BRONZE' | 'SILVER' | 'GOLD';
+
+export interface AuthMeResponse {
+  userId: number;
+  email: string;
+  role: string;
+  fullName: string;
+  phone: string;
+  fullAddress: string;
+  isActive: boolean;
+  loyaltyPoints: number;
+  membershipTier: MembershipTier;
+}
+
 export interface ChangePasswordPayload {
   oldPassword: string;
   newPassword: string;
@@ -17,6 +31,11 @@ export interface ResetPasswordPayload {
 }
 
 const authService = {
+  async getMe() {
+    const response = await apiClient.get<AuthMeResponse>('/auth/me');
+    return response.data;
+  },
+
   async changePassword(payload: ChangePasswordPayload) {
     const response = await apiClient.post('/auth/change-password', payload);
     return response.data;

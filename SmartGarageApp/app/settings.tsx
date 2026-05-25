@@ -120,9 +120,9 @@ export default function SettingsScreen() {
           <SettingRow
             icon="help-circle-outline"
             title="Liên hệ hỗ trợ"
-            subtitle="Hotline: 1900 0000 · Email: support@smartgarage.vn"
+            subtitle="Hotline: 0364554249 · Email: 6351071051@st.utc2.edu.vn"
             onPress={() =>
-              Alert.alert('Hỗ trợ', 'Liên hệ hotline 1900 0000 hoặc email support@smartgarage.vn')
+              Alert.alert('Hỗ trợ', 'Liên hệ hotline 0364554249 hoặc Email: 6351071051@st.utc2.edu.vn')
             }
             palette={palette}
           />
