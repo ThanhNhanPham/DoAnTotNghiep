@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -8,10 +7,12 @@ import {
   Car,
   Package,
   FileText,
+  ReceiptText,
   Settings,
   ChevronLeft,
   ChevronRight,
-  Store
+  Store,
+  MessageSquare
 } from 'lucide-react';
 import './Sidebar.css';
 
@@ -21,12 +22,14 @@ const Sidebar = ({ collapsed, onToggle }) => {
   const menuItems = [
     { path: '/admin/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { path: '/admin/bookings', icon: Calendar, label: 'Đặt lịch' },
+    { path: '/admin/invoices', icon: ReceiptText, label: 'Quản lý hoá đơn' },
     { path: '/admin/users', icon: Users, label: 'Quản lý Tài khoản' },
     { path: '/admin/mechanics', icon: Wrench, label: 'Thợ sửa xe' },
     { path: '/admin/vehicles', icon: Car, label: 'Phương tiện' },
     { path: '/admin/services', icon: FileText, label: 'Dịch vụ' },
     { path: '/admin/parts', icon: Package, label: 'Phụ tùng' },
     { path: '/admin/branches', icon: Store, label: 'Chi nhánh' },
+    { path: '/admin/chats', icon: MessageSquare, label: 'Chat khách hàng' },
     { path: '/admin/settings', icon: Settings, label: 'Cài đặt' },
   ];
 

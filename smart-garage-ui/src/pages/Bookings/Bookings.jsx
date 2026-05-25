@@ -31,9 +31,11 @@ import {
   EyeOutlined,
   EditOutlined,
   DeleteOutlined,
+  DollarCircleOutlined,
 } from '@ant-design/icons';
 import { Calendar, User, Car, Bike, Building2, Wrench, DollarSign } from 'lucide-react';
 import bookingService from '../../services/bookingService';
+import paymentService from '../../services/paymentService';
 import branchService from '../../services/branchService';
 import mechanicService from '../../services/mechanicService';
 import serviceService from '../../services/serviceService';
@@ -73,8 +75,9 @@ const Bookings = () => {
   const [detailLoading, setDetailLoading] = useState(false);
   const [serviceCatalog, setServiceCatalog] = useState([]);
   const [partCatalog, setPartCatalog] = useState([]);
-  const [selectedServiceIds, setSelectedServiceIds] = useState([]);
+  const [serviceToAddId, setServiceToAddId] = useState(undefined);
   const [bookingItemLoading, setBookingItemLoading] = useState(false);
+  const [paymentConfirmingId, setPaymentConfirmingId] = useState(null);
   const [bookingReview, setBookingReview] = useState(null);
   const [reviewLoading, setReviewLoading] = useState(false);
   const [reviewReplyText, setReviewReplyText] = useState('');
@@ -178,6 +181,20 @@ const Bookings = () => {
 
   const isLockedBooking = (booking) => ['COMPLETED', 'CANCELLED'].includes(booking?.status);
 
+  const canConfirmPayment = (booking) =>
+    booking?.status === 'COMPLETED' &&
+    booking?.paymentMethod === 'BANK_TRANSFER' &&
+    booking?.paymentStatus !== 'SUCCESS';
+
+  const getPaymentConfirmText = (booking) => {
+    return {
+      action: 'Xác nhận chuyển khoản',
+      title: 'Xác nhận thanh toán chuyển khoản?',
+      description: 'Xác nhận gara đã nhận được tiền chuyển khoản cho booking này?',
+      success: 'Xác nhận thanh toán chuyển khoản thành công!',
+    };
+  };
+
   const showLockedBookingMessage = (booking) => {
     if (booking?.status === 'COMPLETED') {
       message.warning('Không thể thực hiện thao tác vì đơn hàng đã hoàn thành.');
@@ -267,11 +284,7 @@ const Bookings = () => {
 
       const data = bookingResult.value;
       setBookingDetail(data);
-      setSelectedServiceIds(
-        serviceCatalog
-          .filter((service) => data.serviceNames?.includes(service.name))
-          .map((service) => service.id)
-      );
+      setServiceToAddId(undefined);
 
       if (reviewResult.status === 'fulfilled') {
         setBookingReview(reviewResult.value);
@@ -293,29 +306,30 @@ const Bookings = () => {
   const refreshBookingDetail = async (bookingId) => {
     const data = await bookingService.getBookingById(bookingId);
     setBookingDetail(data);
-    setSelectedServiceIds(
-      serviceCatalog
-        .filter((service) => data.serviceNames?.includes(service.name))
-        .map((service) => service.id)
-    );
+    setServiceToAddId(undefined);
     await fetchBookings();
     return data;
   };
 
-  const handleReplaceServices = async () => {
+  const handleAddService = async () => {
     if (!bookingDetail) return;
     if (isLockedBooking(bookingDetail)) {
       showLockedBookingMessage(bookingDetail);
       return;
     }
 
+    if (!serviceToAddId) {
+      message.warning('Vui lòng chọn dịch vụ cần thêm!');
+      return;
+    }
+
     setBookingItemLoading(true);
     try {
-      await bookingService.replaceBookingServices(bookingDetail.id, selectedServiceIds);
+      await bookingService.addServiceToBooking(bookingDetail.id, serviceToAddId);
       await refreshBookingDetail(bookingDetail.id);
-      message.success('Cập nhật dịch vụ cho lịch hẹn thành công!');
+      message.success('Đã thêm dịch vụ vào lịch hẹn!');
     } catch {
-      message.error('Lỗi khi cập nhật dịch vụ!');
+      message.error('Lỗi khi thêm dịch vụ!');
     } finally {
       setBookingItemLoading(false);
     }
@@ -474,6 +488,25 @@ const Bookings = () => {
     }
   };
 
+  const handleConfirmPayment = async (booking) => {
+    const bookingId = booking?.id;
+    if (!bookingId) return;
+
+    setPaymentConfirmingId(bookingId);
+    try {
+      await paymentService.confirmBankTransferPayment(bookingId);
+      message.success(getPaymentConfirmText(booking).success);
+      await fetchBookings();
+      if (bookingDetail?.id === bookingId) {
+        await refreshBookingDetail(bookingId);
+      }
+    } catch (error) {
+      message.error(getApiErrorMessage(error, 'Lỗi khi xác nhận thanh toán!'));
+    } finally {
+      setPaymentConfirmingId(null);
+    }
+  };
+
   const handleReplyToReview = async () => {
     if (!bookingReview) return;
 
@@ -527,8 +560,12 @@ const Bookings = () => {
       }
       setIsConfirmModalVisible(false);
       fetchBookings();
-    } catch {
-      message.error(mechanicModalMode === 'reassign' ? 'Lỗi khi đổi thợ!' : 'Lỗi khi xác nhận lịch hẹn!');
+    } catch (error) {
+      message.error(
+        mechanicModalMode === 'reassign'
+          ? getApiErrorMessage(error, 'Lỗi khi đổi thợ!')
+          : getApiErrorMessage(error, 'Lỗi khi xác nhận lịch hẹn!')
+      );
     } finally {
       setConfirmLoading(false);
     }
@@ -545,7 +582,6 @@ const Bookings = () => {
 
   const paymentMethodConfig = {
     CASH: { color: 'default', text: 'Tiền mặt' },
-    MOMO: { color: 'magenta', text: 'MoMo' },
     BANK_TRANSFER: { color: 'geekblue', text: 'Chuyển khoản' },
   };
 
@@ -575,6 +611,40 @@ const Bookings = () => {
         ))}
       </Space>
     );
+  };
+
+  const inferVehicleType = (record) => {
+    const explicitType = record.vehicleType || record.vehicle?.type;
+    if (explicitType) return explicitType;
+
+    const plate = record.vehicle?.licensePlate || record.licensePlate || '';
+    const vehicleName = `${record.vehicleName || ''} ${record.vehicle?.name || ''} ${record.brand || ''}`.toLowerCase();
+    const likelyCarBrands = [
+      'bmw',
+      'toyota',
+      'honda city',
+      'hyundai',
+      'kia',
+      'mazda',
+      'ford',
+      'mercedes',
+      'audi',
+      'vinfast',
+      'mitsubishi',
+      'nissan',
+      'suzuki ertiga',
+      'chevrolet',
+    ];
+
+    if (/^[0-9]{2}[A-Z]-[0-9]{4,5}$/i.test(plate) || likelyCarBrands.some((brand) => vehicleName.includes(brand))) {
+      return 'CAR';
+    }
+
+    if (/^[0-9]{2}[A-Z][0-9A-Z]-[0-9]{4,5}$/i.test(plate)) {
+      return 'MOTORBIKE';
+    }
+
+    return undefined;
   };
 
   const renderBookingReview = () => {
@@ -660,8 +730,9 @@ const Bookings = () => {
       render: (_, record) => {
         const plate = record.vehicle?.licensePlate || record.licensePlate || 'Chưa rõ';
         const vehicleName = record.vehicleName || record.vehicle?.name || record.brand || '';
-        const type = record.vehicle?.type || 'MOTORBIKE';
+        const type = inferVehicleType(record);
         const isCar = type === 'CAR';
+        const vehicleTypeLabel = type === 'CAR' ? 'Ô tô' : type === 'MOTORBIKE' ? 'Xe máy' : 'Chưa rõ loại xe';
         return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
             <div className="license-plate" style={{ fontSize: '14px', fontWeight: 600, color: '#262626' }}>
@@ -669,7 +740,7 @@ const Bookings = () => {
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               {isCar ? <Car size={14} color="#52c41a" /> : <Bike size={14} color="#fa8c16" />}
-              <span style={{ fontSize: '12px', color: '#8c8c8c' }}>{isCar ? 'Ô tô' : 'Xe máy'}</span>
+              <span style={{ fontSize: '12px', color: '#8c8c8c' }}>{vehicleTypeLabel}</span>
             </div>
             <div className="brand" style={{ fontSize: '12px', color: '#bfbfbf', fontStyle: 'italic' }}>
               {vehicleName}
@@ -893,6 +964,24 @@ const Bookings = () => {
 
             {['COMPLETED', 'CANCELLED'].includes(s) && (
               <>
+                {canConfirmPayment(record) && (
+                  <Popconfirm
+                    title={getPaymentConfirmText(record).title}
+                    description={getPaymentConfirmText(record).description}
+                    onConfirm={() => handleConfirmPayment(record)}
+                    okText="Xác nhận"
+                    cancelText="Thoát"
+                  >
+                    <Tooltip title={getPaymentConfirmText(record).action}>
+                      <Button
+                        type="primary"
+                        loading={paymentConfirmingId === record.id}
+                        style={{ background: '#0f766e', borderColor: '#0f766e' }}
+                        icon={<DollarCircleOutlined style={{ fontSize: '18px' }} />}
+                      />
+                    </Tooltip>
+                  </Popconfirm>
+                )}
                 <Tooltip title="Cập nhật">
                   <Button
                     icon={<EditOutlined style={{ fontSize: '18px' }} />}
@@ -1177,24 +1266,26 @@ const Bookings = () => {
                 {renderManageableServiceTags()}
                 <Space.Compact style={{ width: '100%' }}>
                   <Select
-                    mode="multiple"
-                    maxTagCount="responsive"
-                    placeholder="Chọn dịch vụ cho lịch hẹn"
-                    value={selectedServiceIds}
-                    onChange={setSelectedServiceIds}
+                    showSearch
+                    placeholder="Chọn dịch vụ cần thêm"
+                    optionFilterProp="label"
+                    value={serviceToAddId}
+                    onChange={setServiceToAddId}
                     disabled={bookingItemLoading}
                     style={{ width: '100%' }}
-                    options={serviceCatalog.map((service) => ({
-                      label: `${service.name} - ${Number(service.price || 0).toLocaleString('vi-VN')} đ`,
-                      value: service.id,
-                    }))}
+                    options={serviceCatalog
+                      .filter((service) => !bookingDetail.serviceNames?.includes(service.name))
+                      .map((service) => ({
+                        label: `${service.name} - ${Number(service.price || 0).toLocaleString('vi-VN')} đ`,
+                        value: service.id,
+                      }))}
                   />
                   <Button
                     type="primary"
                     loading={bookingItemLoading}
-                    onClick={handleReplaceServices}
+                    onClick={handleAddService}
                   >
-                    Lưu dịch vụ
+                    Thêm dịch vụ
                   </Button>
                 </Space.Compact>
               </Space>
@@ -1244,12 +1335,31 @@ const Bookings = () => {
             </Descriptions.Item>
             <Descriptions.Item label="Thanh toán">
               <Space size={[4, 4]} wrap>
+                <span style={{ color: '#8c8c8c' }}>Khách chọn:</span>
                 <Tag color={(paymentMethodConfig[bookingDetail.paymentMethod] || {}).color || 'default'}>
                   {(paymentMethodConfig[bookingDetail.paymentMethod] || {}).text || bookingDetail.paymentMethod || 'Chưa chọn'}
                 </Tag>
                 <Tag color={(paymentStatusConfig[bookingDetail.paymentStatus] || {}).color || 'default'}>
                   {(paymentStatusConfig[bookingDetail.paymentStatus] || {}).text || bookingDetail.paymentStatus || 'Chưa rõ'}
                 </Tag>
+                {canConfirmPayment(bookingDetail) && (
+                  <Popconfirm
+                    title={getPaymentConfirmText(bookingDetail).title}
+                    description={getPaymentConfirmText(bookingDetail).description}
+                    onConfirm={() => handleConfirmPayment(bookingDetail)}
+                    okText="Xác nhận"
+                    cancelText="Thoát"
+                  >
+                    <Button
+                      type="primary"
+                      size="small"
+                      loading={paymentConfirmingId === bookingDetail.id}
+                      icon={<DollarCircleOutlined />}
+                    >
+                      {getPaymentConfirmText(bookingDetail).action}
+                    </Button>
+                  </Popconfirm>
+                )}
               </Space>
             </Descriptions.Item>
             {bookingDetail.cancelReason && (

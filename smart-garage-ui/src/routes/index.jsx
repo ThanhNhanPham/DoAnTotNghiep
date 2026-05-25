@@ -7,9 +7,11 @@ import Mechanics from '../pages/Mechanics/Mechanics';
 import Services from '../pages/Services/Services';
 import Branches from '../pages/Branches/Branches';
 import Bookings from '../pages/Bookings/Bookings';
+import Invoices from '../pages/Invoices/Invoices';
 import Parts from '../pages/Parts/Parts';
 import Settings from '../pages/Settings/Settings';
 import Login from '../pages/Login/Login';
+import Chats from '../pages/Chats/Chats';
 import authService from '../services/authService';
 
 // Protected Route Component
@@ -44,6 +46,10 @@ const router = createBrowserRouter([
         element: <Bookings />,
       },
       {
+        path: 'invoices',
+        element: <Invoices />,
+      },
+      {
         path: 'vehicles',
         element: <Vehicles />,
       },
@@ -70,6 +76,10 @@ const router = createBrowserRouter([
       {
         path: 'settings',
         element: <Settings />,
+      },
+      {
+        path: 'chats',
+        element: <Chats />,
       },
     ],
   },
