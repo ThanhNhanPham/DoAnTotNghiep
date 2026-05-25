@@ -1,7 +1,7 @@
 package com.example.smartgarage.entity;
 
+import com.example.smartgarage.enums.MembershipTier;
 import com.example.smartgarage.enums.PaymentMethod;
-import com.example.smartgarage.enums.PaymentProvider;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.UpdateTimestamp;
@@ -28,20 +28,34 @@ public class PaymentInvoice {
     @JoinColumn(name = "booking_id", nullable = false, unique = true)
     private Booking booking;
 
-    @OneToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "payment_transaction_id", nullable = false, unique = true)
-    private PaymentTransaction paymentTransaction;
-
     @Column(name = "amount", nullable = false)
     private BigDecimal amount;
+
+    @Column(name = "service_amount", precision = 15, scale = 2)
+    private BigDecimal serviceAmount;
+
+    @Column(name = "part_amount", precision = 15, scale = 2)
+    private BigDecimal partAmount;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "membership_tier", length = 20)
+    private MembershipTier membershipTier;
+
+    @Column(name = "membership_discount_rate", precision = 5, scale = 2)
+    private BigDecimal membershipDiscountRate;
+
+    @Column(name = "membership_discount_amount", precision = 15, scale = 2)
+    private BigDecimal membershipDiscountAmount;
+
+    @Column(name = "points_earned")
+    private Integer pointsEarned;
+
+    @Column(name = "final_amount", precision = 15, scale = 2)
+    private BigDecimal finalAmount;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "payment_method", nullable = false)
     private PaymentMethod paymentMethod;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "payment_provider", nullable = false)
-    private PaymentProvider paymentProvider;
 
     @Column(name = "issued_at", nullable = false)
     private LocalDateTime issuedAt;
@@ -49,6 +63,7 @@ public class PaymentInvoice {
     @Column(name = "note", columnDefinition = "TEXT")
     private String note;
 
+    @Builder.Default
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 

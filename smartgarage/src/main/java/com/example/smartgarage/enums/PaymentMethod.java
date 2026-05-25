@@ -2,5 +2,5 @@ package com.example.smartgarage.enums;
 
 public enum PaymentMethod {
     CASH,
-    MOMO
+    BANK_TRANSFER
 }
