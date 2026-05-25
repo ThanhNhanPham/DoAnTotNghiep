@@ -1,17 +1,10 @@
 package com.example.smartgarage.controller;
 
-import com.example.smartgarage.dto.auth.AuthMeResponse;
 import com.example.smartgarage.dto.auth.ChangePasswordRequest;
 import com.example.smartgarage.dto.auth.ForgotPasswordRequest;
-import com.example.smartgarage.dto.auth.JwtResponse;
 import com.example.smartgarage.dto.auth.LoginRequest;
 import com.example.smartgarage.dto.auth.RegisterRequest;
 import com.example.smartgarage.dto.auth.ResetPasswordRequest;
-import com.example.smartgarage.entity.User;
-import com.example.smartgarage.enums.Role;
-import com.example.smartgarage.exception.BadRequestException;
-import com.example.smartgarage.repository.UserRepository;
-import com.example.smartgarage.security.JwtTokenProvider;
 import com.example.smartgarage.service.PasswordResetTokenService;
 import com.example.smartgarage.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -22,7 +15,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -30,7 +22,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.time.LocalDateTime;
 import java.util.Map;
 
 @Tag(name = "Auth API", description = "Quản lý đăng ký và đăng nhập")
@@ -38,91 +29,33 @@ import java.util.Map;
 @RequestMapping("/api/v1/auth")
 @CrossOrigin("*")
 public class AuthController {
-    private final UserRepository userRepository;
-    private final PasswordEncoder passwordEncoder;
-    private final JwtTokenProvider jwtTokenProvider;
     private final UserService userService;
     private final PasswordResetTokenService passwordResetTokenService;
 
-    public AuthController(UserRepository userRepository,
-                          PasswordEncoder passwordEncoder,
-                          JwtTokenProvider jwtTokenProvider,
-                          UserService userService,
+    public AuthController(UserService userService,
                           PasswordResetTokenService passwordResetTokenService) {
-        this.userRepository = userRepository;
-        this.passwordEncoder = passwordEncoder;
-        this.jwtTokenProvider = jwtTokenProvider;
         this.userService = userService;
         this.passwordResetTokenService = passwordResetTokenService;
     }
 
     @Operation(summary = "Api dùng để tạo user mới")
     @PostMapping("/register")
-    public ResponseEntity<?> register(@Valid @RequestBody RegisterRequest request) {
-        if (userRepository.findByEmail(request.email()).isPresent()) {
-            return ResponseEntity.badRequest().body("Lỗi: Email đã tồn tại!");
-        }
-
-        User user = User.builder()
-                .email(request.email())
-                .password(passwordEncoder.encode(request.password()))
-                .fullName(request.fullName())
-                .phone(request.phone())
-                .province(request.province())
-                .ward(request.ward())
-                .houseNumber(request.houseNumber())
-                .role(Role.CUSTOMER)
-                .createdAt(LocalDateTime.now())
-                .isActive(true)
-                .build();
-
-        userRepository.save(user);
+    public ResponseEntity<Map<String, String>> register(@Valid @RequestBody RegisterRequest request) {
+        String message = userService.register(request);
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(Map.of("message", "Đăng ký thành công tài khoản: " + user.getEmail()));
+                .body(Map.of("message", message));
     }
 
     @Operation(summary = "API dùng để đăng nhập")
     @PostMapping("/login")
     public ResponseEntity<?> login(@Valid @RequestBody LoginRequest loginRequest) {
-        var userOptional = userRepository.findByEmail(loginRequest.getEmail());
-        if (userOptional.isPresent()) {
-            User user = userOptional.get();
-
-            if (Boolean.FALSE.equals(user.getIsActive())) {
-                throw new BadRequestException("Tài khoản đã bị vô hiệu hóa.");
-            }
-
-            if (passwordEncoder.matches(loginRequest.getPassword(), user.getPassword())) {
-                String token = jwtTokenProvider.generateToken(user.getEmail());
-                return ResponseEntity.ok(new JwtResponse(
-                        token,
-                        user.getEmail(),
-                        user.getRole().name(),
-                        user.getId(),
-                        user.getFullAddress(),
-                        user.getFullName()
-                ));
-            }
-        }
-        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body("Email hoặc mật khẩu không chính xác!");
+        return ResponseEntity.ok(userService.login(loginRequest));
     }
 
     @Operation(summary = "Lấy thông tin user hiện tại")
     @GetMapping("/me")
-    public ResponseEntity<AuthMeResponse> me(Authentication authentication) {
-        User user = userRepository.findByEmail(authentication.getName())
-                .orElseThrow(() -> new BadRequestException("Người dùng không tồn tại."));
-
-        return ResponseEntity.ok(new AuthMeResponse(
-                user.getId(),
-                user.getEmail(),
-                user.getRole().name(),
-                user.getFullName(),
-                user.getPhone(),
-                user.getFullAddress(),
-                user.getIsActive()
-        ));
+    public ResponseEntity<?> me(Authentication authentication) {
+        return ResponseEntity.ok(userService.getCurrentUser(authentication.getName()));
     }
 
     @Operation(summary = "API dùng để đổi mật khẩu cho user đã đăng nhập")
