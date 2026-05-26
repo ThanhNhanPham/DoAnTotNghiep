@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Bell, User, LogOut, Settings, Menu, KeyRound, Car, Bike, Trash2 } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { Bell, User, LogOut, Settings, Menu, KeyRound, Trash2, Search, ChevronDown } from 'lucide-react';
 import { Dropdown, message, Modal } from 'antd';
 import { ExclamationCircleOutlined } from '@ant-design/icons';
 import authService from '../../services/authService';
@@ -11,7 +11,21 @@ import './Header.css';
 
 const NOTIFICATION_POLL_INTERVAL = 10000;
 
-const Header = ({ onMenuClick }) => {
+const pageTitles = {
+  '/admin/dashboard': { title: 'Dashboard', subtitle: 'Theo dõi vận hành hệ thống gara' },
+  '/admin/bookings': { title: 'Đặt lịch', subtitle: 'Quản lý lịch hẹn và tiến độ sửa chữa' },
+  '/admin/invoices': { title: 'Hóa đơn', subtitle: 'Kiểm soát thanh toán và doanh thu' },
+  '/admin/users': { title: 'Tài khoản', subtitle: 'Quản lý quản trị viên và khách hàng' },
+  '/admin/mechanics': { title: 'Thợ sửa xe', subtitle: 'Theo dõi nhân sự kỹ thuật' },
+  '/admin/vehicles': { title: 'Phương tiện', subtitle: 'Quản lý hồ sơ xe khách hàng' },
+  '/admin/services': { title: 'Dịch vụ', subtitle: 'Cấu hình dịch vụ sửa chữa' },
+  '/admin/parts': { title: 'Phụ tùng', subtitle: 'Quản lý kho phụ tùng' },
+  '/admin/branches': { title: 'Chi nhánh', subtitle: 'Vận hành mạng lưới gara' },
+  '/admin/chats': { title: 'Chat khách hàng', subtitle: 'Hỗ trợ khách hàng theo thời gian thực' },
+  '/admin/settings': { title: 'Cài đặt', subtitle: 'Thiết lập hệ thống' },
+};
+
+const Header = ({ onMenuClick, sidebarCollapsed }) => {
   const [changePasswordVisible, setChangePasswordVisible] = useState(false);
   const [profileVisible, setProfileVisible] = useState(false);
   const [notifications, setNotifications] = useState([]);
@@ -23,6 +37,22 @@ const Header = ({ onMenuClick }) => {
     avatar: null,
   });
   const navigate = useNavigate();
+  const location = useLocation();
+  const currentPage = pageTitles[location.pathname] || pageTitles['/admin/dashboard'];
+
+  const getInitials = (name) => {
+    if (!name) return 'AD';
+    const words = name
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+
+    if (words.length === 1) {
+      return words[0].slice(0, 2).toUpperCase();
+    }
+
+    return `${words[0][0]}${words[words.length - 1][0]}`.toUpperCase();
+  };
 
   const fetchNotifications = useCallback(async ({ showLoading = false } = {}) => {
     if (showLoading) {
@@ -330,21 +360,20 @@ const Header = ({ onMenuClick }) => {
   };
 
   return (
-    <header className="admin-header">
-      <div className="car-track">
-        <Car size={32} className="car car-1" />
-        <Bike size={28} className="car bike-1" />
-        <Car size={32} className="car car-2" />
-        <Bike size={28} className="car bike-2" />
-        <Car size={32} className="car car-3" />
-        <Bike size={28} className="car bike-3" />
-        <Car size={32} className="car car-4" />
-      </div>
-
+    <header className={`admin-header ${sidebarCollapsed ? 'collapsed' : ''}`}>
       <div className="header-left">
         <button className="mobile-menu-btn" onClick={onMenuClick}>
           <Menu size={20} />
         </button>
+        <div className="header-page-title">
+          <strong>{currentPage.title}</strong>
+          <span>{currentPage.subtitle}</span>
+        </div>
+      </div>
+
+      <div className="header-search">
+        <Search size={16} />
+        <span>Tìm khách hàng, lịch hẹn, hóa đơn...</span>
       </div>
 
       <div className="header-right">
@@ -376,13 +405,14 @@ const Header = ({ onMenuClick }) => {
               {user.avatar ? (
                 <img src={user.avatar} alt={user.name} />
               ) : (
-                <User size={18} />
+                <span>{getInitials(user.name)}</span>
               )}
+              <span className="user-status-dot" />
             </div>
             <div className="user-info">
               <div className="user-name">{user.name}</div>
-              <div className="user-role">SUPERADMIN</div>
             </div>
+            <ChevronDown size={16} className="user-dropdown-icon" />
           </div>
         </Dropdown>
       </div>

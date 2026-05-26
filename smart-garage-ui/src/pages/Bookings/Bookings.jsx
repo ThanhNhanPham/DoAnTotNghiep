@@ -8,8 +8,6 @@ import {
   Space,
   Tag,
   Popconfirm,
-  Row,
-  Col,
   Select,
   message,
   Tooltip,
@@ -32,6 +30,8 @@ import {
   EditOutlined,
   DeleteOutlined,
   DollarCircleOutlined,
+  EnvironmentOutlined,
+  AimOutlined,
 } from '@ant-design/icons';
 import { Calendar, User, Car, Bike, Building2, Wrench, DollarSign } from 'lucide-react';
 import bookingService from '../../services/bookingService';
@@ -42,6 +42,20 @@ import serviceService from '../../services/serviceService';
 import partService from '../../services/partService';
 import reviewService, { getApiErrorMessage } from '../../services/reviewService';
 import './Bookings.css';
+
+const formatDistanceKm = (value) => (value == null ? '' : `${value.toFixed(2)} km`);
+
+const getBranchDistanceLabel = (branch) => {
+  if (branch?.travelDistanceKm != null) {
+    return `Quãng đường ${formatDistanceKm(branch.travelDistanceKm)}`;
+  }
+
+  if (branch?.distanceKm != null) {
+    return `Ước tính ${formatDistanceKm(branch.distanceKm)}`;
+  }
+
+  return '';
+};
 
 const Bookings = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -82,6 +96,9 @@ const Bookings = () => {
   const [reviewLoading, setReviewLoading] = useState(false);
   const [reviewReplyText, setReviewReplyText] = useState('');
   const [reviewReplyLoading, setReviewReplyLoading] = useState(false);
+  const [branchLocationLoading, setBranchLocationLoading] = useState(false);
+  const [branchLocationHint, setBranchLocationHint] = useState('');
+  const [nearestBranchId, setNearestBranchId] = useState(null);
   const bookingIdFromNotification = searchParams.get('bookingId');
 
   useEffect(() => {
@@ -144,8 +161,63 @@ const Bookings = () => {
     try {
       const data = await branchService.getActiveBranches();
       setBranches(data || []);
+      setNearestBranchId(null);
+      setBranchLocationHint('');
     } catch {
       message.error('Lỗi khi tải danh sách chi nhánh!');
+    }
+  };
+
+  const locateNearbyBranches = async () => {
+    if (!navigator.geolocation) {
+      setBranchLocationHint('Trình duyệt này không hỗ trợ định vị. Hiển thị danh sách chi nhánh mặc định.');
+      message.warning('Trình duyệt không hỗ trợ định vị.');
+      return;
+    }
+
+    setBranchLocationLoading(true);
+    setBranchLocationHint('');
+
+    try {
+      const position = await new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: false,
+          timeout: 10000,
+          maximumAge: 300000,
+        });
+      });
+
+      const nearbyBranches = await branchService.getNearbyActiveBranches(
+        position.coords.latitude,
+        position.coords.longitude
+      );
+
+      const activeNearbyBranches = (nearbyBranches || []).filter((branch) => branch.isActive !== false);
+      if (activeNearbyBranches.length === 0) {
+        setNearestBranchId(null);
+        setBranchLocationHint('Không tìm thấy chi nhánh gần bạn. Hiển thị danh sách mặc định.');
+        return;
+      }
+
+      const nearestBranch = activeNearbyBranches[0];
+      const distanceLabel = getBranchDistanceLabel(nearestBranch);
+      const sourceLabel = nearestBranch.travelDistanceKm != null ? 'theo lộ trình thực tế' : 'theo khoảng cách ước tính';
+
+      setBranches(activeNearbyBranches);
+      setNearestBranchId(nearestBranch.id);
+      setBranchLocationHint(
+        `Đã sắp xếp chi nhánh gần bạn nhất ${sourceLabel}: ${nearestBranch.name}${
+          distanceLabel ? ` (${distanceLabel})` : ''
+        }.`
+      );
+      message.success('Đã cập nhật danh sách chi nhánh theo vị trí hiện tại.');
+    } catch (error) {
+      console.error('Locate nearby branches failed:', error);
+      setNearestBranchId(null);
+      setBranchLocationHint('Không thể lấy vị trí hiện tại. Hiển thị danh sách chi nhánh mặc định.');
+      message.warning('Không thể lấy vị trí hiện tại.');
+    } finally {
+      setBranchLocationLoading(false);
     }
   };
 
@@ -186,7 +258,7 @@ const Bookings = () => {
     booking?.paymentMethod === 'BANK_TRANSFER' &&
     booking?.paymentStatus !== 'SUCCESS';
 
-  const getPaymentConfirmText = (booking) => {
+  const getPaymentConfirmText = () => {
     return {
       action: 'Xác nhận chuyển khoản',
       title: 'Xác nhận thanh toán chuyển khoản?',
@@ -1015,6 +1087,31 @@ const Bookings = () => {
     },
   ];
 
+  const branchOptions = branches.map((branch) => {
+    const distanceLabel = getBranchDistanceLabel(branch);
+
+    return {
+      value: branch.id,
+      label: (
+        <div className="branch-select-option">
+          <div className="branch-select-option__top">
+            <span className="branch-select-option__name">{branch.name}</span>
+            {nearestBranchId === branch.id ? (
+              <Tag color="green" style={{ marginInlineEnd: 0 }}>
+                Gần nhất
+              </Tag>
+            ) : null}
+          </div>
+          <div className="branch-select-option__meta">{branch.address}</div>
+          {distanceLabel ? (
+            <div className="branch-select-option__distance">{distanceLabel}</div>
+          ) : null}
+        </div>
+      ),
+      searchLabel: `${branch.name} ${branch.address || ''}`.toLowerCase(),
+    };
+  });
+
   return (
     <div className="bookings-page">
       <div className="page-header">
@@ -1024,8 +1121,16 @@ const Bookings = () => {
 
       <Card className="bookings-card" bordered={false}>
         <div className="bookings-toolbar">
-          <Row gutter={[16, 16]} align="middle">
-            <Col xs={24} sm={12} md={8}>
+          <div className="booking-toolbar-header">
+            <div>
+              <h2>Bộ lọc đặt lịch</h2>
+              <p>Tìm nhanh theo khách hàng, biển số, chi nhánh hoặc trạng thái xử lý.</p>
+            </div>
+          </div>
+
+          <div className="booking-filter-grid">
+            <div className="booking-filter-item booking-filter-search">
+              <span className="booking-filter-label">Tìm kiếm</span>
               <Input
                 placeholder="Tìm kiếm theo khách hàng, biển số, thợ, dịch vụ..."
                 prefix={<SearchOutlined />}
@@ -1036,9 +1141,10 @@ const Bookings = () => {
                 }}
                 allowClear
               />
-            </Col>
+            </div>
 
-            <Col xs={24} sm={12} md={5}>
+            <div className="booking-filter-item">
+              <span className="booking-filter-label">Trạng thái</span>
               <Select
                 placeholder="Trạng thái"
                 value={statusFilter}
@@ -1057,106 +1163,136 @@ const Bookings = () => {
                   { label: 'Đã hủy', value: 'CANCELLED' },
                 ]}
               />
-            </Col>
+            </div>
 
-            <Col xs={24} sm={12} md={5}>
-              <Select
-                placeholder="Chi nhánh"
-                value={branchFilter}
-                onChange={(value) => {
-                  setBranchFilter(value);
-                  resetBookingPagination();
-                }}
-                allowClear
-                style={{ width: '100%' }}
-                options={branches.map((b) => ({ label: b.name, value: b.id }))}
-              />
-            </Col>
+            <div className="booking-filter-item booking-filter-branch">
+              <span className="booking-filter-label">Chi nhánh</span>
+              <div className="booking-branch-controls">
+                <Select
+                  placeholder="Chi nhánh"
+                  value={branchFilter}
+                  onChange={(value) => {
+                    setBranchFilter(value);
+                    resetBookingPagination();
+                  }}
+                  allowClear
+                  showSearch
+                  optionLabelProp="label"
+                  filterOption={(input, option) => (option?.searchLabel ?? '').includes(input.toLowerCase())}
+                  style={{ width: '100%' }}
+                  options={branchOptions}
+                />
+                <Button
+                  icon={<AimOutlined />}
+                  loading={branchLocationLoading}
+                  onClick={locateNearbyBranches}
+                  style={{ width: '100%' }}
+                >
+                  Sắp xếp theo vị trí hiện tại
+                </Button>
+              </div>
+            </div>
             
             {/* We removed the explicit "Add Booking" button here 
                 because Admins no longer manually create them. */}
-          </Row>
+          </div>
+
+          {branchLocationHint ? (
+            <div className={`branch-location-hint ${nearestBranchId ? '' : 'branch-location-hint--warning'}`}>
+              <EnvironmentOutlined />
+              <span>{branchLocationHint}</span>
+            </div>
+          ) : null}
         </div>
 
-        <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-          <Col xs={12} sm={6} md={4}>
+        <div className="booking-stats-grid">
+          <div>
             <div className="stat-item">
               <div className="stat-value">{bookingPagination.total}</div>
               <div className="stat-label">Tổng đơn</div>
             </div>
-          </Col>
-          <Col xs={12} sm={6} md={5}>
+          </div>
+          <div>
             <div className="stat-item stat-pending">
               <div className="stat-value">
                 {bookings.filter((b) => (b.status || 'PENDING') === 'PENDING').length}
               </div>
               <div className="stat-label">Chờ xử lý</div>
             </div>
-          </Col>
-          <Col xs={12} sm={6} md={4}>
+          </div>
+          <div>
             <div className="stat-item stat-confirmed">
               <div className="stat-value">
                 {bookings.filter((b) => b.status === 'CONFIRMED').length}
               </div>
               <div className="stat-label">Đã xác nhận</div>
             </div>
-          </Col>
-          <Col xs={12} sm={6} md={4}>
+          </div>
+          <div>
             <div className="stat-item">
               <div className="stat-value">
                 {bookings.filter((b) => b.status === 'ARRIVED').length}
               </div>
               <div className="stat-label">Đã tới</div>
             </div>
-          </Col>
-          <Col xs={12} sm={6} md={4}>
+          </div>
+          <div>
             <div className="stat-item">
               <div className="stat-value">
                 {bookings.filter((b) => b.status === 'IN_PROGRESS').length}
               </div>
               <div className="stat-label">Đang sửa</div>
             </div>
-          </Col>
-          <Col xs={12} sm={6} md={4}>
+          </div>
+          <div>
             <div className="stat-item stat-completed">
               <div className="stat-value">
                 {bookings.filter((b) => b.status === 'COMPLETED').length}
               </div>
               <div className="stat-label">Hoàn thành</div>
             </div>
-          </Col>
-          <Col xs={12} sm={6} md={4}>
+          </div>
+          <div>
             <div className="stat-item stat-cancelled">
               <div className="stat-value">
                 {bookings.filter((b) => b.status === 'CANCELLED').length}
               </div>
               <div className="stat-label">Đã hủy</div>
             </div>
-          </Col>
-        </Row>
+          </div>
+        </div>
 
-        <Table
-          columns={columns}
-          dataSource={bookings}
-          loading={loading}
-          rowKey="id"
-          pagination={{
-            current: bookingPagination.current,
-            pageSize: bookingPagination.pageSize,
-            total: bookingPagination.total,
-            showTotal: (total) => `Tổng ${total} đặt lịch`,
-            showSizeChanger: true,
-            showQuickJumper: true,
-          }}
-          onChange={(pagination) => {
-            setBookingPagination((prev) => ({
-              ...prev,
-              current: pagination.current || 1,
-              pageSize: pagination.pageSize || prev.pageSize,
-            }));
-          }}
-          scroll={{ x: 2600 }}
-        />
+        <div className="booking-table-panel">
+          <div className="booking-table-heading">
+            <div>
+              <h2>Danh sách đặt lịch</h2>
+              <p>{bookingPagination.total} lịch hẹn trong hệ thống</p>
+            </div>
+          </div>
+
+          <Table
+            columns={columns}
+            dataSource={bookings}
+            loading={loading}
+            rowKey="id"
+            pagination={{
+              current: bookingPagination.current,
+              pageSize: bookingPagination.pageSize,
+              total: bookingPagination.total,
+              showTotal: (total) => `Tổng ${total} đặt lịch`,
+              showSizeChanger: true,
+              showQuickJumper: true,
+            }}
+            onChange={(pagination) => {
+              setBookingPagination((prev) => ({
+                ...prev,
+                current: pagination.current || 1,
+                pageSize: pagination.pageSize || prev.pageSize,
+              }));
+            }}
+            scroll={{ x: 2600 }}
+          />
+        </div>
       </Card>
       
       {/* Modal Confirm Booking */}

@@ -1,13 +1,4 @@
-import { useState, useEffect } from 'react';
-import { Card, Row, Col, Statistic, Table, Tag, Progress } from 'antd';
-import {
-  ArrowUpOutlined,
-  ArrowDownOutlined,
-  UserOutlined,
-  CalendarOutlined,
-  DollarOutlined,
-  CheckCircleOutlined,
-} from '@ant-design/icons';
+import { Card, Row, Col, Table, Tag, Progress } from 'antd';
 import { 
   TrendingUp, 
   TrendingDown,
@@ -16,12 +7,14 @@ import {
   DollarSign,
   CheckCircle,
   Clock,
-  Wrench
+  Wrench,
+  Activity,
+  AlertCircle,
 } from 'lucide-react';
 import './Dashboard.css';
 
 const Dashboard = () => {
-  const [loading, setLoading] = useState(false);
+  const loading = false;
 
   // Mock data - thay thế bằng API call thực tế
   const statsData = [
@@ -113,6 +106,13 @@ const Dashboard = () => {
     { name: 'Phạm Quốc Toàn', completed: 32, rating: 4.5, efficiency: 82 },
   ];
 
+  const operationSummary = [
+    { label: 'Lịch hẹn hôm nay', value: 48, icon: Calendar, tone: 'blue' },
+    { label: 'Đang xử lý', value: 16, icon: Activity, tone: 'teal' },
+    { label: 'Chờ xác nhận', value: 9, icon: Clock, tone: 'amber' },
+    { label: 'Cần kiểm tra', value: 3, icon: AlertCircle, tone: 'red' },
+  ];
+
   const columns = [
     {
       title: 'Mã đặt lịch',
@@ -169,38 +169,56 @@ const Dashboard = () => {
 
   return (
     <div className="dashboard">
-      <div className="dashboard-header">
-        <h1>Dashboard</h1>
-        <p>Chào mừng trở lại! Đây là tổng quan hoạt động của hệ thống.</p>
+      <div className="dashboard-hero">
+        <div>
+          <span className="dashboard-kicker">Smart Garage Admin</span>
+          <h1>Tổng quan vận hành</h1>
+          <p>Theo dõi lịch hẹn, doanh thu, hiệu suất kỹ thuật viên và các điểm cần xử lý trong ngày.</p>
+        </div>
+        <div className="hero-metrics">
+          {operationSummary.map((item) => {
+            const Icon = item.icon;
+            return (
+              <div className={`hero-metric ${item.tone}`} key={item.label}>
+                <Icon size={18} />
+                <div>
+                  <strong>{item.value}</strong>
+                  <span>{item.label}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
-      {/* Statistics Cards */}
       <Row gutter={[16, 16]} className="stats-row">
         {statsData.map((stat, index) => (
           <Col xs={24} sm={12} lg={6} key={index}>
             <Card className="stat-card" bordered={false}>
-              <div className="stat-icon" style={{ background: `${stat.color}15`, color: stat.color }}>
-                {stat.prefix}
-              </div>
-              <div className="stat-content">
+              <div className="stat-card-top">
                 <div className="stat-title">{stat.title}</div>
+                <div className={`stat-change-badge ${stat.changeType}`}>
+                  {stat.suffix}
+                  <span>{stat.change}</span>
+                </div>
+              </div>
+              <div className="stat-card-main">
+                <div className="stat-icon" style={{ background: `${stat.color}15`, color: stat.color }}>
+                  {stat.prefix}
+                </div>
                 <div className="stat-value">
                   {stat.title.includes('Doanh thu') 
                     ? formatCurrency(stat.value)
                     : stat.value.toLocaleString()}
                 </div>
-                <div className={`stat-change ${stat.changeType}`}>
-                  {stat.suffix}
-                  <span>{stat.change}</span>
-                  <span className="stat-period">so với tháng trước</span>
-                </div>
               </div>
+              <div className="stat-period">So với tháng trước</div>
+              <div className={`stat-accent ${stat.changeType}`} />
             </Card>
           </Col>
         ))}
       </Row>
 
-      {/* Recent Bookings and Mechanic Performance */}
       <Row gutter={[16, 16]} style={{ marginTop: 24 }}>
         <Col xs={24} xl={16}>
           <Card 

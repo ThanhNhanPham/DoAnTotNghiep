@@ -33,32 +33,49 @@ const Sidebar = ({ collapsed, onToggle }) => {
     { path: '/admin/settings', icon: Settings, label: 'Cài đặt' },
   ];
 
+  const mainMenuItems = menuItems.slice(0, -1);
+  const utilityMenuItems = menuItems.slice(-1);
   const isActive = (path) => location.pathname === path;
+
+  const renderNavItem = (item) => {
+    const Icon = item.icon;
+    return (
+      <Link
+        key={item.path}
+        to={item.path}
+        className={`nav-item ${isActive(item.path) ? 'active' : ''}`}
+        title={collapsed ? item.label : ''}
+      >
+        <Icon size={20} className="nav-icon" />
+        {!collapsed && <span className="nav-label">{item.label}</span>}
+      </Link>
+    );
+  };
 
   return (
     <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
       <div className="sidebar-header">
-        {!collapsed && <h2 className="sidebar-title">Smart Garage</h2>}
+        {!collapsed && (
+          <div className="sidebar-brand">
+            <div className="brand-mark">SG</div>
+            <div>
+              <h2 className="sidebar-title">Smart Garage</h2>
+              <span>Admin Center</span>
+            </div>
+          </div>
+        )}
+        {collapsed && <div className="brand-mark compact">SG</div>}
         <button className="toggle-btn" onClick={onToggle}>
           {collapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
         </button>
       </div>
 
       <nav className="sidebar-nav">
-        {menuItems.map((item) => {
-          const Icon = item.icon;
-          return (
-            <Link
-              key={item.path}
-              to={item.path}
-              className={`nav-item ${isActive(item.path) ? 'active' : ''}`}
-              title={collapsed ? item.label : ''}
-            >
-              <Icon size={20} className="nav-icon" />
-              {!collapsed && <span className="nav-label">{item.label}</span>}
-            </Link>
-          );
-        })}
+        {!collapsed && <div className="nav-section-label">Quản trị</div>}
+        {mainMenuItems.map(renderNavItem)}
+        <div className="nav-spacer" />
+        {!collapsed && <div className="nav-section-label">Hệ thống</div>}
+        {utilityMenuItems.map(renderNavItem)}
       </nav>
     </aside>
   );

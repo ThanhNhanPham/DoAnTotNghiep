@@ -24,6 +24,19 @@ const branchService = {
     }
   },
 
+  getNearbyActiveBranches: async (latitude, longitude) => {
+    try {
+      const response = await axios.get(`${API_ENDPOINTS.branches}/active/nearby`, {
+        ...getAuthConfig(),
+        params: { latitude, longitude },
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching nearby active branches:', error);
+      throw error;
+    }
+  },
+
   // Lấy chi tiết chi nhánh theo id
   getBranchById: async (id) => {
     try {
