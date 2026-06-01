@@ -18,6 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Objects;
 
 @Service
 public class InvoiceService {
@@ -111,6 +112,13 @@ public class InvoiceService {
                 .customerName(booking != null && booking.getUser() != null ? booking.getUser().getFullName() : null)
                 .customerPhone(booking != null && booking.getUser() != null ? booking.getUser().getPhone() : null)
                 .licensePlate(booking != null && booking.getVehicle() != null ? booking.getVehicle().getLicensePlate() : null)
+                .mechanicName(booking != null && booking.getMechanic() != null ? booking.getMechanic().getFullName() : null)
+                .serviceNames(booking != null && booking.getBookedServices() != null
+                        ? booking.getBookedServices().stream()
+                        .map(bookedService -> bookedService.getService() != null ? bookedService.getService().getName() : null)
+                        .filter(Objects::nonNull)
+                        .toList()
+                        : List.of())
                 .serviceAmount(invoice.getServiceAmount())
                 .partAmount(invoice.getPartAmount())
                 .membershipTier(invoice.getMembershipTier())

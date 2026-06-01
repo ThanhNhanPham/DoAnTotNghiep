@@ -16,9 +16,11 @@ public class BranchService {
     private static final double EARTH_RADIUS_KM = 6371.0;
 
     private final BranchRepository branchRepository;
+    private final RoutingService routingService;
 
-    public BranchService(BranchRepository branchRepository) {
+    public BranchService(BranchRepository branchRepository, RoutingService routingService) {
         this.branchRepository = branchRepository;
+        this.routingService = routingService;
     }
 
     public List<Branch> getAllBranches() {
@@ -36,13 +38,20 @@ public class BranchService {
     }
 
     public List<BranchNearbyResponse> getNearbyActiveBranches(double userLatitude, double userLongitude) {
-        return branchRepository.findAllByIsActiveTrue().stream()
+        List<Branch> activeBranches = branchRepository.findAllByIsActiveTrue().stream()
                 .filter(branch -> branch.getLatitude() != null && branch.getLongitude() != null)
+                .toList();
+        var routeInfoByBranchId = routingService.getRouteInfo(userLatitude, userLongitude, activeBranches);
+
+        return activeBranches.stream()
                 .map(branch -> BranchNearbyResponse.from(
                         branch,
-                        calculateDistanceKm(userLatitude, userLongitude, branch.getLatitude(), branch.getLongitude())
+                        calculateDistanceKm(userLatitude, userLongitude, branch.getLatitude(), branch.getLongitude()),
+                        routeInfoByBranchId.get(branch.getId()),
+                        userLatitude,
+                        userLongitude
                 ))
-                .sorted(Comparator.comparing(BranchNearbyResponse::getDistanceKm))
+                .sorted(Comparator.comparing(this::getSortableDistanceKm))
                 .toList();
     }
 
@@ -76,5 +85,9 @@ public class BranchService {
 
         double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
         return Math.round(EARTH_RADIUS_KM * c * 100.0) / 100.0;
+    }
+
+    private Double getSortableDistanceKm(BranchNearbyResponse response) {
+        return response.getTravelDistanceKm() != null ? response.getTravelDistanceKm() : response.getDistanceKm();
     }
 }

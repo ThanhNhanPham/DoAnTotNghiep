@@ -77,6 +77,9 @@ public class Booking {
 
     @Column(name = "cancel_reason", columnDefinition = "TEXT")
     private String cancelReason;
+
+    @Column(name = "vehicle_condition_before_repair", columnDefinition = "TEXT")
+    private String vehicleConditionBeforeRepair;
     // Mối quan hệ Một-Nhiều với bảng Services thông qua bảng trung gian booking_services
     @OneToMany(mappedBy = "booking", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<BookedService> bookedServices = new ArrayList<>();

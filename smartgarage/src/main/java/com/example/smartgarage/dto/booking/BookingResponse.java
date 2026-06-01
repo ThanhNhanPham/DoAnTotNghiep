@@ -38,6 +38,7 @@ public class BookingResponse {
     private List<String> serviceNames;
     private List<String> partNames;
     private String cancelReason;
+    private String vehicleConditionBeforeRepair;
     private BigDecimal serviceAmount;
     private BigDecimal partAmount;
     private MembershipTier membershipTierApplied;

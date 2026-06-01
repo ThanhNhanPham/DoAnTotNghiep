@@ -90,6 +90,34 @@ public interface BookingRepository extends JpaRepository<Booking,Long> {
                                         @Param("startDate") LocalDateTime startDate,
                                         @Param("endDate") LocalDateTime endDate);
 
+    @Query("SELECT COUNT(b) FROM Booking b " +
+            "WHERE b.status = :status AND b.bookingTime BETWEEN :startDate AND :endDate")
+    long countByStatusAndBookingTimeBetween(@Param("status") BookingStatus status,
+                                            @Param("startDate") LocalDateTime startDate,
+                                            @Param("endDate") LocalDateTime endDate);
+
+    @Query("SELECT AVG(b.totalAmount) FROM Booking b " +
+            "WHERE b.status = :status AND b.bookingTime BETWEEN :startDate AND :endDate")
+    BigDecimal calculateAverageOrderValueByPeriod(@Param("status") BookingStatus status,
+                                                  @Param("startDate") LocalDateTime startDate,
+                                                  @Param("endDate") LocalDateTime endDate);
+
+    @Query(value = """
+            SELECT TO_CHAR(DATE_TRUNC(:groupBy, b.booking_time), :formatPattern) AS label,
+                   COALESCE(SUM(b.total_amount), 0) AS revenue,
+                   COUNT(*) AS completed_bookings
+            FROM bookings b
+            WHERE b.status = :status
+              AND b.booking_time BETWEEN :startDate AND :endDate
+            GROUP BY DATE_TRUNC(:groupBy, b.booking_time)
+            ORDER BY DATE_TRUNC(:groupBy, b.booking_time)
+            """, nativeQuery = true)
+    List<Object[]> findRevenueTrendRaw(@Param("status") String status,
+                                       @Param("groupBy") String groupBy,
+                                       @Param("formatPattern") String formatPattern,
+                                       @Param("startDate") LocalDateTime startDate,
+                                       @Param("endDate") LocalDateTime endDate);
+
     @Query("SELECT b.status, COUNT(b) FROM Booking b GROUP BY b.status")
     List<Object[]> countAllStatusRaw();
 

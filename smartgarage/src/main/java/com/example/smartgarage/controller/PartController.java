@@ -13,6 +13,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @Tag(name = "Part API", description = "Quản lý xe linh kiện của cửa hàng")
 @RestController
@@ -79,9 +80,9 @@ public class PartController {
 
     @Operation(summary = "Xóa linh kiện")
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deletePart(@PathVariable Long id) {
+    public ResponseEntity<?> deletePart(@PathVariable Long id) {
         partService.deletePart(id);
-        return ResponseEntity.noContent().build();
+        return ResponseEntity.ok(Map.of("message", "Đã xóa linh kiện thành công"));
     }
 
     @Operation(summary="Api cảnh báo linh kiện kho sắp hết")

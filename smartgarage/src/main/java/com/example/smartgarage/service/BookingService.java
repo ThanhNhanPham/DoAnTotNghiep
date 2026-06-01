@@ -64,6 +64,7 @@ public class BookingService {
     @Autowired private ServiceRepository serviceRepository;
     @Autowired private MechanicRepository mechanicRepository;
     @Autowired private EmailService emailService;
+    @Autowired private EmailTemplateService emailTemplateService;
     @Autowired private PartRepository partRepository;
     @Autowired private NotificationRepository notificationRepository;
     @Autowired private MembershipService membershipService;
@@ -368,6 +369,7 @@ public class BookingService {
                         .map(bp -> bp.getPart().getName())
                         .collect(Collectors.toList()))
                 .cancelReason(booking.getCancelReason())
+                .vehicleConditionBeforeRepair(booking.getVehicleConditionBeforeRepair())
                 .serviceAmount(servicesTotal)
                 .partAmount(partsTotal)
                 .membershipTierApplied(tierApplied)
@@ -458,6 +460,7 @@ public class BookingService {
                 "Lịch hẹn đã được xác nhận",
                 buildBookingSummary(savedBooking) + " đã được gara xác nhận."
         );
+        sendBookingConfirmedEmail(savedBooking);
 
         // 6. TRẢ VỀ DTO (Sử dụng hàm mapper bạn đã viết)
         return mapToResponse(savedBooking);
@@ -475,7 +478,7 @@ public class BookingService {
     }
 
     @Transactional
-    public BookingResponse startBooking(Long bookingId) {
+    public BookingResponse startBooking(Long bookingId, String vehicleConditionBeforeRepair) {
         Booking booking = getBookingByIdOrThrow(bookingId);
         if (booking.getStatus() != BookingStatus.ARRIVED) {
             throw new ConflictException("Chỉ có thể bắt đầu xử lý khi lịch hẹn đang ở trạng thái ARRIVED.");
@@ -484,6 +487,12 @@ public class BookingService {
             throw new ConflictException("Booking chưa được gán thợ để bắt đầu xử lý.");
         }
 
+        String normalizedVehicleCondition = vehicleConditionBeforeRepair != null ? vehicleConditionBeforeRepair.trim() : "";
+        if (normalizedVehicleCondition.isBlank()) {
+            throw new BadRequestException("Vui lòng nhập tình trạng xe trước khi sửa.");
+        }
+
+        booking.setVehicleConditionBeforeRepair(normalizedVehicleCondition);
         booking.setStatus(BookingStatus.IN_PROGRESS);
         Booking savedBooking = bookingRepository.save(booking);
         notifyCustomerAboutAdminBookingUpdate(
@@ -853,6 +862,52 @@ public class BookingService {
             booking.setPointsEarned(MembershipService.POINTS_PER_COMPLETED_BOOKING);
         }
     }
+
+    private void sendBookingConfirmedEmail(Booking booking) {
+        if (booking.getUser() == null || booking.getUser().getEmail() == null || booking.getUser().getEmail().isBlank()) {
+            return;
+        }
+
+        String customerName = booking.getUser().getFullName() != null ? booking.getUser().getFullName() : "Quý khách";
+        String branchName = booking.getBranch() != null && booking.getBranch().getName() != null
+                ? booking.getBranch().getName()
+                : "Smart Garage";
+        String licensePlate = booking.getVehicle() != null && booking.getVehicle().getLicensePlate() != null
+                ? booking.getVehicle().getLicensePlate()
+                : "chưa rõ biển số";
+        String mechanicName = booking.getMechanic() != null && booking.getMechanic().getFullName() != null
+                ? booking.getMechanic().getFullName()
+                : "đang cập nhật";
+        String arrivalWindow = formatArrivalWindow(booking);
+
+        String htmlContent = emailTemplateService.buildBookingConfirmedEmail(
+                customerName,
+                booking.getId(),
+                branchName,
+                licensePlate,
+                mechanicName,
+                arrivalWindow
+        );
+
+        emailService.sendHtmlEmail(
+                booking.getUser().getEmail(),
+                "Smart Garage - Xác nhận lịch hẹn #" + booking.getId(),
+                htmlContent
+        );
+    }
+
+    private String formatArrivalWindow(Booking booking) {
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
+
+        if (booking.getArrivalSlotStart() != null && booking.getArrivalSlotEnd() != null) {
+            return booking.getArrivalSlotStart().format(formatter) + " - " + booking.getArrivalSlotEnd().format(formatter);
+        }
+        if (booking.getBookingTime() != null) {
+            return booking.getBookingTime().format(formatter);
+        }
+        return "Theo thông tin đã đặt";
+    }
+
     private void sendCompletionEmail(Booking booking, BigDecimal total) {
         if (booking.getUser() == null || booking.getUser().getEmail() == null) return;
 

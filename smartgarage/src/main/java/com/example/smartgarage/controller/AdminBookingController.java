@@ -61,8 +61,9 @@ public class AdminBookingController {
 
     @Operation(summary = "Admin bắt đầu xử lý xe")
     @PatchMapping("/{bookingId}/start")
-    public ResponseEntity<BookingResponse> startBooking(@PathVariable Long bookingId) {
-        return ResponseEntity.ok(bookingService.startBooking(bookingId));
+    public ResponseEntity<BookingResponse> startBooking(@PathVariable Long bookingId,
+                                                        @Valid @RequestBody StartBookingRequest request) {
+        return ResponseEntity.ok(bookingService.startBooking(bookingId, request.getVehicleConditionBeforeRepair()));
     }
 
     @Operation(summary = "Admin đổi thợ phụ trách booking")

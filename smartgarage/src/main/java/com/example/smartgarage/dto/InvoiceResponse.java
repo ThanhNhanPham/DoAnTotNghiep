@@ -10,6 +10,7 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 @Data
 @Builder
 @NoArgsConstructor
@@ -21,6 +22,8 @@ public class InvoiceResponse {
     private String customerName;
     private String customerPhone;
     private String licensePlate;
+    private String mechanicName;
+    private List<String> serviceNames;
     private BigDecimal serviceAmount;
     private BigDecimal partAmount;
     private MembershipTier membershipTier;

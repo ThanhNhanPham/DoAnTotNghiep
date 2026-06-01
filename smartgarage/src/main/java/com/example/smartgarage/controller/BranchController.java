@@ -15,6 +15,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @Tag(name = "Branch API", description = "Quản lý chi nhánh cửa hàng")
 @RestController
@@ -60,7 +61,6 @@ public class BranchController {
             double longitude) {
         return ResponseEntity.ok(branchService.getNearbyActiveBranches(latitude, longitude));
     }
-
     @Operation(summary="Thêm chi nhánh cửa hàng mới cho hệ thống")
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'SUPERADMIN')")
@@ -81,8 +81,8 @@ public class BranchController {
     @Operation(summary="Xoá chi nhánh cửa hàng", description="chuyển active từ true sang false")
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'SUPERADMIN')")
-    public ResponseEntity<String> deactivateBranch(@PathVariable Long id) {
+    public ResponseEntity<?> deactivateBranch(@PathVariable Long id) {
         branchService.deactivateBranch(id);
-        return ResponseEntity.ok("Chi nhánh đã ngưng hoạt động.");
+        return ResponseEntity.ok(Map.of("message","Chi nhánh đã ngưng hoạt động."));
     }
 }

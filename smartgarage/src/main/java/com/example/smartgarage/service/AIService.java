@@ -2,6 +2,7 @@ package com.example.smartgarage.service;
 
 import com.example.smartgarage.entity.ConsultationHistory;
 import com.example.smartgarage.entity.Service;
+import com.example.smartgarage.enums.VehicleType;
 import com.example.smartgarage.entity.User;
 import com.example.smartgarage.repository.ConsultationHistoryRepository;
 import com.example.smartgarage.repository.ServiceRepository;
@@ -55,7 +56,7 @@ public class AIService {
     private final ConcurrentHashMap<String, UserRequestTracker> userRequestTrackers = new ConcurrentHashMap<>();
     private final Semaphore aiConcurrencyLimiter = new Semaphore(MAX_CONCURRENT_LOCAL_AI_REQUESTS);
     private final AtomicLong aiCooldownUntilMs = new AtomicLong(0L);
-    private volatile CacheEntry serviceListCache;
+    private final ConcurrentHashMap<String, CacheEntry> serviceListCache = new ConcurrentHashMap<>();
 
     public AIService(ServiceRepository serviceRepository,
                      RestTemplate restTemplate,
@@ -67,7 +68,7 @@ public class AIService {
         this.historyRepository = historyRepository;
     }
 
-    public String suggestService(String customerIssue, String username) {
+    public String suggestService(String customerIssue, VehicleType vehicleType, String username) {
         String normalizedIssue = normalizeIssue(customerIssue);
         if (normalizedIssue.isBlank()) {
             return "Vui lòng nhập mô tả vấn đề của xe trước khi gửi yêu cầu.";
@@ -83,7 +84,7 @@ public class AIService {
             return "AI vừa chạm giới hạn tải, vui lòng thử lại sau khoảng 30 giây.";
         }
 
-        String cacheKey = buildCacheKey(username, normalizedIssue);
+        String cacheKey = buildCacheKey(username, normalizedIssue, vehicleType);
         String cachedResponse = getCachedResponse(cacheKey);
         if (cachedResponse != null) {
             return cachedResponse;
@@ -96,7 +97,7 @@ public class AIService {
         }
 
         try {
-            String aiSuggestion = fetchSuggestionFromLocalAi(normalizedIssue, username);
+            String aiSuggestion = fetchSuggestionFromLocalAi(normalizedIssue, vehicleType, username);
             if (shouldCache(aiSuggestion)) {
                 cacheResponse(cacheKey, aiSuggestion);
             }
@@ -110,12 +111,19 @@ public class AIService {
         }
     }
 
-    private String fetchSuggestionFromLocalAi(String customerIssue, String username) {
+    private String fetchSuggestionFromLocalAi(String customerIssue, VehicleType vehicleType, String username) {
         if (!aiConcurrencyLimiter.tryAcquire()) {
             return "AI đang xử lý quá nhiều yêu cầu cùng lúc, vui lòng thử lại sau ít giây.";
         }
         try {
-            String availableServices = getAvailableServicesForPrompt();
+            String availableServices = getAvailableServicesForPrompt(vehicleType);
+            String vehicleTypeLabel = toVehicleTypeLabel(vehicleType);
+            String vehicleTypeInstruction = vehicleType != null
+                    ? "Chỉ được phép đề xuất dịch vụ phù hợp với đúng loại xe này. "
+                    : "Nếu chưa xác định chắc chắn loại xe, hãy nói rõ cần xác nhận xe là ô tô hay xe máy trước khi chốt dịch vụ. ";
+            String serviceConstraintInstruction = vehicleType != null
+                    ? "Danh sách dịch vụ hợp lệ của gara cho loại xe đó: [" + availableServices + "]. "
+                    : "Danh sách dịch vụ hiện có của gara: [" + availableServices + "]. ";
 
             String finalUrl = buildLocalAiGenerateUrl();
 
@@ -123,13 +131,16 @@ public class AIService {
             headers.setContentType(MediaType.APPLICATION_JSON);
 
             String promptText = String.format(
-                    "Bạn là chuyên gia tư vấn sửa chữa xe máy tại Việt Nam. " +
-                            "Gara của tôi có các dịch vụ: [%s]. " +
+                    "Bạn là chuyên gia tư vấn dịch vụ sửa chữa xe tại Việt Nam. " +
+                            "Loại xe khách đang sử dụng: %s. " +
+                            "%s" +
+                            "%s" +
                             "Khách hàng nói: '%s'. " +
-                            "Hãy phân tích lỗi và gợi ý dịch vụ phù hợp nhất. " +
+                            "Hãy phân tích triệu chứng và gợi ý dịch vụ phù hợp nhất từ đúng danh sách trên. " +
+                            "Không được đề xuất dịch vụ không có trong danh sách, không được trộn dịch vụ của loại xe khác. " +
                             " Tên dịch vụ được đề xuất phải được bọc bằng Markdown in đậm theo dạng **tên dịch vụ**. " +
                             "Trả về kết quả thân thiện, ngắn gọn dưới 100 từ.",
-                    availableServices, customerIssue
+                    vehicleTypeLabel, vehicleTypeInstruction, serviceConstraintInstruction, customerIssue
             );
 
             Map<String, Object> payload = Map.of(
@@ -214,8 +225,8 @@ public class AIService {
                 : customerIssue.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
     }
 
-    private String buildCacheKey(String username, String normalizedIssue) {
-        return username + "|" + normalizedIssue;
+    private String buildCacheKey(String username, String normalizedIssue, VehicleType vehicleType) {
+        return username + "|" + normalizedIssue + "|" + (vehicleType != null ? vehicleType.name() : "UNKNOWN");
     }
 
     private String getCachedResponse(String cacheKey) {
@@ -256,18 +267,31 @@ public class AIService {
         }
     }
 
-    private String getAvailableServicesForPrompt() {
-        CacheEntry cacheEntry = serviceListCache;
+    private String getAvailableServicesForPrompt(VehicleType vehicleType) {
+        String cacheKey = vehicleType != null ? vehicleType.name() : "UNKNOWN";
+        CacheEntry cacheEntry = serviceListCache.get(cacheKey);
         long now = System.currentTimeMillis();
         if (cacheEntry != null && cacheEntry.expiresAt() >= now) {
             return cacheEntry.response();
         }
 
-        String availableServices = serviceRepository.findAll().stream()
+        String availableServices = (vehicleType != null
+                ? serviceRepository.findByIsActiveTrueAndType(vehicleType)
+                : serviceRepository.findByIsActiveTrue()).stream()
                 .map(Service::getName)
                 .collect(Collectors.joining(", "));
-        serviceListCache = new CacheEntry(availableServices, now + SERVICE_LIST_CACHE_TTL_MS);
+        serviceListCache.put(cacheKey, new CacheEntry(availableServices, now + SERVICE_LIST_CACHE_TTL_MS));
         return availableServices;
+    }
+
+    private String toVehicleTypeLabel(VehicleType vehicleType) {
+        if (vehicleType == null) {
+            return "chưa xác định";
+        }
+        return switch (vehicleType) {
+            case CAR -> "ô tô";
+            case MOTORBIKE -> "xe máy";
+        };
     }
 
     private String validateUserRequestRate(String username) {

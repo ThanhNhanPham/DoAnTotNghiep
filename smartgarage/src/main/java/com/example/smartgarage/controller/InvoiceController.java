@@ -10,6 +10,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @Tag(name = "Invoice API", description = "Quản lý hóa đơn")
 @RestController
@@ -49,8 +50,8 @@ public class InvoiceController {
     @Operation(summary="Xoá hoá đơn theo ID")
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'SUPERADMIN')")
-    public ResponseEntity<String>  deleteInvoice(@PathVariable Long id){
+    public ResponseEntity<?>  deleteInvoice(@PathVariable Long id){
         invoiceService.deleteInvoice(id);
-        return ResponseEntity.ok("Hoá đơn đã được xoá thành công");
+        return ResponseEntity.ok(Map.of("message","Hoá đơn đã được xoá thành công"));
     }
 }
