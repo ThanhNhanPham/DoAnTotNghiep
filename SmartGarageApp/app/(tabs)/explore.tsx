@@ -20,7 +20,7 @@ import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 
 import aiService, { AIConsultationHistoryItem, normalizeVehicleIssueText } from '@/services/aiService';
-import vehicleService from '@/services/vehicleService';
+import vehicleService, { Vehicle, VehicleType } from '@/services/vehicleService';
 
 export default function ExploreScreen() {
   const router = useRouter();
@@ -30,6 +30,8 @@ export default function ExploreScreen() {
   const [deletingHistoryId, setDeletingHistoryId] = useState<number | null>(null);
   const [hasVehicle, setHasVehicle] = useState(true);
   const [queryHistory, setQueryHistory] = useState<AIConsultationHistoryItem[]>([]);
+  const [activeVehicles, setActiveVehicles] = useState<Vehicle[]>([]);
+  const [selectedVehicleType, setSelectedVehicleType] = useState<VehicleType | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -50,11 +52,18 @@ export default function ExploreScreen() {
           const activeVehicles = Array.isArray(vehicles)
             ? vehicles.filter((vehicle) => vehicle.isActive !== false)
             : [];
+          const distinctVehicleTypes = Array.from(
+            new Set(activeVehicles.map((vehicle) => vehicle.type).filter(Boolean))
+          ) as VehicleType[];
 
+          setActiveVehicles(activeVehicles);
+          setSelectedVehicleType(distinctVehicleTypes.length === 1 ? distinctVehicleTypes[0] : null);
           setHasVehicle(activeVehicles.length > 0);
           setQueryHistory(Array.isArray(history) ? history : []);
         } catch (error) {
           console.error('Load vehicles for AI screen failed:', error);
+          setActiveVehicles([]);
+          setSelectedVehicleType(null);
           setHasVehicle(false);
           setQueryHistory([]);
         }
@@ -116,12 +125,16 @@ export default function ExploreScreen() {
       Alert.alert('Thiếu mô tả', 'Hãy nhập triệu chứng hoặc vấn đề xe đang gặp.');
       return;
     }
+    if (!selectedVehicleType) {
+      Alert.alert('Thiếu loại xe', 'Vui lòng bổ sung loại xe gửi khi gửi yêu cầu tư vấn');
+      return;
+    }
 
     setIsSuggesting(true);
 
     try {
       setIssue(normalizedIssue);
-      const suggestion = await aiService.suggestService({ issue: normalizedIssue });
+      const suggestion = await aiService.suggestService({ issue: normalizedIssue, vehicleType: selectedVehicleType });
       setAiSuggestion(suggestion);
       const nextHistory = await aiService.getMyHistory();
       setQueryHistory(Array.isArray(nextHistory) ? nextHistory : []);
@@ -150,6 +163,10 @@ export default function ExploreScreen() {
     });
   };
 
+  const distinctVehicleTypes = Array.from(
+    new Set(activeVehicles.map((vehicle) => vehicle.type).filter(Boolean))
+  ) as VehicleType[];
+
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
@@ -170,6 +187,29 @@ export default function ExploreScreen() {
 
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Mô tả vấn đề của xe</Text>
+            <Text style={styles.vehicleTypeLabel}>Loại xe</Text>
+            <View style={styles.vehicleTypeGroup}>
+              {distinctVehicleTypes.map((vehicleType) => {
+                const isSelected = selectedVehicleType === vehicleType;
+                const label = vehicleType === 'CAR' ? 'Ô tô' : 'Xe máy';
+
+                return (
+                  <TouchableOpacity
+                    key={vehicleType}
+                    style={[styles.vehicleTypeButton, isSelected && styles.vehicleTypeButtonActive]}
+                    onPress={() => setSelectedVehicleType(vehicleType)}
+                    activeOpacity={0.85}>
+                    <Text
+                      style={[
+                        styles.vehicleTypeButtonText,
+                        isSelected && styles.vehicleTypeButtonTextActive,
+                      ]}>
+                      {label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
             <TextInput
               style={styles.textArea}
               multiline
@@ -351,6 +391,40 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '800',
     color: '#0F172A',
+  },
+  vehicleTypeLabel: {
+    marginTop: 14,
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#334155',
+  },
+  vehicleTypeGroup: {
+    marginTop: 10,
+    flexDirection: 'row',
+    gap: 10,
+  },
+  vehicleTypeButton: {
+    flex: 1,
+    minHeight: 46,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    backgroundColor: '#F8FAFC',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+  },
+  vehicleTypeButtonActive: {
+    borderColor: '#0F766E',
+    backgroundColor: '#CCFBF1',
+  },
+  vehicleTypeButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  vehicleTypeButtonTextActive: {
+    color: '#0F766E',
   },
   textArea: {
     marginTop: 14,

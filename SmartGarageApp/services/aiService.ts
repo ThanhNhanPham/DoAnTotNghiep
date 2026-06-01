@@ -1,7 +1,9 @@
 import apiClient from '@/constants/Api';
+import { VehicleType } from '@/services/vehicleService';
 
 export interface AIConsultationRequest {
   issue: string;
+  vehicleType: VehicleType;
 }
 
 export interface AIConsultationHistoryItem {
