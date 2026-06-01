@@ -44,6 +44,27 @@ const formatDateTime = (value) => {
   });
 };
 
+const formatServiceNames = (serviceNames) => {
+  if (!Array.isArray(serviceNames) || serviceNames.length === 0) {
+    return 'Chưa có';
+  }
+  return serviceNames.join(', ');
+};
+
+const renderServiceLines = (serviceNames) => {
+  if (!Array.isArray(serviceNames) || serviceNames.length === 0) {
+    return 'Chưa có';
+  }
+
+  return (
+    <Space direction="vertical" size={2}>
+      {serviceNames.map((serviceName, index) => (
+        <span key={`${serviceName}-${index}`}>{serviceName}</span>
+      ))}
+    </Space>
+  );
+};
+
 const Invoices = () => {
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -318,6 +339,8 @@ const Invoices = () => {
             <Descriptions.Item label="Khách hàng">{invoiceDetail.customerName || 'Chưa có'}</Descriptions.Item>
             <Descriptions.Item label="Số điện thoại">{invoiceDetail.customerPhone || 'Chưa có'}</Descriptions.Item>
             <Descriptions.Item label="Biển số xe">{invoiceDetail.licensePlate || 'Chưa có'}</Descriptions.Item>
+            <Descriptions.Item label="Thợ sửa xe">{invoiceDetail.mechanicName || 'Chưa có'}</Descriptions.Item>
+            <Descriptions.Item label="Tên dịch vụ">{renderServiceLines(invoiceDetail.serviceNames)}</Descriptions.Item>
             <Descriptions.Item label="Tiền dịch vụ">{formatCurrency(invoiceDetail.serviceAmount)}</Descriptions.Item>
             <Descriptions.Item label="Tiền phụ tùng">{formatCurrency(invoiceDetail.partAmount)}</Descriptions.Item>
             <Descriptions.Item label="Giảm giá thành viên">
@@ -364,6 +387,10 @@ const Invoices = () => {
               <strong>{printingInvoice.licensePlate || 'Chưa có'}</strong>
             </div>
             <div>
+              <span>Thợ sửa xe</span>
+              <strong>{printingInvoice.mechanicName || 'Chưa có'}</strong>
+            </div>
+            <div>
               <span>Ngày xuất</span>
               <strong>{formatDateTime(printingInvoice.issuedAt)}</strong>
             </div>
@@ -374,6 +401,10 @@ const Invoices = () => {
                   printingInvoice.paymentMethod ||
                   'Chưa có'}
               </strong>
+            </div>
+            <div>
+              <span>Dịch vụ</span>
+              <strong>{renderServiceLines(printingInvoice.serviceNames)}</strong>
             </div>
           </div>
 
@@ -458,12 +489,20 @@ const Invoices = () => {
             <strong>{printingInvoice.licensePlate || 'N/A'}</strong>
           </div>
           <div className="receipt-row">
+            <span>Tho sua</span>
+            <strong>{printingInvoice.mechanicName || 'N/A'}</strong>
+          </div>
+          <div className="receipt-row">
             <span>Thanh toan</span>
             <strong>
               {(paymentMethodConfig[printingInvoice.paymentMethod] || {}).text ||
                 printingInvoice.paymentMethod ||
                 'N/A'}
             </strong>
+          </div>
+          <div className="receipt-row">
+            <span>Dich vu</span>
+            <strong>{renderServiceLines(printingInvoice.serviceNames)}</strong>
           </div>
 
           <div className="receipt-line" />

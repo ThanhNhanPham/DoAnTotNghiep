@@ -72,6 +72,7 @@ const Bookings = () => {
   });
   const [cancelForm] = Form.useForm();
   const [partForm] = Form.useForm();
+  const [startBookingForm] = Form.useForm();
 
   // States for Confirming Booking
   const [isConfirmModalVisible, setIsConfirmModalVisible] = useState(false);
@@ -84,6 +85,9 @@ const Bookings = () => {
   const [isCancelModalVisible, setIsCancelModalVisible] = useState(false);
   const [bookingToCancel, setBookingToCancel] = useState(null);
   const [cancelLoading, setCancelLoading] = useState(false);
+  const [isStartModalVisible, setIsStartModalVisible] = useState(false);
+  const [bookingToStart, setBookingToStart] = useState(null);
+  const [startLoading, setStartLoading] = useState(false);
   const [isDetailModalVisible, setIsDetailModalVisible] = useState(false);
   const [bookingDetail, setBookingDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -255,10 +259,19 @@ const Bookings = () => {
 
   const canConfirmPayment = (booking) =>
     booking?.status === 'COMPLETED' &&
-    booking?.paymentMethod === 'BANK_TRANSFER' &&
+    ['CASH', 'BANK_TRANSFER'].includes(booking?.paymentMethod) &&
     booking?.paymentStatus !== 'SUCCESS';
 
-  const getPaymentConfirmText = () => {
+  const getPaymentConfirmText = (booking) => {
+    if (booking?.paymentMethod === 'CASH') {
+      return {
+        action: 'Xác nhận tiền mặt',
+        title: 'Xác nhận thanh toán tiền mặt?',
+        description: 'Xác nhận khách đã thanh toán tiền mặt trực tiếp tại gara?',
+        success: 'Xác nhận thanh toán tiền mặt thành công!',
+      };
+    }
+
     return {
       action: 'Xác nhận chuyển khoản',
       title: 'Xác nhận thanh toán chuyển khoản?',
@@ -266,6 +279,11 @@ const Bookings = () => {
       success: 'Xác nhận thanh toán chuyển khoản thành công!',
     };
   };
+
+  const getPaymentConfirmButtonStyle = (booking) =>
+    booking?.paymentMethod === 'CASH'
+      ? { background: '#d97706', borderColor: '#d97706' }
+      : { background: '#0f766e', borderColor: '#0f766e' };
 
   const showLockedBookingMessage = (booking) => {
     if (booking?.status === 'COMPLETED') {
@@ -328,13 +346,32 @@ const Bookings = () => {
     }
   };
 
-  const handleStartBooking = async (bookingId) => {
+  const openStartModal = (booking) => {
+    setBookingToStart(booking);
+    startBookingForm.setFieldsValue({
+      vehicleConditionBeforeRepair: booking?.vehicleConditionBeforeRepair || '',
+    });
+    setIsStartModalVisible(true);
+  };
+
+  const handleStartBooking = async () => {
     try {
-      await bookingService.startBooking(bookingId);
+      const values = await startBookingForm.validateFields();
+      setStartLoading(true);
+      await bookingService.startBooking(bookingToStart.id, values.vehicleConditionBeforeRepair);
       message.success('Đã bắt đầu xử lý xe!');
-      fetchBookings();
-    } catch {
-      message.error('Lỗi khi bắt đầu xử lý xe!');
+      setIsStartModalVisible(false);
+      startBookingForm.resetFields();
+      await fetchBookings();
+      if (bookingDetail?.id === bookingToStart?.id) {
+        await refreshBookingDetail(bookingToStart.id);
+      }
+      setBookingToStart(null);
+    } catch (error) {
+      if (error?.errorFields) return;
+      message.error(getApiErrorMessage(error, 'Lỗi khi bắt đầu xử lý xe!'));
+    } finally {
+      setStartLoading(false);
     }
   };
 
@@ -566,7 +603,11 @@ const Bookings = () => {
 
     setPaymentConfirmingId(bookingId);
     try {
-      await paymentService.confirmBankTransferPayment(bookingId);
+      if (booking.paymentMethod === 'CASH') {
+        await paymentService.confirmCashPayment(bookingId);
+      } else {
+        await paymentService.confirmBankTransferPayment(bookingId);
+      }
       message.success(getPaymentConfirmText(booking).success);
       await fetchBookings();
       if (bookingDetail?.id === bookingId) {
@@ -999,20 +1040,13 @@ const Bookings = () => {
             )}
 
             {s === 'ARRIVED' && (
-              <Popconfirm
-                title="Bắt đầu xử lý xe?"
-                description="Chuyển lịch hẹn sang trạng thái đang sửa?"
-                onConfirm={() => handleStartBooking(record.id)}
-                okText="Bắt đầu"
-                cancelText="Thoát"
-              >
-                <Tooltip title="Bắt đầu sửa">
-                  <Button
-                    type="primary"
-                    icon={<PlayCircleOutlined style={{ fontSize: '18px' }} />}
-                  />
-                </Tooltip>
-              </Popconfirm>
+              <Tooltip title="Bắt đầu sửa">
+                <Button
+                  type="primary"
+                  icon={<PlayCircleOutlined style={{ fontSize: '18px' }} />}
+                  onClick={() => openStartModal(record)}
+                />
+              </Tooltip>
             )}
 
             {s === 'IN_PROGRESS' && (
@@ -1048,7 +1082,7 @@ const Bookings = () => {
                       <Button
                         type="primary"
                         loading={paymentConfirmingId === record.id}
-                        style={{ background: '#0f766e', borderColor: '#0f766e' }}
+                        style={getPaymentConfirmButtonStyle(record)}
                         icon={<DollarCircleOutlined style={{ fontSize: '18px' }} />}
                       />
                     </Tooltip>
@@ -1355,6 +1389,39 @@ const Bookings = () => {
       </Modal>
 
       <Modal
+        title="Ghi nhận tình trạng xe trước sửa"
+        open={isStartModalVisible}
+        onOk={handleStartBooking}
+        onCancel={() => {
+          setIsStartModalVisible(false);
+          setBookingToStart(null);
+          startBookingForm.resetFields();
+        }}
+        confirmLoading={startLoading}
+        okText="Bắt đầu sửa"
+        cancelText="Thoát"
+        destroyOnHidden
+      >
+        <Form form={startBookingForm} layout="vertical">
+          <Form.Item
+            label="Tình trạng xe trước khi sửa"
+            name="vehicleConditionBeforeRepair"
+            rules={[
+              { required: true, whitespace: true, message: 'Vui lòng nhập tình trạng xe trước khi sửa' },
+              { max: 2000, message: 'Mô tả không vượt quá 2000 ký tự' },
+            ]}
+          >
+            <Input.TextArea
+              rows={5}
+              maxLength={2000}
+              showCount
+              placeholder="Ví dụ: Xe của bạn bị hư bạc đạn, đèn chiếu hậu không sáng."
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
         title="Chi tiết lịch hẹn"
         open={isDetailModalVisible}
         onCancel={() => setIsDetailModalVisible(false)}
@@ -1396,6 +1463,9 @@ const Bookings = () => {
             </Descriptions.Item>
             <Descriptions.Item label="Giờ nhận xe">
               {formatDateTime(bookingDetail.arrivalTime)}
+            </Descriptions.Item>
+            <Descriptions.Item label="Tình trạng xe trước sửa">
+              {bookingDetail.vehicleConditionBeforeRepair || 'Chưa có'}
             </Descriptions.Item>
             <Descriptions.Item label="Dịch vụ">
               <Space direction="vertical" style={{ width: '100%' }} size={10}>
@@ -1490,6 +1560,7 @@ const Bookings = () => {
                       type="primary"
                       size="small"
                       loading={paymentConfirmingId === bookingDetail.id}
+                      style={getPaymentConfirmButtonStyle(bookingDetail)}
                       icon={<DollarCircleOutlined />}
                     >
                       {getPaymentConfirmText(bookingDetail).action}

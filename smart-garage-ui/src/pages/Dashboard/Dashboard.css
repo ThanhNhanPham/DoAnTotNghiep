@@ -220,6 +220,86 @@
   color: #111827;
 }
 
+.dashboard-segmented {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.revenue-chart {
+  position: relative;
+  min-height: 320px;
+  padding-top: 18px;
+}
+
+.revenue-chart-grid {
+  position: absolute;
+  inset: 18px 0 38px 0;
+  display: grid;
+  grid-template-rows: repeat(5, 1fr);
+  pointer-events: none;
+}
+
+.revenue-chart-grid-line {
+  border-top: 1px dashed #e2e8f0;
+}
+
+.revenue-chart-bars {
+  position: relative;
+  z-index: 1;
+  min-height: 320px;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(56px, 1fr);
+  gap: 12px;
+  align-items: end;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.revenue-chart-bar-group {
+  min-width: 56px;
+}
+
+.revenue-chart-bar-wrap {
+  height: 250px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+}
+
+.revenue-chart-value {
+  font-size: 11px;
+  font-weight: 700;
+  color: #475569;
+  line-height: 1;
+  text-align: center;
+}
+
+.revenue-chart-bar {
+  width: 100%;
+  min-height: 2px;
+  border-radius: 8px 8px 4px 4px;
+  background: linear-gradient(180deg, #14b8a6 0%, #0f766e 100%);
+  box-shadow: 0 10px 20px rgba(15, 118, 110, 0.18);
+}
+
+.revenue-chart-label {
+  margin-top: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #0f172a;
+  text-align: center;
+}
+
+.revenue-chart-count {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #64748b;
+  text-align: center;
+}
+
 .mechanic-item {
   padding: 16px 0;
   border-bottom: 1px solid #e2e8f0;
@@ -295,6 +375,15 @@
 
   .stat-value {
     font-size: 20px;
+  }
+
+  .dashboard-segmented {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .revenue-chart-bars {
+    grid-auto-columns: minmax(52px, 72px);
   }
 }
 

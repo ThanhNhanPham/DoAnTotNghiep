@@ -1,8 +1,7 @@
-import { Card, Row, Col, Table, Tag, Progress } from 'antd';
+import { useEffect, useMemo, useState } from 'react';
+import { Card, Row, Col, Table, Tag, Progress, message, Button, Empty } from 'antd';
 import { 
   TrendingUp, 
-  TrendingDown,
-  Users,
   Calendar,
   DollarSign,
   CheckCircle,
@@ -11,140 +10,220 @@ import {
   Activity,
   AlertCircle,
 } from 'lucide-react';
+import dashboardService from '../../services/dashboardService';
+import { getApiErrorMessage } from '../../services/reviewService';
 import './Dashboard.css';
 
 const Dashboard = () => {
-  const loading = false;
+  const [loading, setLoading] = useState(true);
+  const [overview, setOverview] = useState(null);
+  const [revenueSummary, setRevenueSummary] = useState(null);
+  const [revenueTrend, setRevenueTrend] = useState([]);
+  const [revenueTrendGroupBy, setRevenueTrendGroupBy] = useState('day');
+  const [statusDistribution, setStatusDistribution] = useState([]);
+  const [topServices, setTopServices] = useState([]);
+  const [recentBookings, setRecentBookings] = useState([]);
 
-  // Mock data - thay thế bằng API call thực tế
+  useEffect(() => {
+    const loadDashboard = async () => {
+      setLoading(true);
+      try {
+        const [overviewData, revenueData, statusData, topServicesData, recentBookingsData] = await Promise.all([
+          dashboardService.getOverview(),
+          dashboardService.getRevenueSummary('month'),
+          dashboardService.getBookingStatusDistribution(),
+          dashboardService.getTopServices(5),
+          dashboardService.getRecentBookings(8),
+        ]);
+
+        setOverview(overviewData);
+        setRevenueSummary(revenueData);
+        setStatusDistribution(Array.isArray(statusData) ? statusData : []);
+        setTopServices(Array.isArray(topServicesData) ? topServicesData : []);
+        setRecentBookings(Array.isArray(recentBookingsData) ? recentBookingsData : []);
+      } catch (error) {
+        message.error(getApiErrorMessage(error, 'Không thể tải dashboard.'));
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadDashboard();
+  }, []);
+
+  useEffect(() => {
+    const loadRevenueTrend = async () => {
+      try {
+        const data = await dashboardService.getRevenueTrend(getRevenueTrendQueryParams(revenueTrendGroupBy));
+        setRevenueTrend(Array.isArray(data) ? data : []);
+      } catch (error) {
+        message.error(getApiErrorMessage(error, 'Không thể tải biểu đồ doanh thu.'));
+      }
+    };
+
+    loadRevenueTrend();
+  }, [revenueTrendGroupBy]);
+
+  const statusCountMap = useMemo(
+    () =>
+      statusDistribution.reduce((accumulator, item) => {
+        if (item?.status) {
+          accumulator[item.status] = Number(item.count || 0);
+        }
+        return accumulator;
+      }, {}),
+    [statusDistribution]
+  );
+
+  const formatCurrency = (value) => {
+    return new Intl.NumberFormat('vi-VN', {
+      style: 'currency',
+      currency: 'VND',
+      minimumFractionDigits: 0,
+    }).format(value);
+  };
+
+  const formatDateTime = (value) => {
+    if (!value) return 'Chưa có';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleString('vi-VN', {
+      hour: '2-digit',
+      minute: '2-digit',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    });
+  };
+
+  const formatCompactCurrency = (value) => {
+    const amount = Number(value || 0);
+    if (amount >= 1_000_000_000) {
+      return `${(amount / 1_000_000_000).toFixed(1).replace('.0', '')} tỷ`;
+    }
+    if (amount >= 1_000_000) {
+      return `${(amount / 1_000_000).toFixed(1).replace('.0', '')} triệu`;
+    }
+    if (amount >= 1_000) {
+      return `${(amount / 1_000).toFixed(0)}k`;
+    }
+    return amount.toLocaleString('vi-VN');
+  };
+
+  const getRevenueTrendQueryParams = (groupBy) => {
+    const today = new Date();
+
+    if (groupBy === 'month') {
+      const yearStart = new Date(today.getFullYear(), 0, 1);
+      return {
+        groupBy: 'month',
+        from: yearStart.toISOString().slice(0, 10),
+        to: today.toISOString().slice(0, 10),
+      };
+    }
+
+    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    return {
+      groupBy: 'day',
+      from: monthStart.toISOString().slice(0, 10),
+      to: today.toISOString().slice(0, 10),
+    };
+  };
+
+  const formatTrendLabel = (label) => {
+    if (!label) return '';
+
+    if (revenueTrendGroupBy === 'month') {
+      const [year, month] = label.split('-');
+      return month && year ? `${month}/${year}` : label;
+    }
+
+    const [year, month, day] = label.split('-');
+    return day && month ? `${day}/${month}` : label;
+  };
+
   const statsData = [
     {
       title: 'Tổng đặt lịch',
-      value: 1234,
+      value: Number(overview?.totalBookings || 0),
       prefix: <Calendar size={20} />,
       suffix: <TrendingUp size={16} color="#52c41a" />,
-      change: '+12.5%',
+      change: `${Number(overview?.newBookingsToday || 0)} mới hôm nay`,
       changeType: 'increase',
       color: '#1890ff',
     },
     {
-      title: 'Người dùng',
-      value: 8432,
-      prefix: <Users size={20} />,
-      suffix: <TrendingUp size={16} color="#52c41a" />,
-      change: '+8.3%',
-      changeType: 'increase',
-      color: '#52c41a',
-    },
-    {
-      title: 'Doanh thu',
-      value: 245680000,
+      title: 'Doanh thu tháng',
+      value: Number(overview?.revenueThisMonth || revenueSummary?.revenue || 0),
       prefix: <DollarSign size={20} />,
-      suffix: <TrendingDown size={16} color="#ff4d4f" />,
-      change: '-3.2%',
-      changeType: 'decrease',
+      suffix: <TrendingUp size={16} color="#52c41a" />,
+      change: `${Number(revenueSummary?.completedBookings || 0)} đơn hoàn tất`,
+      changeType: 'increase',
       color: '#faad14',
     },
     {
-      title: 'Hoàn thành',
-      value: 892,
+      title: 'Đơn hoàn thành',
+      value: Number(overview?.completedBookings || statusCountMap.COMPLETED || 0),
       prefix: <CheckCircle size={20} />,
       suffix: <TrendingUp size={16} color="#52c41a" />,
-      change: '+15.8%',
+      change: `TB ${formatCurrency(Number(revenueSummary?.averageOrderValue || 0))}`,
       changeType: 'increase',
       color: '#52c41a',
     },
-  ];
-
-  const recentBookings = [
     {
-      key: '1',
-      id: 'BK001',
-      customer: 'Nguyễn Văn A',
-      service: 'Bảo dưỡng định kỳ',
-      date: '2026-02-01',
-      time: '09:00',
-      status: 'pending',
-      amount: 500000,
+      title: 'Chờ xác nhận',
+      value: Number(overview?.pendingBookings || statusCountMap.PENDING || 0),
+      prefix: <Clock size={20} />,
+      suffix: <AlertCircle size={16} color="#fa8c16" />,
+      change: `${Number(overview?.confirmedBookings || statusCountMap.CONFIRMED || 0)} đã xác nhận`,
+      changeType: 'increase',
+      color: '#13c2c2',
     },
-    {
-      key: '2',
-      id: 'BK002',
-      customer: 'Trần Thị B',
-      service: 'Thay nhớt',
-      date: '2026-02-01',
-      time: '10:30',
-      status: 'confirmed',
-      amount: 300000,
-    },
-    {
-      key: '3',
-      id: 'BK003',
-      customer: 'Lê Văn C',
-      service: 'Sửa chữa động cơ',
-      date: '2026-02-01',
-      time: '14:00',
-      status: 'in-progress',
-      amount: 2500000,
-    },
-    {
-      key: '4',
-      id: 'BK004',
-      customer: 'Phạm Thị D',
-      service: 'Thay lốp xe',
-      date: '2026-02-01',
-      time: '15:30',
-      status: 'completed',
-      amount: 800000,
-    },
-  ];
-
-  const mechanicPerformance = [
-    { name: 'Nguyễn Văn Nam', completed: 45, rating: 4.8, efficiency: 92 },
-    { name: 'Trần Đức Anh', completed: 38, rating: 4.6, efficiency: 88 },
-    { name: 'Lê Hoàng Long', completed: 35, rating: 4.7, efficiency: 85 },
-    { name: 'Phạm Quốc Toàn', completed: 32, rating: 4.5, efficiency: 82 },
   ];
 
   const operationSummary = [
-    { label: 'Lịch hẹn hôm nay', value: 48, icon: Calendar, tone: 'blue' },
-    { label: 'Đang xử lý', value: 16, icon: Activity, tone: 'teal' },
-    { label: 'Chờ xác nhận', value: 9, icon: Clock, tone: 'amber' },
-    { label: 'Cần kiểm tra', value: 3, icon: AlertCircle, tone: 'red' },
+    { label: 'Lịch hẹn hôm nay', value: Number(overview?.newBookingsToday || 0), icon: Calendar, tone: 'blue' },
+    { label: 'Đang xử lý', value: Number(statusCountMap.IN_PROGRESS || 0), icon: Activity, tone: 'teal' },
+    { label: 'Chờ xác nhận', value: Number(statusCountMap.PENDING || 0), icon: Clock, tone: 'amber' },
+    { label: 'Đã hủy', value: Number(statusCountMap.CANCELLED || 0), icon: AlertCircle, tone: 'red' },
   ];
 
   const columns = [
     {
       title: 'Mã đặt lịch',
-      dataIndex: 'id',
-      key: 'id',
+      dataIndex: 'bookingId',
+      key: 'bookingId',
+      render: (value) => `#${value}`,
     },
     {
       title: 'Khách hàng',
-      dataIndex: 'customer',
-      key: 'customer',
+      dataIndex: 'customerName',
+      key: 'customerName',
     },
     {
-      title: 'Dịch vụ',
-      dataIndex: 'service',
-      key: 'service',
+      title: 'Xe',
+      key: 'vehicle',
+      render: (_, record) => record.vehicleName || record.licensePlate || 'Chưa có',
     },
     {
       title: 'Thời gian',
-      key: 'datetime',
-      render: (_, record) => `${record.date} ${record.time}`,
+      dataIndex: 'bookingTime',
+      key: 'bookingTime',
+      render: (value) => formatDateTime(value),
     },
     {
       title: 'Trạng thái',
       key: 'status',
       render: (_, record) => {
         const statusConfig = {
-          pending: { color: 'gold', text: 'Chờ xác nhận' },
-          confirmed: { color: 'blue', text: 'Đã xác nhận' },
-          'in-progress': { color: 'cyan', text: 'Đang thực hiện' },
-          completed: { color: 'green', text: 'Hoàn thành' },
+          PENDING: { color: 'gold', text: 'Chờ xác nhận' },
+          CONFIRMED: { color: 'blue', text: 'Đã xác nhận' },
+          ARRIVED: { color: 'cyan', text: 'Đã tiếp nhận' },
+          IN_PROGRESS: { color: 'processing', text: 'Đang thực hiện' },
+          COMPLETED: { color: 'green', text: 'Hoàn thành' },
+          CANCELLED: { color: 'red', text: 'Đã hủy' },
         };
-        const config = statusConfig[record.status];
+        const config = statusConfig[record.status] || { color: 'default', text: record.status || 'Chưa rõ' };
         return <Tag color={config.color}>{config.text}</Tag>;
       },
     },
@@ -155,17 +234,12 @@ const Dashboard = () => {
       render: (amount) => new Intl.NumberFormat('vi-VN', { 
         style: 'currency', 
         currency: 'VND' 
-      }).format(amount),
+      }).format(Number(amount || 0)),
     },
   ];
 
-  const formatCurrency = (value) => {
-    return new Intl.NumberFormat('vi-VN', {
-      style: 'currency',
-      currency: 'VND',
-      minimumFractionDigits: 0,
-    }).format(value);
-  };
+  const maxTopServiceUsage = Math.max(...topServices.map((item) => Number(item.usageCount || 0)), 1);
+  const maxRevenueTrendValue = Math.max(...revenueTrend.map((item) => Number(item.revenue || 0)), 1);
 
   return (
     <div className="dashboard">
@@ -220,6 +294,62 @@ const Dashboard = () => {
       </Row>
 
       <Row gutter={[16, 16]} style={{ marginTop: 24 }}>
+        <Col xs={24}>
+          <Card
+            title="Biểu đồ doanh thu"
+            className="dashboard-card"
+            extra={
+              <div className="dashboard-segmented">
+                <Button
+                  type={revenueTrendGroupBy === 'day' ? 'primary' : 'default'}
+                  onClick={() => setRevenueTrendGroupBy('day')}
+                >
+                  Theo ngày
+                </Button>
+                <Button
+                  type={revenueTrendGroupBy === 'month' ? 'primary' : 'default'}
+                  onClick={() => setRevenueTrendGroupBy('month')}
+                >
+                  Theo tháng
+                </Button>
+              </div>
+            }
+          >
+            {revenueTrend.length === 0 ? (
+              <Empty description="Chưa có dữ liệu doanh thu" />
+            ) : (
+              <div className="revenue-chart">
+                <div className="revenue-chart-grid">
+                  {[100, 75, 50, 25, 0].map((tick) => (
+                    <div key={tick} className="revenue-chart-grid-line" />
+                  ))}
+                </div>
+                <div className="revenue-chart-bars">
+                  {revenueTrend.map((point) => {
+                    const revenueValue = Number(point.revenue || 0);
+                    const percent = Math.max((revenueValue / maxRevenueTrendValue) * 100, revenueValue > 0 ? 6 : 0);
+
+                    return (
+                      <div key={point.label} className="revenue-chart-bar-group">
+                        <div className="revenue-chart-bar-wrap">
+                          <span className="revenue-chart-value">{formatCompactCurrency(revenueValue)}</span>
+                          <div
+                            className="revenue-chart-bar"
+                            style={{ height: `${percent}%` }}
+                            title={`${formatTrendLabel(point.label)}: ${formatCurrency(revenueValue)}`}
+                          />
+                        </div>
+                        <div className="revenue-chart-label">{formatTrendLabel(point.label)}</div>
+                        <div className="revenue-chart-count">{point.completedBookings || 0} đơn</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </Card>
+        </Col>
+
         <Col xs={24} xl={16}>
           <Card 
             title="Đặt lịch gần đây" 
@@ -228,7 +358,7 @@ const Dashboard = () => {
           >
             <Table
               columns={columns}
-              dataSource={recentBookings}
+              dataSource={recentBookings.map((item) => ({ ...item, key: item.bookingId }))}
               loading={loading}
               pagination={false}
               scroll={{ x: 800 }}
@@ -237,23 +367,23 @@ const Dashboard = () => {
         </Col>
 
         <Col xs={24} xl={8}>
-          <Card title="Hiệu suất thợ sửa xe" className="dashboard-card">
-            {mechanicPerformance.map((mechanic, index) => (
-              <div key={index} className="mechanic-item">
+          <Card title="Dịch vụ được đặt nhiều" className="dashboard-card">
+            {topServices.map((service) => (
+              <div key={service.serviceName} className="mechanic-item">
                 <div className="mechanic-info">
                   <div className="mechanic-avatar">
                     <Wrench size={16} />
                   </div>
                   <div className="mechanic-details">
-                    <div className="mechanic-name">{mechanic.name}</div>
+                    <div className="mechanic-name">{service.serviceName || 'Chưa có tên dịch vụ'}</div>
                     <div className="mechanic-stats">
-                      {mechanic.completed} công việc • ⭐ {mechanic.rating}
+                      {Number(service.usageCount || 0)} lượt đặt
                     </div>
                   </div>
                 </div>
                 <div className="mechanic-progress">
                   <Progress 
-                    percent={mechanic.efficiency} 
+                    percent={Math.round((Number(service.usageCount || 0) / maxTopServiceUsage) * 100)} 
                     size="small" 
                     strokeColor="#52c41a"
                     format={(percent) => `${percent}%`}
@@ -261,6 +391,7 @@ const Dashboard = () => {
                 </div>
               </div>
             ))}
+            {!loading && topServices.length === 0 ? <div>Chưa có dữ liệu dịch vụ.</div> : null}
           </Card>
         </Col>
       </Row>
