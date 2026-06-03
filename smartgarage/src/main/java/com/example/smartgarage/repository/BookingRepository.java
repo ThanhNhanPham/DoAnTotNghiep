@@ -103,14 +103,18 @@ public interface BookingRepository extends JpaRepository<Booking,Long> {
                                                   @Param("endDate") LocalDateTime endDate);
 
     @Query(value = """
-            SELECT TO_CHAR(DATE_TRUNC(:groupBy, b.booking_time), :formatPattern) AS label,
-                   COALESCE(SUM(b.total_amount), 0) AS revenue,
+            SELECT TO_CHAR(grouped.period_start, :formatPattern) AS label,
+                   COALESCE(SUM(grouped.total_amount), 0) AS revenue,
                    COUNT(*) AS completed_bookings
-            FROM bookings b
-            WHERE b.status = :status
-              AND b.booking_time BETWEEN :startDate AND :endDate
-            GROUP BY DATE_TRUNC(:groupBy, b.booking_time)
-            ORDER BY DATE_TRUNC(:groupBy, b.booking_time)
+            FROM (
+                SELECT DATE_TRUNC(:groupBy, b.booking_time) AS period_start,
+                       b.total_amount
+                FROM bookings b
+                WHERE b.status = :status
+                  AND b.booking_time BETWEEN :startDate AND :endDate
+            ) grouped
+            GROUP BY grouped.period_start
+            ORDER BY grouped.period_start
             """, nativeQuery = true)
     List<Object[]> findRevenueTrendRaw(@Param("status") String status,
                                        @Param("groupBy") String groupBy,

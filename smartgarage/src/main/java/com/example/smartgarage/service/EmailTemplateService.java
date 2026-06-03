@@ -87,7 +87,7 @@ public class EmailTemplateService {
                 "      <li>Kiểm tra hệ thống phanh</li>" +
                 "      <li>Kiểm tra nước làm mát & lốp xe</li>" +
                 "    </ul>" +
-                "    <p><a href='http://localhost:3000/booking' style='background-color: #f39c12; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;'>Đặt lịch ngay bây giờ</a></p>" +
+                "    <p><a href='http://localhost:3000/booking' style='background-color: #f39c12; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;'> Vào App Đặt lịch ngay bạn nhé</a></p>" +
                 "    <p>Hẹn gặp lại bạn tại Gara!</p>" +
                 "  </div>" +
                 "</div>";

@@ -1,9 +1,11 @@
 package com.example.smartgarage.controller;
 
-import com.example.smartgarage.dto.booking.BookingResponse;
+import com.example.smartgarage.dto.admin.AdminSearchResponseDTO;
 import com.example.smartgarage.dto.DashboardStatusDTO;
 import com.example.smartgarage.entity.Mechanic;
+import com.example.smartgarage.service.AdminSearchService;
 import com.example.smartgarage.service.BookingService;
+import com.example.smartgarage.service.MaintenanceReminderService;
 import com.example.smartgarage.service.MechanicService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -15,20 +17,28 @@ import org.springframework.http.MediaType;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/admin")
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize("hasAnyRole('ADMIN', 'SUPERADMIN')")
 @Tag(name = "Admin", description = "Các API quản lý dành cho Quản trị viên và Chủ Gara")
 @CrossOrigin("*")
 public class AdminController {
 
     private final BookingService bookingService;
     private final MechanicService mechanicService;
+    private final MaintenanceReminderService maintenanceReminderService;
+    private final AdminSearchService adminSearchService;
 
-    public AdminController(BookingService bookingService, MechanicService mechanicService) {
+    public AdminController(BookingService bookingService,
+                           MechanicService mechanicService,
+                           MaintenanceReminderService maintenanceReminderService,
+                           AdminSearchService adminSearchService) {
         this.bookingService = bookingService;
         this.mechanicService = mechanicService;
+        this.maintenanceReminderService = maintenanceReminderService;
+        this.adminSearchService = adminSearchService;
     }
 
     @Operation(summary = "Lấy dữ liệu thống kê Dashboard", description = "Trả về số lượng đơn, doanh thu và top dịch vụ")
@@ -44,30 +54,23 @@ public class AdminController {
         return ResponseEntity.ok(mechanics);
     }
 
-//
-//    @Operation(summary = "Hoàn thành lịch hẹn", description = "Chuyển trạng thái đơn sang COMPLETED và giải phóng thợ sửa xe")
-//    @PutMapping("/bookings/{bookingId}/complete")
-//    public ResponseEntity<?> completeBooking(@PathVariable Long bookingId) {
-//        try {
-//            BookingResponse completedBooking = bookingService.completeBooking(bookingId);
-//            return ResponseEntity.ok(completedBooking);
-//        } catch (Exception e) {
-//            return ResponseEntity.badRequest().body(e.getMessage());
-//        }
-//    }
-//    @Operation(summary="Xuất danh sách booking ra file Excel và cho người dùng tải xuống")
-//    @GetMapping("/bookings/export/excel")
-//    public ResponseEntity<byte[]> exportToExcel() {
-//        try {
-//            byte[] excelContent = bookingService.exportBookingsToExcel();
-//
-//            return ResponseEntity.ok()
-//                    .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=bookings_report.xlsx")
-//                    .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
-//                    .body(excelContent);
-//        } catch (IOException e) {
-//            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-//        }
-//    }
+    @Operation(summary = "Tìm kiếm nhanh khách hàng, lịch hẹn và hóa đơn cho thanh header")
+    @GetMapping("/search")
+    public ResponseEntity<AdminSearchResponseDTO> search(
+            @RequestParam String keyword,
+            @RequestParam(defaultValue = "5") int limit) {
+        return ResponseEntity.ok(adminSearchService.search(keyword, limit));
+    }
+
+    @Operation(summary = "Gửi thử email nhắc bảo dưỡng cho một booking đã hoàn thành")
+    @PostMapping("/maintenance-reminders/test/{bookingId}")
+    public ResponseEntity<Map<String, String>> sendTestMaintenanceReminder(@PathVariable Long bookingId) {
+        maintenanceReminderService.sendReminderForBookingId(bookingId);
+        return ResponseEntity.ok(Map.of(
+                "message", "Đã gửi email nhắc bảo dưỡng thành công.",
+                "bookingId", String.valueOf(bookingId)
+        ));
+    }
+
 
 }
