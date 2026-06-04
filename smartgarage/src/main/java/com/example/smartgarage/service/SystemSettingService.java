@@ -141,10 +141,27 @@ public class SystemSettingService {
 
     @Transactional
     public SystemSettingResponse resetSystemSettings(Authentication authentication) {
-        SystemSetting settings = getRequiredSettings();
-        applyDefaultValues(settings);
-        settings.setUpdatedBy(resolveActor(authentication));
-        return mapToResponse(systemSettingRepository.save(settings));
+        int updatedRows = systemSettingRepository.resetToDefaults(
+                DEFAULT_SETTINGS_ID,
+                "#1890ff",
+                false,
+                14,
+                "vi",
+                "DD/MM/YYYY",
+                "Asia/Ho_Chi_Minh",
+                true,
+                true,
+                false,
+                "Smart Garage",
+                "0901234567",
+                "6351071051@st.utc2.edu.vn",
+                "25 đường số 18, Hiệp Bình, TPHCM",
+                resolveActor(authentication)
+        );
+        if (updatedRows == 0) {
+            throw new ResourceNotFoundException("Không tìm thấy cấu hình hệ thống");
+        }
+        return mapToResponse(getRequiredSettings());
     }
 
     private SystemSetting getRequiredSettings() {

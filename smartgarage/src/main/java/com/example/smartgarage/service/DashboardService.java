@@ -13,6 +13,7 @@ import com.example.smartgarage.exception.BadRequestException;
 import com.example.smartgarage.repository.BookingRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -130,7 +131,11 @@ public class DashboardService {
 
     public List<RecentBookingDTO> getRecentBookings(int limit) {
         int safeLimit = Math.min(Math.max(limit, 1), 50);
-        return bookingRepository.findAll(PageRequest.of(0, safeLimit)).stream()
+        return bookingRepository.findAll(PageRequest.of(
+                        0,
+                        safeLimit,
+                        Sort.by(Sort.Order.desc("bookingTime"), Sort.Order.desc("id"))
+                )).stream()
                 .map(this::mapToRecentBooking)
                 .toList();
     }

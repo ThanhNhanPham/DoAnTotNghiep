@@ -2,11 +2,13 @@ package com.example.smartgarage.service;
 
 import com.example.smartgarage.dto.chat.ChatMessageResponse;
 import com.example.smartgarage.dto.chat.ChatRoomResponse;
+import com.example.smartgarage.dto.chat.websocket.ChatSocketMessageEvent;
 import com.example.smartgarage.entity.*;
 import com.example.smartgarage.enums.Role;
 import com.example.smartgarage.exception.ForbiddenException;
 import com.example.smartgarage.exception.ResourceNotFoundException;
 import com.example.smartgarage.repository.*;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,17 +25,20 @@ public class ChatService {
     private final BookingRepository bookingRepository;
     private final UserRepository userRepository;
     private final NotificationRepository notificationRepository;
+    private final SimpMessagingTemplate messagingTemplate;
 
     public ChatService(ChatRoomRepository chatRoomRepository,
                        ChatMessageRepository chatMessageRepository,
                        BookingRepository bookingRepository,
                        UserRepository userRepository,
-                       NotificationRepository notificationRepository) {
+                       NotificationRepository notificationRepository,
+                       SimpMessagingTemplate messagingTemplate) {
         this.chatRoomRepository = chatRoomRepository;
         this.chatMessageRepository = chatMessageRepository;
         this.bookingRepository = bookingRepository;
         this.userRepository = userRepository;
         this.notificationRepository = notificationRepository;
+        this.messagingTemplate = messagingTemplate;
     }
 
     @Transactional(readOnly = true)
@@ -69,7 +74,9 @@ public class ChatService {
                         .build()));
 
         validateRoomAccess(currentUser, room);
-        return mapRoomToResponse(room, currentUser);
+        ChatRoomResponse response = mapRoomToResponse(room, currentUser);
+        publishRoomUpdates(room);
+        return response;
     }
 
     @Transactional(readOnly = true)
@@ -100,6 +107,7 @@ public class ChatService {
         chatRoomRepository.save(room);
 
         createNotificationsForNewMessage(room, currentUser, savedMessage.getContent());
+        publishRoomUpdates(room);
         return mapMessageToResponse(savedMessage);
     }
 
@@ -108,6 +116,18 @@ public class ChatService {
         User currentUser = getUserByEmail(email);
         ChatRoom room = getAccessibleRoom(currentUser, roomId);
         chatMessageRepository.markRoomMessagesAsRead(room.getId(), currentUser.getId());
+        publishRoomUpdates(room);
+    }
+
+    @Transactional(readOnly = true)
+    public void validateRoomAccess(String email, Long roomId) {
+        User currentUser = getUserByEmail(email);
+        getAccessibleRoom(currentUser, roomId);
+    }
+
+    @Transactional(readOnly = true)
+    public User getCurrentUser(String email) {
+        return getUserByEmail(email);
     }
 
     private User getUserByEmail(String email) {
@@ -244,6 +264,43 @@ public class ChatService {
                 .collect(Collectors.toList());
 
         notificationRepository.saveAll(notifications);
+    }
+
+    private void publishRoomUpdates(ChatRoom room) {
+        if (room == null) {
+            return;
+        }
+
+        List<User> recipients = getRoomRealtimeRecipients(room);
+        for (User recipient : recipients) {
+            String email = recipient.getEmail();
+            if (email == null || email.isBlank()) {
+                continue;
+            }
+
+            ChatRoomResponse roomResponse = mapRoomToResponse(room, recipient);
+            ChatSocketMessageEvent event = ChatSocketMessageEvent.roomUpsert(roomResponse);
+            messagingTemplate.convertAndSendToUser(email, "/queue/chat.rooms", event);
+        }
+    }
+
+    private List<User> getRoomRealtimeRecipients(ChatRoom room) {
+        List<User> recipients = new ArrayList<>();
+
+        if (room.getCustomer() != null) {
+            recipients.add(room.getCustomer());
+        }
+
+        if (room.getBranch() != null && room.getBranch().getId() != null) {
+            recipients.addAll(userRepository.findByRoleAndBranchId(Role.ADMIN, room.getBranch().getId()));
+        }
+
+        recipients.addAll(userRepository.findByRoleIn(List.of(Role.SUPERADMIN)));
+
+        return recipients.stream()
+                .filter(user -> user.getId() != null)
+                .distinct()
+                .collect(Collectors.toList());
     }
 
     private String truncate(String value, int maxLength) {
