@@ -49,6 +49,38 @@ body {
   border-radius: 8px;
 }
 
+.detail-modal .ant-modal-content {
+  border-radius: 10px;
+}
+
+.detail-modal .ant-descriptions {
+  overflow: hidden;
+  border: 1px solid #dbe4ef;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+}
+
+.detail-modal .ant-descriptions-view,
+.detail-modal .ant-descriptions table {
+  border-radius: 10px;
+}
+
+.detail-modal .ant-descriptions-bordered .ant-descriptions-view {
+  border: 0;
+}
+
+.detail-modal .ant-descriptions-bordered .ant-descriptions-item-label {
+  background: #f8fafc;
+  color: #475569;
+  font-weight: 700;
+}
+
+.detail-modal .ant-descriptions-bordered .ant-descriptions-item-content {
+  background: #fff;
+  color: #1f2937;
+}
+
 .page-header {
   margin-bottom: 22px;
   padding: 22px 24px;

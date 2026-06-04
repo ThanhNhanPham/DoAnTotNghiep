@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Card,
   Table,
@@ -24,6 +25,7 @@ import userService from '../../services/userService';
 import './Users.css';
 
 const Users = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [users, setUsers] = useState([]);
 
   const [loading, setLoading] = useState(false);
@@ -33,6 +35,7 @@ const Users = () => {
   const [isDetailModalVisible, setIsDetailModalVisible] = useState(false);
   const [userDetail, setUserDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const userIdFromSearch = searchParams.get('userId');
 
   const getDisplayAddress = (user) => {
     if (!user) return 'N/A';
@@ -138,6 +141,19 @@ const Users = () => {
       setDetailLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (!userIdFromSearch) return;
+
+    const userId = Number(userIdFromSearch);
+    if (!Number.isFinite(userId)) {
+      setSearchParams({}, { replace: true });
+      return;
+    }
+
+    openDetailModal(userId);
+    setSearchParams({}, { replace: true });
+  }, [userIdFromSearch, setSearchParams]);
 
 
   // Cấu hình cột bảng
@@ -388,6 +404,7 @@ const Users = () => {
       </Card>
 
       <Modal
+        className="detail-modal"
         title="Chi tiết người dùng"
         open={isDetailModalVisible}
         onCancel={() => setIsDetailModalVisible(false)}

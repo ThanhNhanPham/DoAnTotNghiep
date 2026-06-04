@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Bell, User, LogOut, Settings, Menu, KeyRound, Trash2, Search, ChevronDown } from 'lucide-react';
-import { Dropdown, message, Modal } from 'antd';
+import { Dropdown, Input, message, Modal } from 'antd';
 import { ExclamationCircleOutlined } from '@ant-design/icons';
 import authService from '../../services/authService';
+import adminSearchService from '../../services/adminSearchService';
 import notificationService from '../../services/notificationService';
 import ChangePasswordModal from './ChangePasswordModal';
 import ProfileModal from './ProfileModal';
@@ -31,6 +32,10 @@ const Header = ({ onMenuClick, sidebarCollapsed }) => {
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [notificationLoading, setNotificationLoading] = useState(false);
+  const [searchKeyword, setSearchKeyword] = useState('');
+  const [searchResults, setSearchResults] = useState(null);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [user, setUser] = useState({
     name: 'Admin User',
     email: 'admin@smartgarage.com',
@@ -39,6 +44,18 @@ const Header = ({ onMenuClick, sidebarCollapsed }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const currentPage = pageTitles[location.pathname] || pageTitles['/admin/dashboard'];
+
+  const flattenSearchResults = (results) => [
+    ...(results?.customers || []),
+    ...(results?.bookings || []),
+    ...(results?.invoices || []),
+  ];
+
+  const searchGroups = [
+    { key: 'customers', label: 'Khách hàng' },
+    { key: 'bookings', label: 'Lịch hẹn' },
+    { key: 'invoices', label: 'Hóa đơn' },
+  ];
 
   const getInitials = (name) => {
     if (!name) return 'AD';
@@ -135,6 +152,41 @@ const Header = ({ onMenuClick, sidebarCollapsed }) => {
   }, [fetchNotifications]);
 
   useEffect(() => {
+    const keyword = searchKeyword.trim();
+    if (keyword.length < 2 || !authService.isAuthenticated()) {
+      setSearchResults(null);
+      setSearchLoading(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+    setSearchLoading(true);
+
+    const timeoutId = window.setTimeout(async () => {
+      try {
+        const data = await adminSearchService.search(keyword);
+        if (!cancelled) {
+          setSearchResults(data);
+          setSearchOpen(true);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setSearchResults({ customers: [], bookings: [], invoices: [] });
+        }
+      } finally {
+        if (!cancelled) {
+          setSearchLoading(false);
+        }
+      }
+    }, 350);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [searchKeyword]);
+
+  useEffect(() => {
     if (!authService.isAuthenticated()) return undefined;
 
     const refreshAfterFocus = () => {
@@ -151,6 +203,21 @@ const Header = ({ onMenuClick, sidebarCollapsed }) => {
   const refreshNotifications = () => {
     if (authService.isAuthenticated()) {
       fetchNotifications({ showLoading: true });
+    }
+  };
+
+  const handleSearchSelect = (item) => {
+    if (!item?.route) return;
+    setSearchKeyword('');
+    setSearchResults(null);
+    setSearchOpen(false);
+    navigate(item.route);
+  };
+
+  const handleSearchEnter = () => {
+    const items = flattenSearchResults(searchResults);
+    if (items.length === 1) {
+      handleSearchSelect(items[0]);
     }
   };
 
@@ -371,9 +438,58 @@ const Header = ({ onMenuClick, sidebarCollapsed }) => {
         </div>
       </div>
 
-      <div className="header-search">
-        <Search size={16} />
-        <span>Tìm khách hàng, lịch hẹn, hóa đơn...</span>
+      <div className="header-search-wrapper">
+        <Input
+          className="header-search"
+          value={searchKeyword}
+          prefix={<Search size={16} />}
+          placeholder="Tìm khách hàng, lịch hẹn, hóa đơn..."
+          onChange={(event) => {
+            setSearchKeyword(event.target.value);
+            setSearchOpen(true);
+          }}
+          onFocus={() => {
+            if (searchKeyword.trim().length >= 2) {
+              setSearchOpen(true);
+            }
+          }}
+          onBlur={() => {
+            window.setTimeout(() => setSearchOpen(false), 160);
+          }}
+          onPressEnter={handleSearchEnter}
+        />
+        {searchOpen && searchKeyword.trim().length >= 2 && (
+          <div className="header-search-panel">
+            {searchLoading ? (
+              <div className="header-search-empty">Đang tìm kiếm...</div>
+            ) : flattenSearchResults(searchResults).length === 0 ? (
+              <div className="header-search-empty">Không tìm thấy kết quả phù hợp</div>
+            ) : (
+              searchGroups.map((group) => {
+                const items = searchResults?.[group.key] || [];
+                if (items.length === 0) return null;
+
+                return (
+                  <div className="header-search-group" key={group.key}>
+                    <div className="header-search-group-title">{group.label}</div>
+                    {items.map((item) => (
+                      <button
+                        type="button"
+                        className="header-search-result"
+                        key={`${item.type}-${item.id}`}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => handleSearchSelect(item)}
+                      >
+                        <span>{item.title}</span>
+                        {item.subtitle ? <small>{item.subtitle}</small> : null}
+                      </button>
+                    ))}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        )}
       </div>
 
       <div className="header-right">

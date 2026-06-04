@@ -1422,6 +1422,7 @@ const Bookings = () => {
       </Modal>
 
       <Modal
+        className="detail-modal"
         title="Chi tiết lịch hẹn"
         open={isDetailModalVisible}
         onCancel={() => setIsDetailModalVisible(false)}

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Card,
   Table,
@@ -66,6 +67,7 @@ const renderServiceLines = (serviceNames) => {
 };
 
 const Invoices = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(false);
   const [statusFilter, setStatusFilter] = useState(undefined);
@@ -81,6 +83,7 @@ const Invoices = () => {
   const [printingInvoiceId, setPrintingInvoiceId] = useState(null);
   const [printMode, setPrintMode] = useState('a4');
   const { current, pageSize } = pagination;
+  const invoiceIdFromSearch = searchParams.get('invoiceId');
 
   const fetchInvoices = useCallback(async () => {
     setLoading(true);
@@ -127,6 +130,19 @@ const Invoices = () => {
       setDetailLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (!invoiceIdFromSearch) return;
+
+    const invoiceId = Number(invoiceIdFromSearch);
+    if (!Number.isFinite(invoiceId)) {
+      setSearchParams({}, { replace: true });
+      return;
+    }
+
+    openDetailModal(invoiceId);
+    setSearchParams({}, { replace: true });
+  }, [invoiceIdFromSearch, setSearchParams]);
 
   const resetToFirstPage = () => {
     setPagination((prev) => ({ ...prev, current: 1 }));
@@ -309,6 +325,7 @@ const Invoices = () => {
       </Card>
 
       <Modal
+        className="detail-modal"
         title="Chi tiết hóa đơn"
         open={detailVisible}
         onCancel={() => {

@@ -408,6 +408,7 @@ const Services = () => {
       </Card>
 
       <Modal
+        className="detail-modal"
         title="Chi tiết dịch vụ"
         open={isDetailModalVisible}
         onCancel={() => setIsDetailModalVisible(false)}

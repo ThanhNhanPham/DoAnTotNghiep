@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Badge, Button, Card, Empty, Input, List, Space, Spin, Tag, Typography, message } from 'antd';
 import { Building2, CarFront, MessageSquare, Send, UserRound } from 'lucide-react';
 import chatService from '../../services/chatService';
+import chatSocketService from '../../services/chatSocketService';
 import './Chats.css';
 
-const POLL_INTERVAL_MS = 5000;
+const TYPING_THROTTLE_MS = 1200;
+const TYPING_VISIBLE_MS = 2500;
 
 const STATUS_LABELS = {
   PENDING: 'Chờ xác nhận',
@@ -29,6 +31,39 @@ const formatDateTime = (value) => {
   });
 };
 
+const sortRooms = (items) =>
+  [...items].sort((a, b) => {
+    const timeA = new Date(a.lastMessageAt || a.createdAt || 0).getTime();
+    const timeB = new Date(b.lastMessageAt || b.createdAt || 0).getTime();
+    return timeB - timeA;
+  });
+
+const upsertMessage = (items, nextMessage) => {
+  const exists = items.some((item) => item.id === nextMessage.id);
+  const nextItems = exists
+    ? items.map((item) => (item.id === nextMessage.id ? nextMessage : item))
+    : [...items, nextMessage];
+
+  return [...nextItems].sort(
+    (a, b) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime()
+  );
+};
+
+const upsertRoom = (rooms, nextRoom) => {
+  if (!nextRoom?.id) {
+    return rooms;
+  }
+
+  const index = rooms.findIndex((room) => room.id === nextRoom.id);
+  if (index < 0) {
+    return sortRooms([nextRoom, ...rooms]);
+  }
+
+  const nextRooms = [...rooms];
+  nextRooms[index] = { ...nextRooms[index], ...nextRoom };
+  return sortRooms(nextRooms);
+};
+
 const Chats = () => {
   const [rooms, setRooms] = useState([]);
   const [selectedRoomId, setSelectedRoomId] = useState(null);
@@ -37,6 +72,11 @@ const Chats = () => {
   const [roomsLoading, setRoomsLoading] = useState(false);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [sending, setSending] = useState(false);
+  const [socketReady, setSocketReady] = useState(false);
+  const [typingActorName, setTypingActorName] = useState('');
+  const [isCustomerTyping, setIsCustomerTyping] = useState(false);
+  const typingTimeoutRef = useRef(null);
+  const lastTypingSentAtRef = useRef(0);
 
   const selectedRoom = useMemo(
     () => rooms.find((room) => room.id === selectedRoomId) || null,
@@ -47,7 +87,7 @@ const Chats = () => {
     try {
       setRoomsLoading(true);
       const data = await chatService.getRooms();
-      const nextRooms = Array.isArray(data) ? data : [];
+      const nextRooms = sortRooms(Array.isArray(data) ? data : []);
       setRooms(nextRooms);
       setSelectedRoomId((currentSelectedRoomId) => {
         if (!preserveSelection) {
@@ -97,15 +137,123 @@ const Chats = () => {
   }, [selectedRoomId, loadMessages]);
 
   useEffect(() => {
-    const intervalId = window.setInterval(() => {
-      loadRooms(true);
-      if (selectedRoomId) {
-        loadMessages(selectedRoomId);
-      }
-    }, POLL_INTERVAL_MS);
+    let isActive = true;
+    let queueSubscriptionId = null;
 
-    return () => window.clearInterval(intervalId);
-  }, [loadMessages, loadRooms, selectedRoomId]);
+    const subscribe = async () => {
+      try {
+        await chatSocketService.connect();
+        if (!isActive) {
+          return;
+        }
+
+        setSocketReady(true);
+        queueSubscriptionId = await chatSocketService.subscribeToUserRoomQueue((event) => {
+          if (!isActive || event.type !== 'ROOM_UPSERT' || !event.room) {
+            return;
+          }
+
+          setRooms((prev) => upsertRoom(prev, event.room));
+        });
+      } catch (error) {
+        if (isActive) {
+          setSocketReady(false);
+        }
+        console.warn('Subscribe admin chat socket failed:', error);
+      }
+    };
+
+    subscribe();
+
+    return () => {
+      isActive = false;
+      setSocketReady(false);
+      if (queueSubscriptionId) {
+        chatSocketService.unsubscribe(queueSubscriptionId);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!selectedRoomId) {
+      return undefined;
+    }
+
+    let isActive = true;
+    let roomSubscriptionId = null;
+
+    const subscribe = async () => {
+      try {
+        await chatSocketService.connect();
+        if (!isActive) {
+          return;
+        }
+
+        setSocketReady(true);
+        roomSubscriptionId = await chatSocketService.subscribeToRoom(selectedRoomId, async (event) => {
+          if (!isActive) {
+            return;
+          }
+
+          if (event.type === 'MESSAGE_CREATED' && event.message) {
+            setMessages((prev) => upsertMessage(prev, event.message));
+
+            if (event.message.senderRole === 'CUSTOMER') {
+              try {
+                await chatService.markRoomAsRead(selectedRoomId);
+                await chatSocketService.markRoomAsRead(selectedRoomId);
+              } catch (markError) {
+                console.warn('Realtime mark room as read failed:', markError);
+              }
+            }
+          }
+
+          if (event.type === 'TYPING' && event.actorRole === 'CUSTOMER') {
+            setTypingActorName(event.actorName || 'Khách hàng');
+            setIsCustomerTyping(true);
+
+            if (typingTimeoutRef.current) {
+              clearTimeout(typingTimeoutRef.current);
+            }
+
+            typingTimeoutRef.current = window.setTimeout(() => {
+              setIsCustomerTyping(false);
+              setTypingActorName('');
+            }, TYPING_VISIBLE_MS);
+          }
+        });
+      } catch (error) {
+        if (isActive) {
+          setSocketReady(false);
+        }
+        console.warn('Subscribe selected admin room socket failed:', error);
+      }
+    };
+
+    subscribe();
+
+    return () => {
+      isActive = false;
+      if (roomSubscriptionId) {
+        chatSocketService.unsubscribe(roomSubscriptionId);
+      }
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = null;
+      }
+    };
+  }, [selectedRoomId]);
+
+  useEffect(() => {
+    if (!selectedRoomId && rooms.length > 0) {
+      setSelectedRoomId(rooms[0].id);
+      return;
+    }
+
+    if (selectedRoomId && !rooms.some((room) => room.id === selectedRoomId)) {
+      setSelectedRoomId(rooms[0]?.id ?? null);
+    }
+  }, [rooms, selectedRoomId]);
 
   const handleSend = async () => {
     const trimmed = draft.trim();
@@ -113,17 +261,54 @@ const Chats = () => {
 
     try {
       setSending(true);
-      const sentMessage = await chatService.sendMessage(selectedRoomId, trimmed);
-      setMessages((prev) => [...prev, sentMessage]);
       setDraft('');
-      await loadRooms(true);
+
+      try {
+        await chatSocketService.sendMessage(selectedRoomId, trimmed);
+      } catch (socketError) {
+        console.warn('Send admin chat message via socket failed, fallback REST:', socketError);
+        const sentMessage = await chatService.sendMessage(selectedRoomId, trimmed);
+        setMessages((prev) => upsertMessage(prev, sentMessage));
+        setRooms((prev) =>
+          sortRooms(
+            prev.map((room) =>
+              room.id === selectedRoomId
+                ? {
+                    ...room,
+                    lastMessagePreview: sentMessage.content,
+                    lastMessageAt: sentMessage.createdAt || new Date().toISOString(),
+                  }
+                : room
+            )
+          )
+        );
+      }
     } catch (error) {
       console.error('Send message failed:', error);
       message.error('Không thể gửi tin nhắn.');
+      setDraft(trimmed);
     } finally {
       setSending(false);
     }
   };
+
+  useEffect(() => {
+    if (!selectedRoomId || !draft.trim()) {
+      return undefined;
+    }
+
+    const now = Date.now();
+    if (now - lastTypingSentAtRef.current < TYPING_THROTTLE_MS) {
+      return undefined;
+    }
+
+    lastTypingSentAtRef.current = now;
+    chatSocketService.sendTyping(selectedRoomId).catch((error) => {
+      console.warn('Send admin typing event failed:', error);
+    });
+
+    return undefined;
+  }, [draft, selectedRoomId]);
 
   return (
     <div className="chat-admin-page">
@@ -141,6 +326,9 @@ const Chats = () => {
           <div className="chat-panel-title">
             <MessageSquare size={18} />
             <span>Cuộc trò chuyện</span>
+            <Typography.Text type="secondary">
+              {socketReady ? 'Realtime' : 'Offline'}
+            </Typography.Text>
           </div>
 
           {roomsLoading && rooms.length === 0 ? (
@@ -234,6 +422,11 @@ const Chats = () => {
               </div>
 
               <div className="chat-composer">
+                {isCustomerTyping ? (
+                  <Typography.Text type="secondary">
+                    {typingActorName} đang nhập tin nhắn...
+                  </Typography.Text>
+                ) : null}
                 <Input.TextArea
                   rows={3}
                   value={draft}

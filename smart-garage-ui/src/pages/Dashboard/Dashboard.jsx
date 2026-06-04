@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Card, Row, Col, Table, Tag, Progress, message, Button, Empty } from 'antd';
+import { Card, Row, Col, Table, Tag, Progress, message, Button, Empty, DatePicker, Space } from 'antd';
+import dayjs from 'dayjs';
 import { 
   TrendingUp, 
   Calendar,
@@ -19,10 +20,30 @@ const Dashboard = () => {
   const [overview, setOverview] = useState(null);
   const [revenueSummary, setRevenueSummary] = useState(null);
   const [revenueTrend, setRevenueTrend] = useState([]);
-  const [revenueTrendGroupBy, setRevenueTrendGroupBy] = useState('day');
+  const [revenueViewMode, setRevenueViewMode] = useState('month');
+  const [revenueSelectedMonth, setRevenueSelectedMonth] = useState(() => dayjs());
+  const [revenueSelectedYear, setRevenueSelectedYear] = useState(() => dayjs());
   const [statusDistribution, setStatusDistribution] = useState([]);
   const [topServices, setTopServices] = useState([]);
   const [recentBookings, setRecentBookings] = useState([]);
+
+  const revenueTrendQueryParams = useMemo(() => {
+    if (revenueViewMode === 'year') {
+      const selectedYear = revenueSelectedYear || dayjs();
+      return {
+        groupBy: 'month',
+        from: selectedYear.startOf('year').format('YYYY-MM-DD'),
+        to: selectedYear.endOf('year').format('YYYY-MM-DD'),
+      };
+    }
+
+    const selectedMonth = revenueSelectedMonth || dayjs();
+    return {
+      groupBy: 'day',
+      from: selectedMonth.startOf('month').format('YYYY-MM-DD'),
+      to: selectedMonth.endOf('month').format('YYYY-MM-DD'),
+    };
+  }, [revenueSelectedMonth, revenueSelectedYear, revenueViewMode]);
 
   useEffect(() => {
     const loadDashboard = async () => {
@@ -54,7 +75,7 @@ const Dashboard = () => {
   useEffect(() => {
     const loadRevenueTrend = async () => {
       try {
-        const data = await dashboardService.getRevenueTrend(getRevenueTrendQueryParams(revenueTrendGroupBy));
+        const data = await dashboardService.getRevenueTrend(revenueTrendQueryParams);
         setRevenueTrend(Array.isArray(data) ? data : []);
       } catch (error) {
         message.error(getApiErrorMessage(error, 'Không thể tải biểu đồ doanh thu.'));
@@ -62,7 +83,7 @@ const Dashboard = () => {
     };
 
     loadRevenueTrend();
-  }, [revenueTrendGroupBy]);
+  }, [revenueTrendQueryParams]);
 
   const statusCountMap = useMemo(
     () =>
@@ -110,35 +131,15 @@ const Dashboard = () => {
     return amount.toLocaleString('vi-VN');
   };
 
-  const getRevenueTrendQueryParams = (groupBy) => {
-    const today = new Date();
-
-    if (groupBy === 'month') {
-      const yearStart = new Date(today.getFullYear(), 0, 1);
-      return {
-        groupBy: 'month',
-        from: yearStart.toISOString().slice(0, 10),
-        to: today.toISOString().slice(0, 10),
-      };
-    }
-
-    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-    return {
-      groupBy: 'day',
-      from: monthStart.toISOString().slice(0, 10),
-      to: today.toISOString().slice(0, 10),
-    };
-  };
-
   const formatTrendLabel = (label) => {
     if (!label) return '';
 
-    if (revenueTrendGroupBy === 'month') {
+    if (revenueViewMode === 'year') {
       const [year, month] = label.split('-');
       return month && year ? `${month}/${year}` : label;
     }
 
-    const [year, month, day] = label.split('-');
+    const [, month, day] = label.split('-');
     return day && month ? `${day}/${month}` : label;
   };
 
@@ -229,8 +230,8 @@ const Dashboard = () => {
     },
     {
       title: 'Số tiền',
-      dataIndex: 'amount',
-      key: 'amount',
+      dataIndex: 'totalAmount',
+      key: 'totalAmount',
       render: (amount) => new Intl.NumberFormat('vi-VN', { 
         style: 'currency', 
         currency: 'VND' 
@@ -299,20 +300,47 @@ const Dashboard = () => {
             title="Biểu đồ doanh thu"
             className="dashboard-card"
             extra={
-              <div className="dashboard-segmented">
-                <Button
-                  type={revenueTrendGroupBy === 'day' ? 'primary' : 'default'}
-                  onClick={() => setRevenueTrendGroupBy('day')}
-                >
-                  Theo ngày
-                </Button>
-                <Button
-                  type={revenueTrendGroupBy === 'month' ? 'primary' : 'default'}
-                  onClick={() => setRevenueTrendGroupBy('month')}
-                >
-                  Theo tháng
-                </Button>
-              </div>
+              <Space className="dashboard-revenue-controls" wrap>
+                <div className="dashboard-segmented">
+                  <Button
+                    type={revenueViewMode === 'month' ? 'primary' : 'default'}
+                    onClick={() => setRevenueViewMode('month')}
+                  >
+                    Theo tháng
+                  </Button>
+                  <Button
+                    type={revenueViewMode === 'year' ? 'primary' : 'default'}
+                    onClick={() => setRevenueViewMode('year')}
+                  >
+                    Theo năm
+                  </Button>
+                </div>
+                {revenueViewMode === 'month' ? (
+                  <DatePicker
+                    allowClear={false}
+                    picker="month"
+                    format="MM/YYYY"
+                    value={revenueSelectedMonth}
+                    onChange={(date) => {
+                      if (date) {
+                        setRevenueSelectedMonth(date);
+                      }
+                    }}
+                  />
+                ) : (
+                  <DatePicker
+                    allowClear={false}
+                    picker="year"
+                    format="YYYY"
+                    value={revenueSelectedYear}
+                    onChange={(date) => {
+                      if (date) {
+                        setRevenueSelectedYear(date);
+                      }
+                    }}
+                  />
+                )}
+              </Space>
             }
           >
             {revenueTrend.length === 0 ? (

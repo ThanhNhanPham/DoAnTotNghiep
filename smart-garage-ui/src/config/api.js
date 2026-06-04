@@ -16,6 +16,8 @@ export const API_ENDPOINTS = {
   invoices: `${API_BASE_URL}/invoices`,
   chat: `${API_BASE_URL}/chat`,
   dashboard: `${API_BASE_URL}/dashboard`,
+  admin: `${API_BASE_URL}/admin`,
+  settings: `${API_BASE_URL}/admin/settings`,
 };
 
 export const getAuthToken = () => localStorage.getItem('authToken') || localStorage.getItem('token');

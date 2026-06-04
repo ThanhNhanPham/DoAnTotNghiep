@@ -393,6 +393,7 @@ const Mechanics = () => {
       </Card>
 
       <Modal
+        className="detail-modal"
         title="Chi tiết thợ sửa xe"
         open={isDetailModalVisible}
         onCancel={() => setIsDetailModalVisible(false)}

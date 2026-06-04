@@ -491,6 +491,7 @@ const Parts = () => {
       </Card>
 
       <Modal
+        className="detail-modal"
         title="Chi tiết phụ tùng"
         open={isDetailModalVisible}
         onCancel={() => setIsDetailModalVisible(false)}

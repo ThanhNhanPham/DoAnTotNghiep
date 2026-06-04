@@ -225,6 +225,14 @@
   gap: 8px;
 }
 
+.dashboard-revenue-controls {
+  justify-content: flex-end;
+}
+
+.dashboard-revenue-controls .ant-picker {
+  min-width: 150px;
+}
+
 .revenue-chart {
   position: relative;
   min-height: 320px;
@@ -380,6 +388,28 @@
   .dashboard-segmented {
     width: 100%;
     justify-content: flex-end;
+  }
+
+  .dashboard-card .ant-card-head {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .dashboard-card .ant-card-extra {
+    width: 100%;
+    margin-inline-start: 0;
+  }
+
+  .dashboard-revenue-controls,
+  .dashboard-revenue-controls .ant-space-item,
+  .dashboard-revenue-controls .ant-picker,
+  .dashboard-revenue-controls .ant-picker-range {
+    width: 100%;
+  }
+
+  .dashboard-segmented .ant-btn {
+    flex: 1;
   }
 
   .revenue-chart-bars {
