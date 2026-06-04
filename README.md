@@ -82,7 +82,7 @@ AI Engine: 	Google Gemini API (v3 Flash/Pro)
       <tr>
             <td align="center">
 <img width="1512" height="811" alt="Ảnh màn hình 2026-04-10 lúc 21 27 41" src="https://github.com/user-attachments/assets/4d31b364-0d8b-4f24-a38c-9537264c367b" />
-            <em>Màn hình quản lí xe</em>
+            <em>Màn hình đăng nhập Website admin</em>
             </td>
       </tr>
 </table>
