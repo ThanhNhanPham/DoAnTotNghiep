@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   RefreshControl,
@@ -13,11 +13,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { useThemePreference } from '@/contexts/theme-preference';
 import chatService, { ChatRoom } from '@/services/chatService';
+import chatSocketService, { ChatSocketEvent } from '@/services/socket/chatSocketService';
 
-const POLL_INTERVAL_MS = 5000;
+const canLoadChatForRole = (role: string | null) => !role || role.toUpperCase().includes('CUSTOMER');
 
 const STATUS_LABELS: Record<string, string> = {
   PENDING: 'Chờ xác nhận',
@@ -40,6 +42,39 @@ const formatDateTime = (value?: string | null) => {
     day: '2-digit',
     month: '2-digit',
   });
+};
+
+const sortRooms = (items: ChatRoom[]) =>
+  [...items].sort((a, b) => {
+    const timeA = new Date(a.lastMessageAt || a.createdAt || 0).getTime();
+    const timeB = new Date(b.lastMessageAt || b.createdAt || 0).getTime();
+    return timeB - timeA;
+  });
+
+const applyRoomEvent = (currentRooms: ChatRoom[], event: ChatSocketEvent) => {
+  const index = currentRooms.findIndex((room) => room.id === event.roomId);
+  if (index < 0) {
+    return currentRooms;
+  }
+
+  const nextRooms = [...currentRooms];
+  const targetRoom = { ...nextRooms[index] };
+
+  if (event.type === 'MESSAGE_CREATED' && event.message) {
+    targetRoom.lastMessagePreview = event.message.content;
+    targetRoom.lastMessageAt = event.message.createdAt || new Date().toISOString();
+
+    if (event.message.senderRole !== 'CUSTOMER') {
+      targetRoom.unreadCount = Math.max((targetRoom.unreadCount ?? 0) + 1, 0);
+    }
+  }
+
+  if (event.type === 'ROOM_READ' && event.actorRole === 'CUSTOMER') {
+    targetRoom.unreadCount = 0;
+  }
+
+  nextRooms[index] = targetRoom;
+  return sortRooms(nextRooms);
 };
 
 export default function ChatTabScreen() {
@@ -73,10 +108,21 @@ export default function ChatTabScreen() {
         setIsRefreshing(true);
       }
 
+      const role = await AsyncStorage.getItem('userRole');
+
+      if (!canLoadChatForRole(role)) {
+        setRooms([]);
+        return;
+      }
+
       const data = await chatService.getRooms();
-      setRooms(Array.isArray(data) ? data : []);
-    } catch (error) {
-      console.error('Load chat rooms failed:', error);
+      setRooms(Array.isArray(data) ? sortRooms(data) : []);
+    } catch (error: any) {
+      const status = error?.response?.status;
+
+      if (status !== 401 && status !== 403) {
+        console.warn('Load chat rooms failed:', error);
+      }
       setRooms([]);
     } finally {
       setIsLoading(false);
@@ -89,16 +135,49 @@ export default function ChatTabScreen() {
   useFocusEffect(
     useCallback(() => {
       loadRooms();
-      const intervalId = setInterval(() => {
-        loadRooms(false);
-      }, POLL_INTERVAL_MS);
-
-      return () => clearInterval(intervalId);
     }, [loadRooms])
   );
 
+  const roomIds = useMemo(() => rooms.map((room) => room.id), [rooms]);
+  const roomIdsKey = useMemo(() => [...roomIds].sort((a, b) => a - b).join(','), [roomIds]);
+
+  useEffect(() => {
+    if (!roomIdsKey) {
+      return undefined;
+    }
+
+    let isActive = true;
+    const subscriptionIds: string[] = [];
+
+    const subscribe = async () => {
+      try {
+        await chatSocketService.connect();
+        for (const roomId of roomIds) {
+          const subscriptionId = await chatSocketService.subscribeToRoom(roomId, (event) => {
+            if (!isActive) {
+              return;
+            }
+            setRooms((prev) => applyRoomEvent(prev, event));
+          });
+          subscriptionIds.push(subscriptionId);
+        }
+      } catch (error) {
+        console.warn('Subscribe chat room events failed:', error);
+      }
+    };
+
+    subscribe();
+
+    return () => {
+      isActive = false;
+      for (const subscriptionId of subscriptionIds) {
+        chatSocketService.unsubscribe(subscriptionId);
+      }
+    };
+  }, [roomIds, roomIdsKey]);
+
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: palette.screen }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: palette.screen }]}> 
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
@@ -117,15 +196,15 @@ export default function ChatTabScreen() {
         </LinearGradient>
 
         {isLoading ? (
-          <View style={[styles.centerCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
+          <View style={[styles.centerCard, { backgroundColor: palette.card, borderColor: palette.border }]}> 
             <ActivityIndicator color={palette.accent} />
             <Text style={[styles.stateText, { color: palette.subtext }]}>Đang tải cuộc trò chuyện...</Text>
           </View>
         ) : rooms.length === 0 ? (
-          <View style={[styles.emptyCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
+          <View style={[styles.emptyCard, { backgroundColor: palette.card, borderColor: palette.border }]}> 
             <Ionicons name="chatbubble-ellipses-outline" size={28} color={palette.accent} />
             <Text style={[styles.emptyTitle, { color: palette.text }]}>Chưa có cuộc trò chuyện</Text>
-            <Text style={[styles.emptyText, { color: palette.subtext }]}>
+            <Text style={[styles.emptyText, { color: palette.subtext }]}> 
               Khi bạn nhắn với chi nhánh từ chi tiết booking, cuộc trò chuyện sẽ xuất hiện tại đây.
             </Text>
           </View>
@@ -139,21 +218,21 @@ export default function ChatTabScreen() {
                 onPress={() => router.push(`/chat/${room.bookingId}` as any)}>
                 <View style={styles.roomTop}>
                   <View style={styles.roomIdentity}>
-                    <View style={[styles.roomIconWrap, { backgroundColor: palette.soft }]}>
+                    <View style={[styles.roomIconWrap, { backgroundColor: palette.soft }]}> 
                       <Ionicons name="business-outline" size={18} color={palette.accent} />
                     </View>
                     <View style={styles.roomTextWrap}>
-                      <Text style={[styles.roomBranch, { color: palette.text }]}>
+                      <Text style={[styles.roomBranch, { color: palette.text }]}> 
                         {room.branchName || 'Chi nhánh Smart Garage'}
                       </Text>
-                      <Text style={[styles.roomMeta, { color: palette.subtext }]}>
+                      <Text style={[styles.roomMeta, { color: palette.subtext }]}> 
                         Booking #{room.bookingId} {room.licensePlate ? `· ${room.licensePlate}` : ''}
                       </Text>
                     </View>
                   </View>
                   {(room.unreadCount ?? 0) > 0 ? (
-                    <View style={[styles.unreadBadge, { backgroundColor: palette.badge }]}>
-                      <Text style={[styles.unreadBadgeText, { color: palette.badgeText }]}>
+                    <View style={[styles.unreadBadge, { backgroundColor: palette.badge }]}> 
+                      <Text style={[styles.unreadBadgeText, { color: palette.badgeText }]}> 
                         {(room.unreadCount ?? 0) > 99 ? '99+' : room.unreadCount}
                       </Text>
                     </View>
@@ -166,12 +245,12 @@ export default function ChatTabScreen() {
                       {STATUS_LABELS[room.bookingStatus || ''] || room.bookingStatus || 'Đang trao đổi'}
                     </Text>
                   </View>
-                  <Text style={[styles.roomTime, { color: palette.subtext }]}>
+                  <Text style={[styles.roomTime, { color: palette.subtext }]}> 
                     {formatDateTime(room.lastMessageAt || room.createdAt)}
                   </Text>
                 </View>
 
-                <Text style={[styles.roomPreview, { color: palette.text }]}>
+                <Text style={[styles.roomPreview, { color: palette.text }]}> 
                   {room.lastMessagePreview || 'Chưa có tin nhắn nào.'}
                 </Text>
               </TouchableOpacity>
@@ -310,7 +389,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   roomPreview: {
-    marginTop: 12,
+    marginTop: 14,
     fontSize: 14,
     lineHeight: 21,
   },

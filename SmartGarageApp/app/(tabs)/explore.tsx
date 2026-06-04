@@ -61,7 +61,7 @@ export default function ExploreScreen() {
           setHasVehicle(activeVehicles.length > 0);
           setQueryHistory(Array.isArray(history) ? history : []);
         } catch (error) {
-          console.error('Load vehicles for AI screen failed:', error);
+          console.warn('Load vehicles for AI screen failed:', error);
           setActiveVehicles([]);
           setSelectedVehicleType(null);
           setHasVehicle(false);
@@ -103,7 +103,7 @@ export default function ExploreScreen() {
 
             Alert.alert('Thành công', 'Đã xoá lịch sử truy vấn AI.');
           } catch (error: any) {
-            console.error('Delete AI history failed:', error);
+            console.warn('Delete AI history failed:', error);
             const serverMessage =
               error?.response?.data?.message ||
               error?.response?.data ||
@@ -139,8 +139,13 @@ export default function ExploreScreen() {
       const nextHistory = await aiService.getMyHistory();
       setQueryHistory(Array.isArray(nextHistory) ? nextHistory : []);
     } catch (error: any) {
-      console.error('AI suggestion failed:', error);
+      console.warn('AI suggestion failed:', error);
+      const timeoutMessage =
+        error?.code === 'ECONNABORTED'
+          ? 'AI phản hồi lâu hơn dự kiến. Vui lòng thử lại sau ít phút.'
+          : null;
       const serverMessage =
+        timeoutMessage ||
         error?.response?.data?.message ||
         error?.response?.data ||
         'Không thể lấy gợi ý AI lúc này.';

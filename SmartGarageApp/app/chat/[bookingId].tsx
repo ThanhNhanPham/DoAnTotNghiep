@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -16,10 +16,13 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import chatService, { ChatMessage, ChatRoom } from '@/services/chatService';
+import chatSocketService, { ChatSocketEvent } from '@/services/socket/chatSocketService';
 
-const POLL_INTERVAL_MS = 5000;
+const TYPING_THROTTLE_MS = 1200;
+const TYPING_VISIBLE_MS = 2500;
 
 const formatDateTime = (value?: string | null) => {
   if (!value) return '';
@@ -35,6 +38,14 @@ const formatDateTime = (value?: string | null) => {
   });
 };
 
+const sortMessages = (items: ChatMessage[]) =>
+  [...items].sort((a, b) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime());
+
+const upsertMessage = (items: ChatMessage[], nextMessage: ChatMessage) => {
+  const exists = items.some((item) => item.id === nextMessage.id);
+  return sortMessages(exists ? items.map((item) => (item.id === nextMessage.id ? nextMessage : item)) : [...items, nextMessage]);
+};
+
 export default function BookingChatScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ bookingId?: string }>();
@@ -46,6 +57,11 @@ export default function BookingChatScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [isOtherTyping, setIsOtherTyping] = useState(false);
+  const [lastReadAt, setLastReadAt] = useState<string | null>(null);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastTypingSentAtRef = useRef(0);
+  const currentUserRoleRef = useRef<string | null>(null);
 
   const loadRoomAndMessages = useCallback(async (refreshing = false) => {
     if (!Number.isFinite(bookingId) || bookingId <= 0) {
@@ -63,8 +79,13 @@ export default function BookingChatScreen() {
       setRoom(roomData);
 
       const messageData = await chatService.getMessages(roomData.id);
-      setMessages(Array.isArray(messageData) ? messageData : []);
+      setMessages(Array.isArray(messageData) ? sortMessages(messageData) : []);
       await chatService.markRoomAsRead(roomData.id);
+      try {
+        await chatSocketService.markRoomAsRead(roomData.id);
+      } catch (socketError) {
+        console.warn('Emit room read event failed:', socketError);
+      }
     } catch (error: any) {
       console.error('Load booking chat failed:', error);
       const serverMessage =
@@ -82,19 +103,87 @@ export default function BookingChatScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      loadRoomAndMessages();
+      let isActive = true;
+
+      const initialize = async () => {
+        currentUserRoleRef.current = await AsyncStorage.getItem('userRole');
+        if (isActive) {
+          loadRoomAndMessages();
+        }
+      };
+
+      initialize();
+
+      return () => {
+        isActive = false;
+      };
     }, [loadRoomAndMessages])
   );
 
   useEffect(() => {
-    if (!room?.id) return undefined;
+    if (!room?.id) {
+      return undefined;
+    }
 
-    const intervalId = setInterval(() => {
-      loadRoomAndMessages(false);
-    }, POLL_INTERVAL_MS);
+    let isActive = true;
+    let roomSubscriptionId: string | null = null;
 
-    return () => clearInterval(intervalId);
-  }, [loadRoomAndMessages, room?.id]);
+    const subscribe = async () => {
+      try {
+        await chatSocketService.connect();
+        roomSubscriptionId = await chatSocketService.subscribeToRoom(room.id, async (event: ChatSocketEvent) => {
+          if (!isActive) {
+            return;
+          }
+
+          if (event.type === 'MESSAGE_CREATED' && event.message) {
+            setMessages((prev) => upsertMessage(prev, event.message!));
+
+            if (event.message.senderRole !== currentUserRoleRef.current) {
+              try {
+                await chatService.markRoomAsRead(room.id);
+                await chatSocketService.markRoomAsRead(room.id);
+              } catch (markError) {
+                console.warn('Realtime mark room as read failed:', markError);
+              }
+            }
+            return;
+          }
+
+          if (event.type === 'TYPING' && event.actorRole !== currentUserRoleRef.current) {
+            setIsOtherTyping(true);
+            if (typingTimeoutRef.current) {
+              clearTimeout(typingTimeoutRef.current);
+            }
+            typingTimeoutRef.current = setTimeout(() => {
+              setIsOtherTyping(false);
+            }, TYPING_VISIBLE_MS);
+            return;
+          }
+
+          if (event.type === 'ROOM_READ' && event.actorRole !== currentUserRoleRef.current) {
+            setLastReadAt(event.readAt || new Date().toISOString());
+            setIsOtherTyping(false);
+          }
+        });
+      } catch (error) {
+        console.warn('Subscribe booking chat socket failed:', error);
+      }
+    };
+
+    subscribe();
+
+    return () => {
+      isActive = false;
+      if (roomSubscriptionId) {
+        chatSocketService.unsubscribe(roomSubscriptionId);
+      }
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = null;
+      }
+    };
+  }, [room?.id]);
 
   const handleSendMessage = async () => {
     const trimmed = draft.trim();
@@ -102,9 +191,17 @@ export default function BookingChatScreen() {
 
     try {
       setIsSending(true);
-      const sentMessage = await chatService.sendMessage(room.id, trimmed);
-      setMessages((prev) => [...prev, sentMessage]);
       setDraft('');
+      setIsOtherTyping(false);
+      setLastReadAt(null);
+
+      try {
+        await chatSocketService.sendMessage(room.id, trimmed);
+      } catch (socketError) {
+        console.warn('Send booking chat message via socket failed, fallback REST:', socketError);
+        const sentMessage = await chatService.sendMessage(room.id, trimmed);
+        setMessages((prev) => upsertMessage(prev, sentMessage));
+      }
     } catch (error: any) {
       console.error('Send booking chat message failed:', error);
       const serverMessage =
@@ -112,18 +209,31 @@ export default function BookingChatScreen() {
         error?.response?.data ||
         'Không thể gửi tin nhắn lúc này.';
       Alert.alert('Lỗi', String(serverMessage));
+      setDraft(trimmed);
     } finally {
       setIsSending(false);
     }
   };
 
-  const sortedMessages = useMemo(
-    () =>
-      [...messages].sort(
-        (a, b) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime()
-      ),
-    [messages]
-  );
+  useEffect(() => {
+    if (!room?.id || !draft.trim()) {
+      return undefined;
+    }
+
+    const now = Date.now();
+    if (now - lastTypingSentAtRef.current < TYPING_THROTTLE_MS) {
+      return undefined;
+    }
+
+    lastTypingSentAtRef.current = now;
+    chatSocketService.sendTyping(room.id).catch((error) => {
+      console.warn('Send typing event failed:', error);
+    });
+
+    return undefined;
+  }, [draft, room?.id]);
+
+  const sortedMessages = useMemo(() => sortMessages(messages), [messages]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -170,7 +280,7 @@ export default function BookingChatScreen() {
                 </View>
               ) : (
                 sortedMessages.map((item) => {
-                  const isMine = item.senderRole === 'CUSTOMER';
+                  const isMine = item.senderRole === currentUserRoleRef.current;
 
                   return (
                     <View
@@ -200,6 +310,16 @@ export default function BookingChatScreen() {
                 })
               )}
             </ScrollView>
+
+            {(isOtherTyping || lastReadAt) && (
+              <View style={styles.activityBar}>
+                {isOtherTyping ? (
+                  <Text style={styles.activityText}>Gara đang nhập tin nhắn...</Text>
+                ) : (
+                  <Text style={styles.activityText}>Gara đã xem lúc {formatDateTime(lastReadAt)}</Text>
+                )}
+              </View>
+            )}
 
             <View style={styles.composer}>
               <TextInput
@@ -366,6 +486,15 @@ const styles = StyleSheet.create({
   },
   messageTimeTheirs: {
     color: '#94A3B8',
+  },
+  activityBar: {
+    paddingHorizontal: 20,
+    paddingBottom: 8,
+  },
+  activityText: {
+    color: '#475569',
+    fontSize: 12,
+    fontStyle: 'italic',
   },
   composer: {
     flexDirection: 'row',

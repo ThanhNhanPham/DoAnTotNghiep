@@ -69,7 +69,6 @@ export default function LoginScreen() {
         router.replace('/(tabs)');
       }
     } catch (error: any) {
-      console.error('Login Error:', error);
       let errorMessage = 'Đã có lỗi xảy ra. Vui lòng thử lại sau.';
       
       if (error.response) {
@@ -81,6 +80,9 @@ export default function LoginScreen() {
       } else if (error.request) {
         // Lỗi không kết nối được server
         errorMessage = 'Không thể kết nối đến máy chủ. Kiểm tra lại kết nối mạng hoặc server.';
+        console.warn('Login request failed:', error);
+      } else {
+        console.warn('Login failed:', error);
       }
 
       Alert.alert('Đăng nhập thất bại', errorMessage);

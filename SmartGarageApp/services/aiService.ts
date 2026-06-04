@@ -36,10 +36,14 @@ export const normalizeVehicleIssueText = (value: string) => {
 
 const aiService = {
   async suggestService(payload: AIConsultationRequest) {
-    const response = await apiClient.post<string>('/ai/suggest', {
-      ...payload,
-      issue: normalizeVehicleIssueText(payload.issue),
-    });
+    const response = await apiClient.post<string>(
+      '/ai/suggest',
+      {
+        ...payload,
+        issue: normalizeVehicleIssueText(payload.issue),
+      },
+      { timeout: 60000 }
+    );
     return response.data;
   },
 
