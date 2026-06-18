@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Bell, User, LogOut, Settings, Menu, KeyRound, Car, Bike, Trash2 } from 'lucide-react';
-import { Dropdown, message, Modal } from 'antd';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { Bell, User, LogOut, Settings, Menu, KeyRound, Trash2, Search, ChevronDown } from 'lucide-react';
+import { Dropdown, Input, message, Modal } from 'antd';
 import { ExclamationCircleOutlined } from '@ant-design/icons';
 import authService from '../../services/authService';
+import adminSearchService from '../../services/adminSearchService';
 import notificationService from '../../services/notificationService';
 import ChangePasswordModal from './ChangePasswordModal';
 import ProfileModal from './ProfileModal';
@@ -11,18 +12,71 @@ import './Header.css';
 
 const NOTIFICATION_POLL_INTERVAL = 10000;
 
-const Header = ({ onMenuClick }) => {
+const isChatNotification = (notification) => {
+  const title = (notification?.title || '').toLowerCase();
+  const content = (notification?.content || '').toLowerCase();
+
+  return title.includes('tin nhắn') || content.includes('vừa gửi tin nhắn');
+};
+
+const pageTitles = {
+  '/admin/dashboard': { title: 'Dashboard', subtitle: 'Theo dõi vận hành hệ thống gara' },
+  '/admin/bookings': { title: 'Đặt lịch', subtitle: 'Quản lý lịch hẹn và tiến độ sửa chữa' },
+  '/admin/invoices': { title: 'Hóa đơn', subtitle: 'Kiểm soát thanh toán và doanh thu' },
+  '/admin/users': { title: 'Tài khoản', subtitle: 'Quản lý quản trị viên và khách hàng' },
+  '/admin/mechanics': { title: 'Thợ sửa xe', subtitle: 'Theo dõi nhân sự kỹ thuật' },
+  '/admin/vehicles': { title: 'Phương tiện', subtitle: 'Quản lý hồ sơ xe khách hàng' },
+  '/admin/services': { title: 'Dịch vụ', subtitle: 'Cấu hình dịch vụ sửa chữa' },
+  '/admin/parts': { title: 'Phụ tùng', subtitle: 'Quản lý kho phụ tùng' },
+  '/admin/branches': { title: 'Chi nhánh', subtitle: 'Vận hành mạng lưới gara' },
+  '/admin/chats': { title: 'Chat khách hàng', subtitle: 'Hỗ trợ khách hàng theo thời gian thực' },
+  '/admin/settings': { title: 'Cài đặt', subtitle: 'Thiết lập hệ thống' },
+};
+
+const Header = ({ onMenuClick, sidebarCollapsed }) => {
   const [changePasswordVisible, setChangePasswordVisible] = useState(false);
   const [profileVisible, setProfileVisible] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [notificationLoading, setNotificationLoading] = useState(false);
+  const [searchKeyword, setSearchKeyword] = useState('');
+  const [searchResults, setSearchResults] = useState(null);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [user, setUser] = useState({
     name: 'Admin User',
     email: 'admin@smartgarage.com',
     avatar: null,
   });
   const navigate = useNavigate();
+  const location = useLocation();
+  const currentPage = pageTitles[location.pathname] || pageTitles['/admin/dashboard'];
+
+  const flattenSearchResults = (results) => [
+    ...(results?.customers || []),
+    ...(results?.bookings || []),
+    ...(results?.invoices || []),
+  ];
+
+  const searchGroups = [
+    { key: 'customers', label: 'Khách hàng' },
+    { key: 'bookings', label: 'Lịch hẹn' },
+    { key: 'invoices', label: 'Hóa đơn' },
+  ];
+
+  const getInitials = (name) => {
+    if (!name) return 'AD';
+    const words = name
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+
+    if (words.length === 1) {
+      return words[0].slice(0, 2).toUpperCase();
+    }
+
+    return `${words[0][0]}${words[words.length - 1][0]}`.toUpperCase();
+  };
 
   const fetchNotifications = useCallback(async ({ showLoading = false } = {}) => {
     if (showLoading) {
@@ -105,6 +159,41 @@ const Header = ({ onMenuClick }) => {
   }, [fetchNotifications]);
 
   useEffect(() => {
+    const keyword = searchKeyword.trim();
+    if (keyword.length < 2 || !authService.isAuthenticated()) {
+      setSearchResults(null);
+      setSearchLoading(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+    setSearchLoading(true);
+
+    const timeoutId = window.setTimeout(async () => {
+      try {
+        const data = await adminSearchService.search(keyword);
+        if (!cancelled) {
+          setSearchResults(data);
+          setSearchOpen(true);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setSearchResults({ customers: [], bookings: [], invoices: [] });
+        }
+      } finally {
+        if (!cancelled) {
+          setSearchLoading(false);
+        }
+      }
+    }, 350);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [searchKeyword]);
+
+  useEffect(() => {
     if (!authService.isAuthenticated()) return undefined;
 
     const refreshAfterFocus = () => {
@@ -121,6 +210,21 @@ const Header = ({ onMenuClick }) => {
   const refreshNotifications = () => {
     if (authService.isAuthenticated()) {
       fetchNotifications({ showLoading: true });
+    }
+  };
+
+  const handleSearchSelect = (item) => {
+    if (!item?.route) return;
+    setSearchKeyword('');
+    setSearchResults(null);
+    setSearchOpen(false);
+    navigate(item.route);
+  };
+
+  const handleSearchEnter = () => {
+    const items = flattenSearchResults(searchResults);
+    if (items.length === 1) {
+      handleSearchSelect(items[0]);
     }
   };
 
@@ -287,7 +391,8 @@ const Header = ({ onMenuClick }) => {
       }
 
       if (selected.bookingId) {
-        navigate(`/admin/bookings?bookingId=${selected.bookingId}`);
+        const targetPath = isChatNotification(selected) ? '/admin/chats' : '/admin/bookings';
+        navigate(`${targetPath}?bookingId=${selected.bookingId}`);
       } else {
         message.info('Thông báo này chưa liên kết với đơn hàng.');
       }
@@ -330,21 +435,69 @@ const Header = ({ onMenuClick }) => {
   };
 
   return (
-    <header className="admin-header">
-      <div className="car-track">
-        <Car size={32} className="car car-1" />
-        <Bike size={28} className="car bike-1" />
-        <Car size={32} className="car car-2" />
-        <Bike size={28} className="car bike-2" />
-        <Car size={32} className="car car-3" />
-        <Bike size={28} className="car bike-3" />
-        <Car size={32} className="car car-4" />
-      </div>
-
+    <header className={`admin-header ${sidebarCollapsed ? 'collapsed' : ''}`}>
       <div className="header-left">
         <button className="mobile-menu-btn" onClick={onMenuClick}>
           <Menu size={20} />
         </button>
+        <div className="header-page-title">
+          <strong>{currentPage.title}</strong>
+          <span>{currentPage.subtitle}</span>
+        </div>
+      </div>
+
+      <div className="header-search-wrapper">
+        <Input
+          className="header-search"
+          value={searchKeyword}
+          prefix={<Search size={16} />}
+          placeholder="Tìm khách hàng, lịch hẹn, hóa đơn..."
+          onChange={(event) => {
+            setSearchKeyword(event.target.value);
+            setSearchOpen(true);
+          }}
+          onFocus={() => {
+            if (searchKeyword.trim().length >= 2) {
+              setSearchOpen(true);
+            }
+          }}
+          onBlur={() => {
+            window.setTimeout(() => setSearchOpen(false), 160);
+          }}
+          onPressEnter={handleSearchEnter}
+        />
+        {searchOpen && searchKeyword.trim().length >= 2 && (
+          <div className="header-search-panel">
+            {searchLoading ? (
+              <div className="header-search-empty">Đang tìm kiếm...</div>
+            ) : flattenSearchResults(searchResults).length === 0 ? (
+              <div className="header-search-empty">Không tìm thấy kết quả phù hợp</div>
+            ) : (
+              searchGroups.map((group) => {
+                const items = searchResults?.[group.key] || [];
+                if (items.length === 0) return null;
+
+                return (
+                  <div className="header-search-group" key={group.key}>
+                    <div className="header-search-group-title">{group.label}</div>
+                    {items.map((item) => (
+                      <button
+                        type="button"
+                        className="header-search-result"
+                        key={`${item.type}-${item.id}`}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => handleSearchSelect(item)}
+                      >
+                        <span>{item.title}</span>
+                        {item.subtitle ? <small>{item.subtitle}</small> : null}
+                      </button>
+                    ))}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        )}
       </div>
 
       <div className="header-right">
@@ -376,13 +529,14 @@ const Header = ({ onMenuClick }) => {
               {user.avatar ? (
                 <img src={user.avatar} alt={user.name} />
               ) : (
-                <User size={18} />
+                <span>{getInitials(user.name)}</span>
               )}
+              <span className="user-status-dot" />
             </div>
             <div className="user-info">
               <div className="user-name">{user.name}</div>
-              <div className="user-role">SUPERADMIN</div>
             </div>
+            <ChevronDown size={16} className="user-dropdown-icon" />
           </div>
         </Dropdown>
       </div>

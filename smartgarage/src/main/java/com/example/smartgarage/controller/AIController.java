@@ -33,7 +33,7 @@ public class AIController {
                 return ResponseEntity.badRequest().body("Dữ liệu gửi lên không hợp lệ");
             }
             String username = auth.getName();
-            String suggestion = aiService.suggestService(request.getIssue(),username);
+            String suggestion = aiService.suggestService(request.getIssue(), request.getVehicleType(), username);
             return ResponseEntity.ok(suggestion);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)

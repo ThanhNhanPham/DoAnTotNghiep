@@ -1,6 +1,8 @@
 .admin-layout {
   min-height: 100vh;
-  background: #f0f2f5;
+  background:
+    radial-gradient(circle at top left, rgba(37, 99, 235, 0.08), transparent 32%),
+    linear-gradient(180deg, #f8fafc 0%, #eef3f9 100%);
   position: relative;
 }
 
@@ -18,8 +20,8 @@
 
 .main-content {
   flex: 1;
-  margin-top: 64px;
-  padding: 24px;
+  margin-top: 92px;
+  padding: 28px;
   min-height: calc(100vh - 64px - 60px);
 }
 
@@ -29,10 +31,11 @@
 }
 
 .main-footer {
-  background: #fff;
-  border-top: 1px solid #f0f0f0;
+  background: rgba(255, 255, 255, 0.82);
+  border-top: 1px solid rgba(226, 232, 240, 0.9);
   padding: 16px 24px;
   margin-top: auto;
+  backdrop-filter: blur(12px);
 }
 
 .footer-content {
@@ -57,7 +60,7 @@
 }
 
 .footer-links a:hover {
-  color: #1890ff;
+  color: #2563eb;
 }
 
 .mobile-overlay {
@@ -99,7 +102,7 @@
   }
 
   .main-content {
-    padding: 16px;
+    padding: 18px;
   }
 
   .footer-content {
@@ -116,6 +119,6 @@
 
 @media (max-width: 480px) {
   .main-content {
-    padding: 12px;
+    padding: 14px;
   }
 }

@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Alert,
   RefreshControl,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -12,11 +11,24 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 
 import { useThemePreference } from '@/contexts/theme-preference';
 import notificationService, { NotificationItem } from '@/services/notificationService';
+
+const CHAT_NOTIFICATION_TITLES = new Set([
+  'Tin nhắn mới từ khách hàng',
+  'Tin nhắn mới từ gara',
+]);
+
+const isChatNotification = (item: NotificationItem) => {
+  const title = (item.title || '').trim();
+  const content = (item.content || '').trim().toLowerCase();
+
+  return CHAT_NOTIFICATION_TITLES.has(title) || title.toLowerCase().includes('tin nhắn') || content.includes('tin nhắn');
+};
 
 export default function NotificationsScreen() {
   const router = useRouter();
@@ -80,7 +92,7 @@ export default function NotificationsScreen() {
     }, [loadNotifications])
   );
 
-  const handleMarkAsRead = async (item: NotificationItem) => {
+  const handleMarkAsRead = async (item: NotificationItem, showError = true) => {
     if (item.isRead) return;
 
     try {
@@ -92,11 +104,38 @@ export default function NotificationsScreen() {
       );
     } catch (error: any) {
       console.error('Mark notification read failed:', error);
+      if (!showError) {
+        return;
+      }
+
       const serverMessage =
         error?.response?.data?.message ||
         error?.response?.data ||
         'Không thể cập nhật trạng thái thông báo.';
       Alert.alert('Lỗi', String(serverMessage));
+    }
+  };
+
+  const handleOpenNotification = (item: NotificationItem) => {
+    const bookingId = Number(item.bookingId ?? item.booking_id ?? item.bookingID);
+    const hasBookingTarget = Number.isFinite(bookingId) && bookingId > 0;
+
+    if (!item.isRead && !item.read) {
+      void handleMarkAsRead(item, false);
+    }
+
+    if (hasBookingTarget && isChatNotification(item)) {
+      router.push(`/chat/${bookingId}` as any);
+    } else if (hasBookingTarget) {
+      router.push({
+        pathname: '/booking-detail',
+        params: { id: String(bookingId) },
+      });
+    } else if (item.title === 'Gara đã phản hồi đánh giá của bạn') {
+      Alert.alert(
+        'Chưa có liên kết đơn hàng',
+        'Thông báo này chưa có mã booking. Hãy thử tạo phản hồi đánh giá mới sau khi backend đã được khởi động lại.'
+      );
     }
   };
 
@@ -237,9 +276,7 @@ export default function NotificationsScreen() {
                   ]}
                   activeOpacity={0.9}
                   onPress={() => {
-                    if (!isRead) {
-                      handleMarkAsRead(item);
-                    }
+                    handleOpenNotification(item);
                   }}>
                   <View style={styles.notificationIconColumn}>
                     <View
@@ -296,6 +333,9 @@ export default function NotificationsScreen() {
                   </View>
                   <View style={styles.notificationActions}>
                     {!isRead ? <View style={styles.unreadDot} /> : null}
+                    {item.bookingId || item.booking_id || item.bookingID ? (
+                      <Ionicons name="chevron-forward" size={18} color={palette.subtext} />
+                    ) : null}
                   </View>
                 </TouchableOpacity>
               );

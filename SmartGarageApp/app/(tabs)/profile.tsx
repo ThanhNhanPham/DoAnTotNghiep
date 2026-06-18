@@ -18,6 +18,7 @@ import { useFocusEffect } from '@react-navigation/native';
 
 import { useThemePreference } from '@/contexts/theme-preference';
 import { useUnreadNotificationCount } from '@/hooks/use-unread-notification-count';
+import authService, { MembershipTier } from '@/services/authService';
 import vehicleService from '@/services/vehicleService';
 
 type ProfileData = {
@@ -26,6 +27,8 @@ type ProfileData = {
   phone: string | null;
   address: string | null;
   userId: string | null;
+  loyaltyPoints: number;
+  membershipTier: MembershipTier;
 };
 
 const INITIAL_PROFILE: ProfileData = {
@@ -34,6 +37,22 @@ const INITIAL_PROFILE: ProfileData = {
   phone: null,
   address: null,
   userId: null,
+  loyaltyPoints: 0,
+  membershipTier: 'REGULAR',
+};
+
+const MEMBERSHIP_LABELS: Record<MembershipTier, string> = {
+  REGULAR: 'Thường',
+  BRONZE: 'Đồng',
+  SILVER: 'Bạc',
+  GOLD: 'Vàng',
+};
+
+const MEMBERSHIP_DISCOUNT_LABELS: Record<MembershipTier, string> = {
+  REGULAR: '0%',
+  BRONZE: '10%',
+  SILVER: '15%',
+  GOLD: '20%',
 };
 
 export default function ProfileScreen() {
@@ -51,11 +70,8 @@ export default function ProfileScreen() {
         setIsRefreshing(true);
       }
 
-      const [email, fullName, phone, address, userId] = await Promise.all([
+      const [email, userId] = await Promise.all([
         AsyncStorage.getItem('userEmail'),
-        AsyncStorage.getItem('fullName'),
-        AsyncStorage.getItem('userPhone'),
-        AsyncStorage.getItem('fullAddress'),
         AsyncStorage.getItem('userId'),
       ]);
 
@@ -64,12 +80,23 @@ export default function ProfileScreen() {
         return;
       }
 
+      const me = await authService.getMe();
+      await Promise.all([
+        AsyncStorage.setItem('fullName', me.fullName || ''),
+        AsyncStorage.setItem('fullAddress', me.fullAddress || ''),
+        AsyncStorage.setItem('userPhone', me.phone || ''),
+        AsyncStorage.setItem('loyaltyPoints', String(me.loyaltyPoints ?? 0)),
+        AsyncStorage.setItem('membershipTier', me.membershipTier || 'REGULAR'),
+      ]);
+
       setProfile({
-        email,
-        fullName,
-        phone,
-        address,
-        userId,
+        email: me.email || email,
+        fullName: me.fullName,
+        phone: me.phone,
+        address: me.fullAddress,
+        userId: String(me.userId ?? userId ?? ''),
+        loyaltyPoints: me.loyaltyPoints ?? 0,
+        membershipTier: me.membershipTier ?? 'REGULAR',
       });
 
       if (userId) {
@@ -128,6 +155,8 @@ export default function ProfileScreen() {
 
   const displayName = profile.fullName || 'Người dùng Smart Garage';
   const displayRole = 'Khách hàng';
+  const membershipLabel = MEMBERSHIP_LABELS[profile.membershipTier];
+  const membershipDiscount = MEMBERSHIP_DISCOUNT_LABELS[profile.membershipTier];
   const initials = displayName
     .split(' ')
     .filter(Boolean)
@@ -195,7 +224,35 @@ export default function ProfileScreen() {
             </View>
           </LinearGradient>
 
-        
+          <View style={styles.statsRow}>
+            <StatCard
+              icon="star-outline"
+              label="Điểm tích lũy"
+              value={String(profile.loyaltyPoints)}
+              accent="#0F766E"
+              background={palette.card}
+              textColor={palette.text}
+              labelColor={palette.subtext}
+            />
+            <StatCard
+              icon="ribbon-outline"
+              label="Hạng thành viên"
+              value={membershipLabel}
+              accent="#D97706"
+              background={palette.card}
+              textColor={palette.text}
+              labelColor={palette.subtext}
+            />
+            <StatCard
+              icon="pricetag-outline"
+              label="Ưu đãi"
+              value={membershipDiscount}
+              accent="#2563EB"
+              background={palette.card}
+              textColor={palette.text}
+              labelColor={palette.subtext}
+            />
+          </View>
 
           <View style={[styles.card, { backgroundColor: palette.card, shadowOpacity: isDark ? 0 : 0.06 }]}>
             <Text style={[styles.sectionTitle, { color: palette.text }]}>Thông tin tài khoản</Text>
@@ -219,6 +276,12 @@ export default function ProfileScreen() {
               icon="id-card-outline"
               label="Mã người dùng"
               value={profile.userId || 'Chưa có'}
+              palette={palette}
+            />
+            <InfoRow
+              icon="medal-outline"
+              label="Thành viên"
+              value={`${membershipLabel} · Ưu đãi ${membershipDiscount}`}
               palette={palette}
             />
           </View>

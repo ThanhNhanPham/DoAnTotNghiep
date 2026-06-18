@@ -4,6 +4,7 @@ import { UserOutlined, LockOutlined, MailOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { Wrench, Settings } from 'lucide-react';
 import authService from '../../services/authService';
+import { getFirstAllowedAdminPath } from '../../config/permissions';
 import carBg from '../../assets/3d-car-bg.png';
 import './Login.css';
 
@@ -16,8 +17,14 @@ const Login = () => {
     try {
       const response = await authService.login(values.email, values.password);
       console.log('Login response:', response);
+      if (!authService.isAdminUser()) {
+        authService.logout();
+        message.error('Tài khoản này không có quyền truy cập website quản trị.');
+        return;
+      }
+
       message.success('Đăng nhập thành công!');
-      navigate('/admin/dashboard');
+      navigate(getFirstAllowedAdminPath(authService.getUserRole()));
     } catch (error) {
       console.error('Login error:', error);
       const errorMsg = typeof error === 'string' ? error : error.message || 'Đăng nhập thất bại!';

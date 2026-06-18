@@ -347,6 +347,7 @@ const Branches = () => {
       </Card>
 
       <Modal
+        className="detail-modal"
         title="Chi tiết chi nhánh"
         open={isDetailModalVisible}
         onCancel={() => setIsDetailModalVisible(false)}

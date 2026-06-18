@@ -14,6 +14,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @Tag(name = "Service API", description = "Quản lý dịch vụ sửa chữa")
 @RestController
@@ -72,14 +73,14 @@ public class ServiceController {
     @Operation(summary="Xoá dịch vụ của cửa hàng")
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'SUPERADMIN')")
-    public ResponseEntity<String> deleteService(@PathVariable Long id) {
+    public ResponseEntity<?> deleteService(@PathVariable Long id) {
         try {
             if (!serviceService.deleteService(id)) {
-                return new ResponseEntity<>("Lỗi: Không tìm thấy dịch vụ có ID = " + id, HttpStatus.NOT_FOUND);
+                return new ResponseEntity<>(Map.of("message", "Lỗi: Không tìm thấy dịch vụ có ID = " + id), HttpStatus.NOT_FOUND);
             }
-            return new ResponseEntity<>("Đã xóa dịch vụ thành công!", HttpStatus.OK);
+            return ResponseEntity.ok(Map.of("message", "Đã xóa dịch vụ thành công!"));
         } catch (Exception e) {
-            return new ResponseEntity<>("Không thể xóa dịch vụ này vì có dữ liệu liên quan (thợ, lịch hẹn...)",
+            return new ResponseEntity<>(Map.of("message","Không thể xóa dịch vụ này vì có dữ liệu liên quan (thợ, lịch hẹn...)"),
                     HttpStatus.CONFLICT);
         }
     }

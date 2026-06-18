@@ -2,6 +2,7 @@ package com.example.smartgarage.controller;
 
 import com.example.smartgarage.dto.booking.BookingRequest;
 import com.example.smartgarage.dto.booking.BookingResponse;
+import com.example.smartgarage.dto.booking.CustomerCancelBookingRequest;
 import com.example.smartgarage.dto.booking.UpdateBookingRequest;
 import com.example.smartgarage.entity.Booking;
 import com.example.smartgarage.enums.BookingStatus;
@@ -80,7 +81,7 @@ class BookingControllerTest {
     void getMyBookings_returnsCurrentUserBookings() throws Exception {
         bookingService.myBookingResponses = List.of(sampleResponse(1L), sampleResponse(2L));
 
-        mockMvc.perform(get("/api/v1/bookings/me")
+        mockMvc.perform(get("/api/v1/bookings")
                         .principal(authentication()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].id").value(1))
@@ -131,9 +132,13 @@ class BookingControllerTest {
         BookingResponse cancelled = sampleResponse(8L);
         cancelled.setStatus(BookingStatus.CANCELLED);
         bookingService.getBookingByIdResult = cancelled;
+        CustomerCancelBookingRequest request = new CustomerCancelBookingRequest();
+        request.setCancelReason("Khách bận việc");
 
         mockMvc.perform(patch("/api/v1/bookings/8/cancel")
-                        .principal(authentication()))
+                        .principal(authentication())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(8))
                 .andExpect(jsonPath("$.status").value("CANCELLED"));
@@ -230,6 +235,12 @@ class BookingControllerTest {
             this.lastEmail = currentUserEmail;
             this.lastUpdateRequest = request;
             return updateBookingResult;
+        }
+
+        @Override
+        public void cancelBooking(Long bookingId, String currentUserEmail, String reason) {
+            this.lastCancelledBookingId = bookingId;
+            this.lastEmail = currentUserEmail;
         }
 
     }

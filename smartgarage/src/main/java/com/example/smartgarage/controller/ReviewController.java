@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.*;
 @Tag(name = "Review API", description = "Quản lý đánh giá")
 @RestController
 @RequestMapping("/api/v1/reviews")
+@CrossOrigin("*")
 public class ReviewController {
     private final ReviewService reviewService;
     public ReviewController(ReviewService reviewService) {

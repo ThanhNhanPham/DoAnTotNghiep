@@ -428,6 +428,7 @@ const Vehicles = () => {
       </Card>
 
       <Modal
+        className="detail-modal"
         title="Chi tiết phương tiện"
         open={isDetailModalVisible}
         onCancel={() => setIsDetailModalVisible(false)}

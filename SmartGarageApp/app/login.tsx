@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, View, Text, ScrollView, Dimensions, Alert, ActivityIndicator } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import apiClient from '@/constants/Api';
+import authService from '@/services/authService';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -37,28 +38,45 @@ export default function LoginScreen() {
       if (response.status === 200) {
         const data = response.data;
         console.log('API Login Response:', data); // Dòng này giúp bạn kiểm tra dữ liệu từ Server
+
+        if (data.role !== 'CUSTOMER') {
+          Alert.alert(
+            'Không thể đăng nhập',
+            'Ứng dụng mobile chỉ dành cho tài khoản khách hàng. Vui lòng đăng nhập bằng tài khoản CUSTOMER.'
+          );
+          return;
+        }
         
         // Lưu chuyển hướng và token
         await AsyncStorage.setItem('token', data.token);
         await AsyncStorage.setItem('userEmail', data.email);
         await AsyncStorage.setItem('userRole', data.role);
         await AsyncStorage.setItem('userId', data.userId.toString());
-        
-        // Lưu fullName từ backend
-        const fullName = data.fullName || data.full_name;
-        if (fullName) {
-          await AsyncStorage.setItem('fullName', fullName);
-        }
-        
-        if (data.fullAddress) {
-          await AsyncStorage.setItem('fullAddress', data.fullAddress);
+
+        try {
+          const me = await authService.getMe();
+          await Promise.all([
+            AsyncStorage.setItem('fullName', me.fullName || ''),
+            AsyncStorage.setItem('fullAddress', me.fullAddress || ''),
+            AsyncStorage.setItem('userPhone', me.phone || ''),
+            AsyncStorage.setItem('loyaltyPoints', String(me.loyaltyPoints ?? 0)),
+            AsyncStorage.setItem('membershipTier', me.membershipTier || 'REGULAR'),
+          ]);
+        } catch (meError) {
+          console.error('Load auth/me after login failed:', meError);
+          const fullName = data.fullName || data.full_name;
+          if (fullName) {
+            await AsyncStorage.setItem('fullName', fullName);
+          }
+          if (data.fullAddress) {
+            await AsyncStorage.setItem('fullAddress', data.fullAddress);
+          }
         }
 
         Alert.alert('Thành công', 'Đăng nhập thành công!');
         router.replace('/(tabs)');
       }
     } catch (error: any) {
-      console.error('Login Error:', error);
       let errorMessage = 'Đã có lỗi xảy ra. Vui lòng thử lại sau.';
       
       if (error.response) {
@@ -70,6 +88,9 @@ export default function LoginScreen() {
       } else if (error.request) {
         // Lỗi không kết nối được server
         errorMessage = 'Không thể kết nối đến máy chủ. Kiểm tra lại kết nối mạng hoặc server.';
+        console.warn('Login request failed:', error);
+      } else {
+        console.warn('Login failed:', error);
       }
 
       Alert.alert('Đăng nhập thất bại', errorMessage);

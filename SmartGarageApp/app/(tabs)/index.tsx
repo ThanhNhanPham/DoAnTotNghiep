@@ -34,6 +34,7 @@ export default function HomeScreen() {
       const fullName = await AsyncStorage.getItem('fullName');
       const address = await AsyncStorage.getItem('fullAddress');
       const userId = await AsyncStorage.getItem('userId');
+      const userRole = await AsyncStorage.getItem('userRole');
 
       if (!email) {
         // Nếu không có email (chưa đăng nhập), chuyển về trang login
@@ -41,20 +42,37 @@ export default function HomeScreen() {
         return;
       }
 
+      if (userRole && userRole !== 'CUSTOMER') {
+        await AsyncStorage.clear();
+        Alert.alert(
+          'Phiên đăng nhập không phù hợp',
+          'Ứng dụng mobile chỉ dành cho tài khoản khách hàng. Vui lòng đăng nhập lại bằng tài khoản CUSTOMER.'
+        );
+        router.replace('/login');
+        return;
+      }
+
       setUserData({ email, fullName, address });
 
       if (userId) {
-        try {
-          const [vehicles, bookings] = await Promise.all([
-            vehicleService.getVehiclesByUserId(Number(userId)),
-            bookingService.getMyBookings(),
-          ]);
+        const [vehiclesResult, bookingsResult] = await Promise.allSettled([
+          vehicleService.getVehiclesByUserId(Number(userId)),
+          bookingService.getMyBookings(),
+        ]);
 
+        if (vehiclesResult.status === 'fulfilled') {
+          const vehicles = vehiclesResult.value;
           setVehicleCount(Array.isArray(vehicles) ? vehicles.filter((vehicle) => vehicle.isActive !== false).length : 0);
-          setBookingCount(Array.isArray(bookings) ? bookings.length : 0);
-        } catch (summaryError) {
-          console.error('Error fetching home summary:', summaryError);
+        } else {
+          console.error('Error fetching home vehicles:', vehiclesResult.reason);
           setVehicleCount(0);
+        }
+
+        if (bookingsResult.status === 'fulfilled') {
+          const bookings = bookingsResult.value;
+          setBookingCount(Array.isArray(bookings) ? bookings.length : 0);
+        } else {
+          console.error('Error fetching home bookings:', bookingsResult.reason);
           setBookingCount(0);
         }
       }
@@ -194,19 +212,31 @@ export default function HomeScreen() {
             />
           </View>
 
-          {/* Promotional Banner */}
+          {/* Maintenance Guide Banner */}
           <LinearGradient
-            colors={['#1F2937', '#111827']}
+            colors={['#111827', '#172033', '#0F766E']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
             style={styles.banner}
           >
             <View style={styles.bannerContent}>
+              <View style={styles.bannerBadge}>
+                <Ionicons name="book-outline" size={13} color="#A7F3D0" />
+                <Text style={styles.bannerBadgeText}>Cẩm nang chăm sóc xe</Text>
+              </View>
               <Text style={styles.bannerTitle}>Bảo dưỡng định kỳ</Text>
-              <Text style={styles.bannerSubtitle}>Giảm ngay 20% cho khách hàng mới</Text>
-              <TouchableOpacity style={styles.bannerButton}>
+              <Text style={styles.bannerText}>Hiểu đúng để xe vận hành bền bỉ, an toàn và tiết kiệm hơn.</Text>
+              <TouchableOpacity
+                style={styles.bannerButton}
+                onPress={() => router.push('/maintenance-docs')}
+                activeOpacity={0.88}>
                 <Text style={styles.bannerButtonText}>Tìm hiểu thêm</Text>
+                <Ionicons name="arrow-forward" size={14} color="#0F172A" />
               </TouchableOpacity>
             </View>
-            <Ionicons name="construct" size={80} color="rgba(255,255,255,0.1)" style={styles.bannerIcon} />
+            <View style={styles.bannerIconHalo}>
+              <Ionicons name="construct" size={64} color="rgba(255,255,255,0.16)" />
+            </View>
           </LinearGradient>
         </View>
       </ScrollView>
@@ -218,7 +248,7 @@ function MenuCard({ icon, title, subtitle, color, iconColor, onPress }: any) {
   return (
     <TouchableOpacity style={[styles.menuCard, { backgroundColor: color }]} onPress={onPress} activeOpacity={0.85}>
       <View style={[styles.iconContainer, { backgroundColor: '#FFFFFF' }]}>
-        <Ionicons name={icon} size={24} color={iconColor} />
+        <Ionicons name={icon} size={22} color={iconColor} />
       </View>
       <Text style={styles.menuCardTitle}>{title}</Text>
       <Text style={styles.menuCardSubtitle}>{subtitle}</Text>
@@ -238,14 +268,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#F9FAFB',
   },
   scrollContent: {
-    paddingBottom: 30,
+    paddingBottom: 12,
   },
   header: {
-    paddingTop: 60,
+    paddingTop: 42,
     paddingHorizontal: 24,
-    paddingBottom: 40,
-    borderTopRightRadius: 32,
-    borderTopLeftRadius: 32,
+    paddingBottom: 30,
+    borderTopRightRadius: 28,
+    borderTopLeftRadius: 28,
   },
   headerTop: {
     flexDirection: 'row',
@@ -253,12 +283,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   greetingText: {
-    fontSize: 16,
+    fontSize: 14,
     color: 'rgba(255,255,255,0.8)',
     fontWeight: '500',
   },
   userNameText: {
-    fontSize: 24,
+    fontSize: 22,
     color: '#FFFFFF',
     fontWeight: '800',
     marginTop: 4,
@@ -269,8 +299,8 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   actionButton: {
-    width: 44,
-    height: 44,
+    width: 40,
+    height: 40,
     borderRadius: 12,
     backgroundColor: 'rgba(255,255,255,0.2)',
     justifyContent: 'center',
@@ -298,15 +328,15 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   roleBadgeContainer: {
-    marginTop: 20,
+    marginTop: 16,
     flexDirection: 'row',
   },
   roleBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 11,
+    paddingVertical: 5,
     borderRadius: 20,
     gap: 6,
   },
@@ -318,14 +348,14 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     paddingHorizontal: 24,
-    marginTop: -20,
+    marginTop: -18,
   },
   addressCard: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    padding: 16,
-    borderRadius: 16,
+    padding: 13,
+    borderRadius: 14,
     gap: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
@@ -339,33 +369,36 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   sectionTitle: {
-    fontSize: 20,
+    fontSize: 19,
     fontWeight: '800',
     color: '#111827',
-    marginTop: 30,
-    marginBottom: 20,
+    marginTop: 24,
+    marginBottom: 18,
   },
   menuGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    gap: 16,
+    rowGap: 22,
+    columnGap: 12,
   },
   menuCard: {
-    width: (SCREEN_WIDTH - 48 - 16) / 2,
-    padding: 20,
-    borderRadius: 24,
+    width: (SCREEN_WIDTH - 48 - 12) / 2,
+    minHeight: 128,
+    padding: 18,
+    borderRadius: 20,
+    justifyContent: 'center',
   },
   iconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
+    width: 42,
+    height: 42,
+    borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   menuCardTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
     color: '#1F2937',
     marginBottom: 4,
@@ -375,9 +408,10 @@ const styles = StyleSheet.create({
     color: '#6B7280',
   },
   banner: {
-    marginTop: 30,
-    borderRadius: 24,
-    padding: 24,
+    marginTop: 44,
+    borderRadius: 20,
+    padding: 18,
+    minHeight: 142,
     flexDirection: 'row',
     overflow: 'hidden',
     position: 'relative',
@@ -385,33 +419,63 @@ const styles = StyleSheet.create({
   bannerContent: {
     flex: 1,
     zIndex: 1,
+    paddingRight: 72,
+    justifyContent: 'space-between',
+  },
+  bannerBadge: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+    borderRadius: 999,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    marginBottom: 10,
+  },
+  bannerBadgeText: {
+    color: '#D1FAE5',
+    fontSize: 10,
+    fontWeight: '800',
   },
   bannerTitle: {
-    fontSize: 18,
-    fontWeight: '800',
+    fontSize: 21,
+    fontWeight: '900',
     color: '#FFFFFF',
-    marginBottom: 8,
+    marginBottom: 6,
   },
-  bannerSubtitle: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.7)',
-    marginBottom: 16,
+  bannerText: {
+    fontSize: 12,
+    lineHeight: 18,
+    color: 'rgba(255,255,255,0.76)',
+    marginBottom: 14,
   },
   bannerButton: {
-    backgroundColor: '#6366F1',
-    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    backgroundColor: '#A7F3D0',
+    paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 10,
+    borderRadius: 999,
     alignSelf: 'flex-start',
   },
   bannerButtonText: {
-    color: '#FFFFFF',
+    color: '#0F172A',
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '900',
   },
-  bannerIcon: {
+  bannerIconHalo: {
     position: 'absolute',
-    right: -10,
-    bottom: -10,
+    right: -26,
+    bottom: -24,
+    width: 126,
+    height: 126,
+    borderRadius: 63,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

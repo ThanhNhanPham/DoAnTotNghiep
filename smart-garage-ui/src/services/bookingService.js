@@ -79,11 +79,11 @@ const bookingService = {
   },
 
   // Bắt đầu xử lý xe
-  startBooking: async (bookingId) => {
+  startBooking: async (bookingId, vehicleConditionBeforeRepair) => {
     try {
       const response = await axios.patch(
         `${API_ENDPOINTS.adminBookings}/${bookingId}/start`,
-        null,
+        { vehicleConditionBeforeRepair },
         getAuthConfig()
       );
       return response.data;

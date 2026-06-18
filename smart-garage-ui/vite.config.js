@@ -9,6 +9,11 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:8080', // Địa chỉ Backend Spring Boot của bạn
         changeOrigin: true,
+      },
+      '/ws-chat': {
+        target: 'ws://localhost:8080',
+        ws: true,
+        changeOrigin: true,
       }
     }
   }

@@ -4,6 +4,9 @@ export interface NotificationItem {
   id: number;
   title?: string;
   content?: string;
+  bookingId?: number | null;
+  booking_id?: number | null;
+  bookingID?: number | null;
   isRead?: boolean;
   read?: boolean;
   createdAt?: string;
@@ -22,6 +25,7 @@ const notificationService = {
 
     return response.data.map((notification) => ({
       ...notification,
+      bookingId: notification.bookingId ?? notification.booking_id ?? notification.bookingID ?? null,
       isRead: notification.isRead ?? notification.read ?? false,
     }));
   },

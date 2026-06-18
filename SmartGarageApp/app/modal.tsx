@@ -14,6 +14,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import bookingService, { PaymentMethod } from '@/services/bookingService';
@@ -38,13 +39,58 @@ type DateOption = {
 
 const PAYMENT_OPTIONS: { label: string; value: PaymentMethod; icon: keyof typeof Ionicons.glyphMap }[] = [
   { label: 'Tiền mặt', value: 'CASH', icon: 'cash-outline' },
-  { label: 'MoMo', value: 'MOMO', icon: 'wallet-outline' },
+  { label: 'Chuyển khoản', value: 'BANK_TRANSFER', icon: 'card-outline' },
 ];
 
 const formatCurrency = (value?: number) =>
   new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(
     Number(value || 0)
   );
+
+const formatDistanceKm = (value?: number | null) => (value == null ? '' : `${value.toFixed(2)} km`);
+
+const calculateDistanceKm = (
+  fromLatitude: number,
+  fromLongitude: number,
+  toLatitude?: number | null,
+  toLongitude?: number | null
+) => {
+  if (toLatitude == null || toLongitude == null) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  const earthRadiusKm = 6371;
+  const latDistance = ((toLatitude - fromLatitude) * Math.PI) / 180;
+  const lonDistance = ((toLongitude - fromLongitude) * Math.PI) / 180;
+  const startLat = (fromLatitude * Math.PI) / 180;
+  const endLat = (toLatitude * Math.PI) / 180;
+  const haversine =
+    Math.sin(latDistance / 2) * Math.sin(latDistance / 2) +
+    Math.cos(startLat) * Math.cos(endLat) * Math.sin(lonDistance / 2) * Math.sin(lonDistance / 2);
+  const distance = earthRadiusKm * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+
+  return Math.round(distance * 100) / 100;
+};
+
+const sortBranchesByCurrentLocation = (branches: Branch[], latitude: number, longitude: number) =>
+  branches
+    .map((branch) => ({
+      ...branch,
+      distanceKm: calculateDistanceKm(latitude, longitude, branch.latitude, branch.longitude),
+    }))
+    .sort((leftBranch, rightBranch) => (leftBranch.distanceKm ?? Infinity) - (rightBranch.distanceKm ?? Infinity));
+
+const getBranchDistanceLabel = (branch: Branch) => {
+  if (branch.travelDistanceKm != null) {
+    return `Quãng đường di chuyển ${formatDistanceKm(branch.travelDistanceKm)}`;
+  }
+
+  if (branch.distanceKm != null) {
+    return `Khoảng cách ước tính ${formatDistanceKm(branch.distanceKm)}`;
+  }
+
+  return '';
+};
 
 const normalizeText = (value: string) =>
   value
@@ -133,6 +179,9 @@ export default function BookingModalScreen() {
   const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH');
   const [note, setNote] = useState('');
+  const [nearestBranchId, setNearestBranchId] = useState<number | null>(null);
+  const [isLocatingBranches, setIsLocatingBranches] = useState(false);
+  const [locationHint, setLocationHint] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingSlots, setIsLoadingSlots] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -161,6 +210,10 @@ export default function BookingModalScreen() {
   const selectedServices = useMemo(
     () => filteredServices.filter((service) => selectedServiceIds.includes(service.id)),
     [filteredServices, selectedServiceIds]
+  );
+  const selectedBranch = useMemo(
+    () => branches.find((branch) => branch.id === selectedBranchId) ?? null,
+    [branches, selectedBranchId]
   );
   const selectedSlot = useMemo(
     () => slotOptions.find((slot) => slot.id === selectedSlotId) ?? null,
@@ -243,6 +296,30 @@ export default function BookingModalScreen() {
     }
   }, [aiSuggestion, filteredServices]);
 
+  useEffect(() => {
+    if (!selectedBranchId) {
+      return;
+    }
+
+    if (nearestBranchId === selectedBranchId) {
+      if (selectedBranch) {
+        const distanceLabel = getBranchDistanceLabel(selectedBranch);
+        setLocationHint(
+          `Đã chọn chi nhánh gần nhất: ${selectedBranch.name}${
+            distanceLabel ? ` (${distanceLabel})` : ''
+          }.`
+        );
+      }
+      return;
+    }
+
+    if (nearestBranchId && selectedBranch) {
+      setLocationHint(
+        `Bạn đang chọn thủ công: ${selectedBranch.name}. Ứng dụng vẫn gợi ý chi nhánh gần nhất khi có vị trí.`
+      );
+    }
+  }, [nearestBranchId, selectedBranch, selectedBranchId]);
+
   const bootstrap = async (refreshing = false) => {
     try {
       if (refreshing) {
@@ -269,10 +346,9 @@ export default function BookingModalScreen() {
       const activeBranches = (branchData || []).filter((branch) => branch.isActive !== false);
 
       setVehicles(activeVehicles);
-      setBranches(activeBranches);
       setServices(Array.isArray(serviceData) ? serviceData : []);
       setSelectedVehicleId((current) => current ?? activeVehicles[0]?.id ?? null);
-      setSelectedBranchId((current) => current ?? activeBranches[0]?.id ?? null);
+      await loadNearestBranches(activeBranches);
     } catch (error) {
       console.error('Bootstrap booking screen failed:', error);
       Alert.alert('Lỗi', 'Không thể tải dữ liệu đặt lịch. Vui lòng thử lại.');
@@ -281,6 +357,78 @@ export default function BookingModalScreen() {
       if (refreshing) {
         setIsRefreshing(false);
       }
+    }
+  };
+
+  const loadNearestBranches = async (fallbackBranches: Branch[]) => {
+    setBranches(fallbackBranches);
+    setNearestBranchId(null);
+    setSelectedBranchId((current) => current ?? fallbackBranches[0]?.id ?? null);
+
+    try {
+      setIsLocatingBranches(true);
+      setLocationHint('');
+
+      const permission = await Location.requestForegroundPermissionsAsync();
+      if (!permission.granted) {
+        setLocationHint('Chưa có quyền truy cập vị trí. Bạn có thể chọn chi nhánh thủ công.');
+        return;
+      }
+
+      const position =
+        (await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        }).catch(() => null)) ||
+        (await Location.getLastKnownPositionAsync({
+          maxAge: 5 * 60 * 1000,
+          requiredAccuracy: 3000,
+        }));
+
+      if (!position) {
+        setLocationHint('Không thể lấy vị trí hiện tại. Bạn có thể chọn chi nhánh thủ công.');
+        return;
+      }
+
+      let nearbyBranches: Branch[] = [];
+
+      try {
+        nearbyBranches = await branchService.getNearbyActiveBranches(
+          position.coords.latitude,
+          position.coords.longitude
+        );
+      } catch (nearbyError) {
+        console.warn('Load nearby branches from server failed, using local distance fallback:', nearbyError);
+        nearbyBranches = sortBranchesByCurrentLocation(
+          fallbackBranches,
+          position.coords.latitude,
+          position.coords.longitude
+        );
+      }
+
+      const activeNearbyBranches = (nearbyBranches || []).filter((branch) => branch.isActive !== false);
+      if (activeNearbyBranches.length === 0) {
+        setLocationHint('Không tìm thấy chi nhánh gần bạn. Vui lòng chọn thủ công.');
+        return;
+      }
+
+      const nearestBranch = activeNearbyBranches[0];
+      const distanceLabel = getBranchDistanceLabel(nearestBranch);
+      const routeSourceLabel =
+        nearestBranch.travelDistanceKm != null ? 'theo lộ trình thực tế' : 'theo khoảng cách ước tính';
+
+      setBranches(activeNearbyBranches);
+      setNearestBranchId(nearestBranch.id);
+      setSelectedBranchId((current) => current ?? nearestBranch.id);
+      setLocationHint(
+        `Đã gợi ý chi nhánh gần nhất ${routeSourceLabel}: ${nearestBranch.name}${
+          distanceLabel ? ` (${distanceLabel})` : ''
+        }.`
+      );
+    } catch (error) {
+      console.error('Load nearest branches failed:', error);
+      setLocationHint('Không thể lấy vị trí hiện tại. Bạn có thể chọn chi nhánh thủ công.');
+    } finally {
+      setIsLocatingBranches(false);
     }
   };
 
@@ -407,18 +555,50 @@ export default function BookingModalScreen() {
           </View>
 
           <Text style={styles.fieldLabel}>Chi nhánh gara</Text>
+          {locationHint ? (
+            <View style={styles.locationHintBox}>
+              <Ionicons
+                name={nearestBranchId ? 'navigate-circle-outline' : 'information-circle-outline'}
+                size={18}
+                color={nearestBranchId ? '#0F766E' : '#92400E'}
+              />
+              <Text style={[styles.locationHintText, !nearestBranchId && styles.locationHintTextWarning]}>
+                {locationHint}
+              </Text>
+            </View>
+          ) : null}
+          {isLocatingBranches ? (
+            <View style={styles.slotStatusBox}>
+              <ActivityIndicator color="#0F766E" />
+              <Text style={styles.slotStatusText}>Đang xác định chi nhánh gần bạn...</Text>
+            </View>
+          ) : null}
           <View style={styles.branchList}>
             {branches.map((branch) => {
               const isActive = selectedBranchId === branch.id;
+              const isNearest = nearestBranchId === branch.id;
+              const distanceLabel = getBranchDistanceLabel(branch);
 
               return (
                 <TouchableOpacity
                   key={branch.id}
                   style={[styles.branchCard, isActive && styles.branchCardActive]}
                   onPress={() => setSelectedBranchId(branch.id)}>
-                  <Text style={[styles.branchName, isActive && styles.branchNameActive]}>{branch.name}</Text>
+                  <View style={styles.branchHeaderRow}>
+                    <Text style={[styles.branchName, isActive && styles.branchNameActive]}>{branch.name}</Text>
+                    {isNearest ? (
+                      <View style={styles.nearestBadge}>
+                        <Text style={styles.nearestBadgeText}>Gần nhất</Text>
+                      </View>
+                    ) : null}
+                  </View>
                   <Text style={[styles.branchMeta, isActive && styles.branchMetaActive]}>{branch.address}</Text>
                   <Text style={[styles.branchMeta, isActive && styles.branchMetaActive]}>{branch.phone}</Text>
+                  {distanceLabel ? (
+                    <Text style={[styles.branchDistance, isActive && styles.branchMetaActive]}>
+                      {distanceLabel}
+                    </Text>
+                  ) : null}
                 </TouchableOpacity>
               );
             })}
@@ -510,7 +690,7 @@ export default function BookingModalScreen() {
             </View>
           )}
 
-          <Text style={styles.fieldLabel}>Phương thức thanh toán dự kiến</Text>
+          <Text style={styles.fieldLabel}>Hình thức thanh toán</Text>
           <View style={styles.optionWrap}>
             {PAYMENT_OPTIONS.map((option) => {
               const isActive = paymentMethod === option.value;
@@ -677,6 +857,27 @@ const styles = StyleSheet.create({
   branchList: {
     gap: 10,
   },
+  locationHintBox: {
+    marginTop: 4,
+    marginBottom: 8,
+    borderRadius: 14,
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  locationHintText: {
+    flex: 1,
+    color: '#0F766E',
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '600',
+  },
+  locationHintTextWarning: {
+    color: '#92400E',
+  },
   branchCard: {
     borderWidth: 1,
     borderColor: '#CCFBF1',
@@ -687,6 +888,12 @@ const styles = StyleSheet.create({
   branchCardActive: {
     borderColor: '#0F766E',
     backgroundColor: '#ECFDF5',
+  },
+  branchHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 10,
   },
   branchName: {
     fontSize: 15,
@@ -702,8 +909,26 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     color: '#64748B',
   },
+  branchDistance: {
+    marginTop: 6,
+    fontSize: 12,
+    lineHeight: 18,
+    color: '#0F766E',
+    fontWeight: '700',
+  },
   branchMetaActive: {
     color: '#115E59',
+  },
+  nearestBadge: {
+    borderRadius: 999,
+    backgroundColor: '#0F766E',
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+  },
+  nearestBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '800',
   },
   serviceList: {
     marginTop: 4,

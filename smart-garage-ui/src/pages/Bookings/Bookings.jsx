@@ -8,8 +8,6 @@ import {
   Space,
   Tag,
   Popconfirm,
-  Row,
-  Col,
   Select,
   message,
   Tooltip,
@@ -31,24 +29,64 @@ import {
   EyeOutlined,
   EditOutlined,
   DeleteOutlined,
+  DollarCircleOutlined,
+  EnvironmentOutlined,
+  AimOutlined,
 } from '@ant-design/icons';
 import { Calendar, User, Car, Bike, Building2, Wrench, DollarSign } from 'lucide-react';
 import bookingService from '../../services/bookingService';
+import paymentService from '../../services/paymentService';
 import branchService from '../../services/branchService';
 import mechanicService from '../../services/mechanicService';
 import serviceService from '../../services/serviceService';
 import partService from '../../services/partService';
 import reviewService, { getApiErrorMessage } from '../../services/reviewService';
+import authService from '../../services/authService';
+import { ROLES } from '../../config/permissions';
 import './Bookings.css';
+
+const formatDistanceKm = (value) => (value == null ? '' : `${value.toFixed(2)} km`);
+
+const getBranchDistanceLabel = (branch) => {
+  if (branch?.travelDistanceKm != null) {
+    return `Quãng đường ${formatDistanceKm(branch.travelDistanceKm)}`;
+  }
+
+  if (branch?.distanceKm != null) {
+    return `Ước tính ${formatDistanceKm(branch.distanceKm)}`;
+  }
+
+  return '';
+};
+
+const getGeolocationErrorMessage = (error) => {
+  if (typeof window !== 'undefined' && !window.isSecureContext) {
+    return 'Trang hiện không chạy trong môi trường bảo mật. Hãy mở bằng HTTPS hoặc localhost để lấy vị trí.';
+  }
+
+  switch (error?.code) {
+    case 1:
+      return 'Trình duyệt vẫn đang chặn quyền vị trí cho trang này.';
+    case 2:
+      return 'Thiết bị hoặc trình duyệt chưa xác định được vị trí hiện tại.';
+    case 3:
+      return 'Trình duyệt lấy vị trí quá lâu. Hãy thử lại hoặc kiểm tra Location Services.';
+    default:
+      return 'Không thể lấy vị trí hiện tại.';
+  }
+};
 
 const Bookings = () => {
   const [searchParams, setSearchParams] = useSearchParams();
+  const currentUserInfo = authService.getUserInfo();
+  const isBranchScopedAdmin = authService.getUserRole() === ROLES.ADMIN;
+  const assignedBranchId = currentUserInfo.branchId ? Number(currentUserInfo.branchId) : undefined;
   const [bookings, setBookings] = useState([]);
   const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(false);
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState(undefined);
-  const [branchFilter, setBranchFilter] = useState(undefined);
+  const [branchFilter, setBranchFilter] = useState(isBranchScopedAdmin ? assignedBranchId : undefined);
   const [bookingPagination, setBookingPagination] = useState({
     current: 1,
     pageSize: 10,
@@ -56,6 +94,7 @@ const Bookings = () => {
   });
   const [cancelForm] = Form.useForm();
   const [partForm] = Form.useForm();
+  const [startBookingForm] = Form.useForm();
 
   // States for Confirming Booking
   const [isConfirmModalVisible, setIsConfirmModalVisible] = useState(false);
@@ -68,17 +107,24 @@ const Bookings = () => {
   const [isCancelModalVisible, setIsCancelModalVisible] = useState(false);
   const [bookingToCancel, setBookingToCancel] = useState(null);
   const [cancelLoading, setCancelLoading] = useState(false);
+  const [isStartModalVisible, setIsStartModalVisible] = useState(false);
+  const [bookingToStart, setBookingToStart] = useState(null);
+  const [startLoading, setStartLoading] = useState(false);
   const [isDetailModalVisible, setIsDetailModalVisible] = useState(false);
   const [bookingDetail, setBookingDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [serviceCatalog, setServiceCatalog] = useState([]);
   const [partCatalog, setPartCatalog] = useState([]);
-  const [selectedServiceIds, setSelectedServiceIds] = useState([]);
+  const [serviceToAddId, setServiceToAddId] = useState(undefined);
   const [bookingItemLoading, setBookingItemLoading] = useState(false);
+  const [paymentConfirmingId, setPaymentConfirmingId] = useState(null);
   const [bookingReview, setBookingReview] = useState(null);
   const [reviewLoading, setReviewLoading] = useState(false);
   const [reviewReplyText, setReviewReplyText] = useState('');
   const [reviewReplyLoading, setReviewReplyLoading] = useState(false);
+  const [branchLocationLoading, setBranchLocationLoading] = useState(false);
+  const [branchLocationHint, setBranchLocationHint] = useState('');
+  const [nearestBranchId, setNearestBranchId] = useState(null);
   const bookingIdFromNotification = searchParams.get('bookingId');
 
   useEffect(() => {
@@ -137,12 +183,92 @@ const Bookings = () => {
     setBookingPagination((prev) => ({ ...prev, current: 1 }));
   };
 
-  const fetchBranches = async () => {
+  const loadDefaultBranches = async ({ showError = true } = {}) => {
     try {
       const data = await branchService.getActiveBranches();
-      setBranches(data || []);
+      const activeBranches = (data || [])
+        .filter((branch) => branch.isActive !== false)
+        .filter((branch) => !isBranchScopedAdmin || branch.id === assignedBranchId);
+      setBranches(activeBranches);
+      setNearestBranchId(null);
+      return activeBranches;
     } catch {
-      message.error('Lỗi khi tải danh sách chi nhánh!');
+      if (showError) {
+        message.error('Lỗi khi tải danh sách chi nhánh!');
+      }
+      return [];
+    }
+  };
+
+  const fetchBranches = async () => {
+    await loadDefaultBranches();
+    if (isBranchScopedAdmin && assignedBranchId) {
+      setBranchFilter(assignedBranchId);
+    }
+    setBranchLocationHint('');
+  };
+
+  const locateNearbyBranches = async () => {
+    if (isBranchScopedAdmin) {
+      await loadDefaultBranches({ showError: false });
+      setBranchFilter(assignedBranchId);
+      setBranchLocationHint(`Tài khoản admin chỉ được xem dữ liệu chi nhánh ${currentUserInfo.branchName || 'được phân công'}.`);
+      return;
+    }
+
+    if (!navigator.geolocation) {
+      await loadDefaultBranches({ showError: false });
+      setBranchLocationHint('Trình duyệt này không hỗ trợ định vị. Hiển thị danh sách chi nhánh mặc định.');
+      message.warning('Trình duyệt không hỗ trợ định vị.');
+      return;
+    }
+
+    setBranchLocationLoading(true);
+    setBranchLocationHint('');
+
+    try {
+      const position = await new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: false,
+          timeout: 20000,
+          maximumAge: 300000,
+        });
+      });
+
+      const nearbyBranches = await branchService.getNearbyActiveBranches(
+        position.coords.latitude,
+        position.coords.longitude
+      );
+
+      const activeNearbyBranches = (nearbyBranches || []).filter((branch) => branch.isActive !== false);
+      if (activeNearbyBranches.length === 0) {
+        await loadDefaultBranches({ showError: false });
+        setNearestBranchId(null);
+        setBranchLocationHint('Không tìm thấy chi nhánh gần bạn. Hiển thị danh sách mặc định.');
+        return;
+      }
+
+      const nearestBranch = activeNearbyBranches[0];
+      const distanceLabel = getBranchDistanceLabel(nearestBranch);
+      const sourceLabel = nearestBranch.travelDistanceKm != null ? 'theo lộ trình thực tế' : 'theo khoảng cách ước tính';
+
+      setBranches(activeNearbyBranches);
+      setNearestBranchId(nearestBranch.id);
+      setBranchLocationHint(
+        `Đã sắp xếp chi nhánh gần bạn nhất ${sourceLabel}: ${nearestBranch.name}${
+          distanceLabel ? ` (${distanceLabel})` : ''
+        }.`
+      );
+      message.success('Đã cập nhật danh sách chi nhánh theo vị trí hiện tại.');
+    } catch (error) {
+      console.error('Locate nearby branches failed:', error);
+      const locationErrorMessage = getGeolocationErrorMessage(error);
+      await loadDefaultBranches({ showError: false });
+      setNearestBranchId(null);
+      setBranchLocationHint(`${locationErrorMessage} Hiển thị danh sách chi nhánh mặc định.`);
+      message.warning(locationErrorMessage);
+    } finally {
+      setBranchLocationLoading(false);
     }
   };
 
@@ -177,6 +303,34 @@ const Bookings = () => {
   };
 
   const isLockedBooking = (booking) => ['COMPLETED', 'CANCELLED'].includes(booking?.status);
+
+  const canConfirmPayment = (booking) =>
+    booking?.status === 'COMPLETED' &&
+    ['CASH', 'BANK_TRANSFER'].includes(booking?.paymentMethod) &&
+    booking?.paymentStatus !== 'SUCCESS';
+
+  const getPaymentConfirmText = (booking) => {
+    if (booking?.paymentMethod === 'CASH') {
+      return {
+        action: 'Xác nhận tiền mặt',
+        title: 'Xác nhận thanh toán tiền mặt?',
+        description: 'Xác nhận khách đã thanh toán tiền mặt trực tiếp tại gara?',
+        success: 'Xác nhận thanh toán tiền mặt thành công!',
+      };
+    }
+
+    return {
+      action: 'Xác nhận chuyển khoản',
+      title: 'Xác nhận thanh toán chuyển khoản?',
+      description: 'Xác nhận gara đã nhận được tiền chuyển khoản cho booking này?',
+      success: 'Xác nhận thanh toán chuyển khoản thành công!',
+    };
+  };
+
+  const getPaymentConfirmButtonStyle = (booking) =>
+    booking?.paymentMethod === 'CASH'
+      ? { background: '#d97706', borderColor: '#d97706' }
+      : { background: '#0f766e', borderColor: '#0f766e' };
 
   const showLockedBookingMessage = (booking) => {
     if (booking?.status === 'COMPLETED') {
@@ -239,13 +393,32 @@ const Bookings = () => {
     }
   };
 
-  const handleStartBooking = async (bookingId) => {
+  const openStartModal = (booking) => {
+    setBookingToStart(booking);
+    startBookingForm.setFieldsValue({
+      vehicleConditionBeforeRepair: booking?.vehicleConditionBeforeRepair || '',
+    });
+    setIsStartModalVisible(true);
+  };
+
+  const handleStartBooking = async () => {
     try {
-      await bookingService.startBooking(bookingId);
+      const values = await startBookingForm.validateFields();
+      setStartLoading(true);
+      await bookingService.startBooking(bookingToStart.id, values.vehicleConditionBeforeRepair);
       message.success('Đã bắt đầu xử lý xe!');
-      fetchBookings();
-    } catch {
-      message.error('Lỗi khi bắt đầu xử lý xe!');
+      setIsStartModalVisible(false);
+      startBookingForm.resetFields();
+      await fetchBookings();
+      if (bookingDetail?.id === bookingToStart?.id) {
+        await refreshBookingDetail(bookingToStart.id);
+      }
+      setBookingToStart(null);
+    } catch (error) {
+      if (error?.errorFields) return;
+      message.error(getApiErrorMessage(error, 'Lỗi khi bắt đầu xử lý xe!'));
+    } finally {
+      setStartLoading(false);
     }
   };
 
@@ -267,11 +440,7 @@ const Bookings = () => {
 
       const data = bookingResult.value;
       setBookingDetail(data);
-      setSelectedServiceIds(
-        serviceCatalog
-          .filter((service) => data.serviceNames?.includes(service.name))
-          .map((service) => service.id)
-      );
+      setServiceToAddId(undefined);
 
       if (reviewResult.status === 'fulfilled') {
         setBookingReview(reviewResult.value);
@@ -281,8 +450,9 @@ const Bookings = () => {
       }
 
       partForm.resetFields();
-    } catch {
-      message.error('Lỗi khi tải chi tiết lịch hẹn!');
+    } catch (error) {
+      console.error('Open booking detail failed:', error);
+      message.error(getApiErrorMessage(error, 'Lỗi khi tải chi tiết lịch hẹn!'));
       setIsDetailModalVisible(false);
     } finally {
       setDetailLoading(false);
@@ -293,29 +463,30 @@ const Bookings = () => {
   const refreshBookingDetail = async (bookingId) => {
     const data = await bookingService.getBookingById(bookingId);
     setBookingDetail(data);
-    setSelectedServiceIds(
-      serviceCatalog
-        .filter((service) => data.serviceNames?.includes(service.name))
-        .map((service) => service.id)
-    );
+    setServiceToAddId(undefined);
     await fetchBookings();
     return data;
   };
 
-  const handleReplaceServices = async () => {
+  const handleAddService = async () => {
     if (!bookingDetail) return;
     if (isLockedBooking(bookingDetail)) {
       showLockedBookingMessage(bookingDetail);
       return;
     }
 
+    if (!serviceToAddId) {
+      message.warning('Vui lòng chọn dịch vụ cần thêm!');
+      return;
+    }
+
     setBookingItemLoading(true);
     try {
-      await bookingService.replaceBookingServices(bookingDetail.id, selectedServiceIds);
+      await bookingService.addServiceToBooking(bookingDetail.id, serviceToAddId);
       await refreshBookingDetail(bookingDetail.id);
-      message.success('Cập nhật dịch vụ cho lịch hẹn thành công!');
+      message.success('Đã thêm dịch vụ vào lịch hẹn!');
     } catch {
-      message.error('Lỗi khi cập nhật dịch vụ!');
+      message.error('Lỗi khi thêm dịch vụ!');
     } finally {
       setBookingItemLoading(false);
     }
@@ -474,6 +645,29 @@ const Bookings = () => {
     }
   };
 
+  const handleConfirmPayment = async (booking) => {
+    const bookingId = booking?.id;
+    if (!bookingId) return;
+
+    setPaymentConfirmingId(bookingId);
+    try {
+      if (booking.paymentMethod === 'CASH') {
+        await paymentService.confirmCashPayment(bookingId);
+      } else {
+        await paymentService.confirmBankTransferPayment(bookingId);
+      }
+      message.success(getPaymentConfirmText(booking).success);
+      await fetchBookings();
+      if (bookingDetail?.id === bookingId) {
+        await refreshBookingDetail(bookingId);
+      }
+    } catch (error) {
+      message.error(getApiErrorMessage(error, 'Lỗi khi xác nhận thanh toán!'));
+    } finally {
+      setPaymentConfirmingId(null);
+    }
+  };
+
   const handleReplyToReview = async () => {
     if (!bookingReview) return;
 
@@ -527,8 +721,12 @@ const Bookings = () => {
       }
       setIsConfirmModalVisible(false);
       fetchBookings();
-    } catch {
-      message.error(mechanicModalMode === 'reassign' ? 'Lỗi khi đổi thợ!' : 'Lỗi khi xác nhận lịch hẹn!');
+    } catch (error) {
+      message.error(
+        mechanicModalMode === 'reassign'
+          ? getApiErrorMessage(error, 'Lỗi khi đổi thợ!')
+          : getApiErrorMessage(error, 'Lỗi khi xác nhận lịch hẹn!')
+      );
     } finally {
       setConfirmLoading(false);
     }
@@ -545,7 +743,6 @@ const Bookings = () => {
 
   const paymentMethodConfig = {
     CASH: { color: 'default', text: 'Tiền mặt' },
-    MOMO: { color: 'magenta', text: 'MoMo' },
     BANK_TRANSFER: { color: 'geekblue', text: 'Chuyển khoản' },
   };
 
@@ -559,6 +756,16 @@ const Bookings = () => {
   const formatDateTime = (value) => {
     if (!value) return 'N/A';
     return new Date(value).toLocaleString('vi-VN');
+  };
+
+  const formatDuration = (start, end) => {
+    if (!start || !end) return 'Chưa hoàn tất';
+    const diffMinutes = Math.max(0, Math.round((new Date(end) - new Date(start)) / 60000));
+    const hours = Math.floor(diffMinutes / 60);
+    const minutes = diffMinutes % 60;
+    if (hours > 0 && minutes > 0) return `${hours} giờ ${minutes} phút`;
+    if (hours > 0) return `${hours} giờ`;
+    return `${minutes} phút`;
   };
 
   const renderTagList = (items, emptyText = 'Chưa có') => {
@@ -575,6 +782,40 @@ const Bookings = () => {
         ))}
       </Space>
     );
+  };
+
+  const inferVehicleType = (record) => {
+    const explicitType = record.vehicleType || record.vehicle?.type;
+    if (explicitType) return explicitType;
+
+    const plate = record.vehicle?.licensePlate || record.licensePlate || '';
+    const vehicleName = `${record.vehicleName || ''} ${record.vehicle?.name || ''} ${record.brand || ''}`.toLowerCase();
+    const likelyCarBrands = [
+      'bmw',
+      'toyota',
+      'honda city',
+      'hyundai',
+      'kia',
+      'mazda',
+      'ford',
+      'mercedes',
+      'audi',
+      'vinfast',
+      'mitsubishi',
+      'nissan',
+      'suzuki ertiga',
+      'chevrolet',
+    ];
+
+    if (/^[0-9]{2}[A-Z]-[0-9]{4,5}$/i.test(plate) || likelyCarBrands.some((brand) => vehicleName.includes(brand))) {
+      return 'CAR';
+    }
+
+    if (/^[0-9]{2}[A-Z][0-9A-Z]-[0-9]{4,5}$/i.test(plate)) {
+      return 'MOTORBIKE';
+    }
+
+    return undefined;
   };
 
   const renderBookingReview = () => {
@@ -660,8 +901,9 @@ const Bookings = () => {
       render: (_, record) => {
         const plate = record.vehicle?.licensePlate || record.licensePlate || 'Chưa rõ';
         const vehicleName = record.vehicleName || record.vehicle?.name || record.brand || '';
-        const type = record.vehicle?.type || 'MOTORBIKE';
+        const type = inferVehicleType(record);
         const isCar = type === 'CAR';
+        const vehicleTypeLabel = type === 'CAR' ? 'Ô tô' : type === 'MOTORBIKE' ? 'Xe máy' : 'Chưa rõ loại xe';
         return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
             <div className="license-plate" style={{ fontSize: '14px', fontWeight: 600, color: '#262626' }}>
@@ -669,7 +911,7 @@ const Bookings = () => {
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               {isCar ? <Car size={14} color="#52c41a" /> : <Bike size={14} color="#fa8c16" />}
-              <span style={{ fontSize: '12px', color: '#8c8c8c' }}>{isCar ? 'Ô tô' : 'Xe máy'}</span>
+              <span style={{ fontSize: '12px', color: '#8c8c8c' }}>{vehicleTypeLabel}</span>
             </div>
             <div className="brand" style={{ fontSize: '12px', color: '#bfbfbf', fontStyle: 'italic' }}>
               {vehicleName}
@@ -708,13 +950,13 @@ const Bookings = () => {
     },
     {
       title: 'Thời gian đặt',
-      dataIndex: 'bookingTime',
-      key: 'bookingTime',
+      dataIndex: 'createdAt',
+      key: 'createdAt',
       width: 160,
-      render: (time) => (
+      render: (_, record) => (
         <div className="time-cell">
           <Calendar size={14} />
-          <span>{formatDateTime(time)}</span>
+          <span>{formatDateTime(record.createdAt || record.bookingTime)}</span>
         </div>
       ),
     },
@@ -856,20 +1098,13 @@ const Bookings = () => {
             )}
 
             {s === 'ARRIVED' && (
-              <Popconfirm
-                title="Bắt đầu xử lý xe?"
-                description="Chuyển lịch hẹn sang trạng thái đang sửa?"
-                onConfirm={() => handleStartBooking(record.id)}
-                okText="Bắt đầu"
-                cancelText="Thoát"
-              >
-                <Tooltip title="Bắt đầu sửa">
-                  <Button
-                    type="primary"
-                    icon={<PlayCircleOutlined style={{ fontSize: '18px' }} />}
-                  />
-                </Tooltip>
-              </Popconfirm>
+              <Tooltip title="Bắt đầu sửa">
+                <Button
+                  type="primary"
+                  icon={<PlayCircleOutlined style={{ fontSize: '18px' }} />}
+                  onClick={() => openStartModal(record)}
+                />
+              </Tooltip>
             )}
 
             {s === 'IN_PROGRESS' && (
@@ -893,6 +1128,24 @@ const Bookings = () => {
 
             {['COMPLETED', 'CANCELLED'].includes(s) && (
               <>
+                {canConfirmPayment(record) && (
+                  <Popconfirm
+                    title={getPaymentConfirmText(record).title}
+                    description={getPaymentConfirmText(record).description}
+                    onConfirm={() => handleConfirmPayment(record)}
+                    okText="Xác nhận"
+                    cancelText="Thoát"
+                  >
+                    <Tooltip title={getPaymentConfirmText(record).action}>
+                      <Button
+                        type="primary"
+                        loading={paymentConfirmingId === record.id}
+                        style={getPaymentConfirmButtonStyle(record)}
+                        icon={<DollarCircleOutlined style={{ fontSize: '18px' }} />}
+                      />
+                    </Tooltip>
+                  </Popconfirm>
+                )}
                 <Tooltip title="Cập nhật">
                   <Button
                     icon={<EditOutlined style={{ fontSize: '18px' }} />}
@@ -926,6 +1179,31 @@ const Bookings = () => {
     },
   ];
 
+  const branchOptions = branches.map((branch) => {
+    const distanceLabel = getBranchDistanceLabel(branch);
+
+    return {
+      value: branch.id,
+      label: (
+        <div className="branch-select-option">
+          <div className="branch-select-option__top">
+            <span className="branch-select-option__name">{branch.name}</span>
+            {nearestBranchId === branch.id ? (
+              <Tag color="green" style={{ marginInlineEnd: 0 }}>
+                Gần nhất
+              </Tag>
+            ) : null}
+          </div>
+          <div className="branch-select-option__meta">{branch.address}</div>
+          {distanceLabel ? (
+            <div className="branch-select-option__distance">{distanceLabel}</div>
+          ) : null}
+        </div>
+      ),
+      searchLabel: `${branch.name} ${branch.address || ''}`.toLowerCase(),
+    };
+  });
+
   return (
     <div className="bookings-page">
       <div className="page-header">
@@ -935,8 +1213,16 @@ const Bookings = () => {
 
       <Card className="bookings-card" bordered={false}>
         <div className="bookings-toolbar">
-          <Row gutter={[16, 16]} align="middle">
-            <Col xs={24} sm={12} md={8}>
+          <div className="booking-toolbar-header">
+            <div>
+              <h2>Bộ lọc đặt lịch</h2>
+              <p>Tìm nhanh theo khách hàng, biển số, chi nhánh hoặc trạng thái xử lý.</p>
+            </div>
+          </div>
+
+          <div className="booking-filter-grid">
+            <div className="booking-filter-item booking-filter-search">
+              <span className="booking-filter-label">Tìm kiếm</span>
               <Input
                 placeholder="Tìm kiếm theo khách hàng, biển số, thợ, dịch vụ..."
                 prefix={<SearchOutlined />}
@@ -947,9 +1233,10 @@ const Bookings = () => {
                 }}
                 allowClear
               />
-            </Col>
+            </div>
 
-            <Col xs={24} sm={12} md={5}>
+            <div className="booking-filter-item">
+              <span className="booking-filter-label">Trạng thái</span>
               <Select
                 placeholder="Trạng thái"
                 value={statusFilter}
@@ -968,106 +1255,140 @@ const Bookings = () => {
                   { label: 'Đã hủy', value: 'CANCELLED' },
                 ]}
               />
-            </Col>
+            </div>
 
-            <Col xs={24} sm={12} md={5}>
-              <Select
-                placeholder="Chi nhánh"
-                value={branchFilter}
-                onChange={(value) => {
-                  setBranchFilter(value);
-                  resetBookingPagination();
-                }}
-                allowClear
-                style={{ width: '100%' }}
-                options={branches.map((b) => ({ label: b.name, value: b.id }))}
-              />
-            </Col>
+            <div className="booking-filter-item booking-filter-branch">
+              <span className="booking-filter-label">Chi nhánh</span>
+              <div className="booking-branch-controls">
+                <Select
+                  placeholder="Chi nhánh"
+                  value={branchFilter}
+                  onChange={(value) => {
+                    if (isBranchScopedAdmin) return;
+                    setBranchFilter(value);
+                    resetBookingPagination();
+                  }}
+                  allowClear={!isBranchScopedAdmin}
+                  disabled={isBranchScopedAdmin}
+                  showSearch
+                  optionLabelProp="label"
+                  filterOption={(input, option) => (option?.searchLabel ?? '').includes(input.toLowerCase())}
+                  style={{ width: '100%' }}
+                  options={branchOptions}
+                />
+                {!isBranchScopedAdmin ? (
+                  <Button
+                    icon={<AimOutlined />}
+                    loading={branchLocationLoading}
+                    onClick={locateNearbyBranches}
+                    style={{ width: '100%' }}
+                  >
+                    Sắp xếp theo vị trí hiện tại
+                  </Button>
+                ) : null}
+              </div>
+            </div>
             
             {/* We removed the explicit "Add Booking" button here 
                 because Admins no longer manually create them. */}
-          </Row>
+          </div>
+
+          {branchLocationHint ? (
+            <div className={`branch-location-hint ${nearestBranchId ? '' : 'branch-location-hint--warning'}`}>
+              <EnvironmentOutlined />
+              <span>{branchLocationHint}</span>
+            </div>
+          ) : null}
         </div>
 
-        <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-          <Col xs={12} sm={6} md={4}>
+        <div className="booking-stats-grid">
+          <div>
             <div className="stat-item">
               <div className="stat-value">{bookingPagination.total}</div>
               <div className="stat-label">Tổng đơn</div>
             </div>
-          </Col>
-          <Col xs={12} sm={6} md={5}>
+          </div>
+          <div>
             <div className="stat-item stat-pending">
               <div className="stat-value">
                 {bookings.filter((b) => (b.status || 'PENDING') === 'PENDING').length}
               </div>
               <div className="stat-label">Chờ xử lý</div>
             </div>
-          </Col>
-          <Col xs={12} sm={6} md={4}>
+          </div>
+          <div>
             <div className="stat-item stat-confirmed">
               <div className="stat-value">
                 {bookings.filter((b) => b.status === 'CONFIRMED').length}
               </div>
               <div className="stat-label">Đã xác nhận</div>
             </div>
-          </Col>
-          <Col xs={12} sm={6} md={4}>
+          </div>
+          <div>
             <div className="stat-item">
               <div className="stat-value">
                 {bookings.filter((b) => b.status === 'ARRIVED').length}
               </div>
               <div className="stat-label">Đã tới</div>
             </div>
-          </Col>
-          <Col xs={12} sm={6} md={4}>
+          </div>
+          <div>
             <div className="stat-item">
               <div className="stat-value">
                 {bookings.filter((b) => b.status === 'IN_PROGRESS').length}
               </div>
               <div className="stat-label">Đang sửa</div>
             </div>
-          </Col>
-          <Col xs={12} sm={6} md={4}>
+          </div>
+          <div>
             <div className="stat-item stat-completed">
               <div className="stat-value">
                 {bookings.filter((b) => b.status === 'COMPLETED').length}
               </div>
               <div className="stat-label">Hoàn thành</div>
             </div>
-          </Col>
-          <Col xs={12} sm={6} md={4}>
+          </div>
+          <div>
             <div className="stat-item stat-cancelled">
               <div className="stat-value">
                 {bookings.filter((b) => b.status === 'CANCELLED').length}
               </div>
               <div className="stat-label">Đã hủy</div>
             </div>
-          </Col>
-        </Row>
+          </div>
+        </div>
 
-        <Table
-          columns={columns}
-          dataSource={bookings}
-          loading={loading}
-          rowKey="id"
-          pagination={{
-            current: bookingPagination.current,
-            pageSize: bookingPagination.pageSize,
-            total: bookingPagination.total,
-            showTotal: (total) => `Tổng ${total} đặt lịch`,
-            showSizeChanger: true,
-            showQuickJumper: true,
-          }}
-          onChange={(pagination) => {
-            setBookingPagination((prev) => ({
-              ...prev,
-              current: pagination.current || 1,
-              pageSize: pagination.pageSize || prev.pageSize,
-            }));
-          }}
-          scroll={{ x: 2600 }}
-        />
+        <div className="booking-table-panel">
+          <div className="booking-table-heading">
+            <div>
+              <h2>Danh sách đặt lịch</h2>
+              <p>{bookingPagination.total} lịch hẹn trong hệ thống</p>
+            </div>
+          </div>
+
+          <Table
+            columns={columns}
+            dataSource={bookings}
+            loading={loading}
+            rowKey="id"
+            pagination={{
+              current: bookingPagination.current,
+              pageSize: bookingPagination.pageSize,
+              total: bookingPagination.total,
+              showTotal: (total) => `Tổng ${total} đặt lịch`,
+              showSizeChanger: true,
+              showQuickJumper: true,
+            }}
+            onChange={(pagination) => {
+              setBookingPagination((prev) => ({
+                ...prev,
+                current: pagination.current || 1,
+                pageSize: pagination.pageSize || prev.pageSize,
+              }));
+            }}
+            scroll={{ x: 2600 }}
+          />
+        </div>
       </Card>
       
       {/* Modal Confirm Booking */}
@@ -1130,6 +1451,40 @@ const Bookings = () => {
       </Modal>
 
       <Modal
+        title="Ghi nhận tình trạng xe trước sửa"
+        open={isStartModalVisible}
+        onOk={handleStartBooking}
+        onCancel={() => {
+          setIsStartModalVisible(false);
+          setBookingToStart(null);
+          startBookingForm.resetFields();
+        }}
+        confirmLoading={startLoading}
+        okText="Bắt đầu sửa"
+        cancelText="Thoát"
+        destroyOnHidden
+      >
+        <Form form={startBookingForm} layout="vertical">
+          <Form.Item
+            label="Tình trạng xe trước khi sửa"
+            name="vehicleConditionBeforeRepair"
+            rules={[
+              { required: true, whitespace: true, message: 'Vui lòng nhập tình trạng xe trước khi sửa' },
+              { max: 2000, message: 'Mô tả không vượt quá 2000 ký tự' },
+            ]}
+          >
+            <Input.TextArea
+              rows={5}
+              maxLength={2000}
+              showCount
+              placeholder="Ví dụ: Xe của bạn bị hư bạc đạn, đèn chiếu hậu không sáng."
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        className="detail-modal"
         title="Chi tiết lịch hẹn"
         open={isDetailModalVisible}
         onCancel={() => setIsDetailModalVisible(false)}
@@ -1164,7 +1519,7 @@ const Bookings = () => {
               </Tag>
             </Descriptions.Item>
             <Descriptions.Item label="Thời gian đặt">
-              {formatDateTime(bookingDetail.bookingTime)}
+              {formatDateTime(bookingDetail.createdAt || bookingDetail.bookingTime)}
             </Descriptions.Item>
             <Descriptions.Item label="Khung giờ hẹn">
               {formatDateTime(bookingDetail.arrivalSlotStart)} - {formatDateTime(bookingDetail.arrivalSlotEnd)}
@@ -1172,29 +1527,43 @@ const Bookings = () => {
             <Descriptions.Item label="Giờ nhận xe">
               {formatDateTime(bookingDetail.arrivalTime)}
             </Descriptions.Item>
+            <Descriptions.Item label="Bắt đầu sửa">
+              {formatDateTime(bookingDetail.repairStartTime)}
+            </Descriptions.Item>
+            <Descriptions.Item label="Hoàn tất sửa">
+              {formatDateTime(bookingDetail.repairEndTime)}
+            </Descriptions.Item>
+            <Descriptions.Item label="Thời gian sửa thực tế">
+              {formatDuration(bookingDetail.repairStartTime, bookingDetail.repairEndTime)}
+            </Descriptions.Item>
+            <Descriptions.Item label="Tình trạng xe trước sửa">
+              {bookingDetail.vehicleConditionBeforeRepair || 'Chưa có'}
+            </Descriptions.Item>
             <Descriptions.Item label="Dịch vụ">
               <Space direction="vertical" style={{ width: '100%' }} size={10}>
                 {renderManageableServiceTags()}
                 <Space.Compact style={{ width: '100%' }}>
                   <Select
-                    mode="multiple"
-                    maxTagCount="responsive"
-                    placeholder="Chọn dịch vụ cho lịch hẹn"
-                    value={selectedServiceIds}
-                    onChange={setSelectedServiceIds}
+                    showSearch
+                    placeholder="Chọn dịch vụ cần thêm"
+                    optionFilterProp="label"
+                    value={serviceToAddId}
+                    onChange={setServiceToAddId}
                     disabled={bookingItemLoading}
                     style={{ width: '100%' }}
-                    options={serviceCatalog.map((service) => ({
-                      label: `${service.name} - ${Number(service.price || 0).toLocaleString('vi-VN')} đ`,
-                      value: service.id,
-                    }))}
+                    options={serviceCatalog
+                      .filter((service) => !bookingDetail.serviceNames?.includes(service.name))
+                      .map((service) => ({
+                        label: `${service.name} - ${Number(service.price || 0).toLocaleString('vi-VN')} đ`,
+                        value: service.id,
+                      }))}
                   />
                   <Button
                     type="primary"
                     loading={bookingItemLoading}
-                    onClick={handleReplaceServices}
+                    onClick={handleAddService}
                   >
-                    Lưu dịch vụ
+                    Thêm dịch vụ
                   </Button>
                 </Space.Compact>
               </Space>
@@ -1244,12 +1613,32 @@ const Bookings = () => {
             </Descriptions.Item>
             <Descriptions.Item label="Thanh toán">
               <Space size={[4, 4]} wrap>
+                <span style={{ color: '#8c8c8c' }}>Khách chọn:</span>
                 <Tag color={(paymentMethodConfig[bookingDetail.paymentMethod] || {}).color || 'default'}>
                   {(paymentMethodConfig[bookingDetail.paymentMethod] || {}).text || bookingDetail.paymentMethod || 'Chưa chọn'}
                 </Tag>
                 <Tag color={(paymentStatusConfig[bookingDetail.paymentStatus] || {}).color || 'default'}>
                   {(paymentStatusConfig[bookingDetail.paymentStatus] || {}).text || bookingDetail.paymentStatus || 'Chưa rõ'}
                 </Tag>
+                {canConfirmPayment(bookingDetail) && (
+                  <Popconfirm
+                    title={getPaymentConfirmText(bookingDetail).title}
+                    description={getPaymentConfirmText(bookingDetail).description}
+                    onConfirm={() => handleConfirmPayment(bookingDetail)}
+                    okText="Xác nhận"
+                    cancelText="Thoát"
+                  >
+                    <Button
+                      type="primary"
+                      size="small"
+                      loading={paymentConfirmingId === bookingDetail.id}
+                      style={getPaymentConfirmButtonStyle(bookingDetail)}
+                      icon={<DollarCircleOutlined />}
+                    >
+                      {getPaymentConfirmText(bookingDetail).action}
+                    </Button>
+                  </Popconfirm>
+                )}
               </Space>
             </Descriptions.Item>
             {bookingDetail.cancelReason && (

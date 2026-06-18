@@ -1,61 +1,37 @@
 package com.example.smartgarage.controller;
 
-import com.example.smartgarage.dto.CreateMomoPaymentRequest;
-import com.example.smartgarage.dto.MomoCreatePaymentResponse;
-import com.example.smartgarage.dto.MomoIpnRequest;
 import com.example.smartgarage.dto.PaymentStatusResponse;
-import com.example.smartgarage.service.MomoPaymentService;
+import com.example.smartgarage.service.PaymentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
-@Tag(name = "Payment API", description = "Thanh toán trực tuyến qua MoMo")
+@Tag(name = "Payment API", description = "Quản lý trạng thái thanh toán của booking")
 @RestController
 @RequestMapping("/api/v1/payments")
 @CrossOrigin("*")
 public class PaymentController {
-    private final MomoPaymentService momoPaymentService;
+    private final PaymentService paymentService;
 
-    public PaymentController(MomoPaymentService momoPaymentService) {
-        this.momoPaymentService = momoPaymentService;
+    public PaymentController(PaymentService paymentService) {
+        this.paymentService = paymentService;
     }
 
-    @Operation(summary = "Tạo link thanh toán MoMo cho booking")
-    @PostMapping("/momo/create")
-    public ResponseEntity<MomoCreatePaymentResponse> createMomoPayment(
-            @Valid @RequestBody CreateMomoPaymentRequest request,
-            Authentication authentication
-    ) {
-        if (authentication == null) {
-            throw new RuntimeException("Bạn cần đăng nhập để tạo " + "thanh toán MoMo.");
-        }
-        return ResponseEntity.ok(
-                momoPaymentService.createPayment(request.getBookingId(), authentication.getName())
-        );
+    @Operation(summary = "Admin xác nhận thanh toán tiền mặt", description = "Dùng khi khách thanh toán trực tiếp tại gara")
+    @PostMapping("/cash/confirm/{bookingId}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPERADMIN')")
+    public ResponseEntity<PaymentStatusResponse> confirmCashPayment(@PathVariable Long bookingId) {
+        return ResponseEntity.ok(paymentService.confirmCashPayment(bookingId));
     }
 
-    @Operation(summary = "IPN callback từ MoMo", description = "MoMo gọi server-to-server để cập nhật trạng thái thanh toán")
-    @PostMapping("/momo/ipn")
-    public ResponseEntity<Void> handleMomoIpn(@RequestBody MomoIpnRequest request) {
-        momoPaymentService.handleIpn(request);
-        return ResponseEntity.noContent().build();
-    }
-
-    @Operation(summary = "Mock xác nhận thanh toán MoMo", description = "Dùng cho demo sandbox khi không nhận IPN thật")
-    @PostMapping("/momo/mock-confirm/{bookingId}")
-    public ResponseEntity<PaymentStatusResponse> mockConfirmMomoPayment(
-            @PathVariable Long bookingId,
-            Authentication authentication
-    ) {
-        if (authentication == null) {
-            throw new RuntimeException("Bạn cần đăng nhập để xác nhận thanh toán MoMo.");
-        }
-        return ResponseEntity.ok(
-                momoPaymentService.mockConfirmPayment(bookingId, authentication.getName())
-        );
+    @Operation(summary = "Admin xác nhận thanh toán chuyển khoản", description = "Dùng khi gara xác nhận đã nhận được tiền chuyển khoản")
+    @PostMapping("/bank-transfer/confirm/{bookingId}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPERADMIN')")
+    public ResponseEntity<PaymentStatusResponse> confirmBankTransferPayment(@PathVariable Long bookingId) {
+        return ResponseEntity.ok(paymentService.confirmBankTransferPayment(bookingId));
     }
 
     @Operation(summary = "Xem trạng thái thanh toán của booking")
@@ -68,7 +44,7 @@ public class PaymentController {
             throw new RuntimeException("Bạn cần đăng nhập để xem trạng thái thanh toán.");
         }
         return ResponseEntity.ok(
-                momoPaymentService.getPaymentStatus(bookingId, authentication.getName())
+                paymentService.getPaymentStatus(bookingId, authentication.getName())
         );
     }
 }

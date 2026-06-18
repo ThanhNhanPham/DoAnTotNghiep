@@ -10,20 +10,119 @@
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  background: #f3f6fb;
 }
 
 /* Ant Design customizations */
 .ant-table-wrapper {
   background: #fff;
+  border-radius: 8px;
 }
 
 .ant-card {
   border-radius: 8px;
+  border-color: #e2e8f0;
+}
+
+.ant-table-thead > tr > th {
+  font-weight: 700;
+}
+
+.ant-table-tbody > tr > td {
+  color: #334155;
+}
+
+.ant-tag {
+  border-radius: 999px;
+  font-weight: 600;
+  padding: 2px 9px;
+}
+
+.ant-input-affix-wrapper,
+.ant-select-selector,
+.ant-picker,
+.ant-input,
+.ant-btn {
+  border-radius: 8px;
+}
+
+.detail-modal .ant-modal-content {
+  border-radius: 10px;
+}
+
+.detail-modal .ant-descriptions {
+  overflow: hidden;
+  border: 1px solid #dbe4ef;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+}
+
+.detail-modal .ant-descriptions-view,
+.detail-modal .ant-descriptions table {
+  border-radius: 10px;
+}
+
+.detail-modal .ant-descriptions-bordered .ant-descriptions-view {
+  border: 0;
+}
+
+.detail-modal .ant-descriptions-bordered .ant-descriptions-item-label {
+  background: #f8fafc;
+  color: #475569;
+  font-weight: 700;
+}
+
+.detail-modal .ant-descriptions-bordered .ant-descriptions-item-content {
+  background: #fff;
+  color: #1f2937;
+}
+
+.page-header {
+  margin-bottom: 22px;
+  padding: 22px 24px;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  border-radius: 8px;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
+  backdrop-filter: blur(12px);
+}
+
+.page-header h1 {
+  color: #111827;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.page-header p {
+  color: #64748b;
+}
+
+.users-card,
+.bookings-card,
+.mechanics-card,
+.services-card,
+.branches-card,
+.parts-card,
+.vehicles-card,
+.settings-card {
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
+}
+
+.users-toolbar,
+.bookings-toolbar,
+.mechanics-toolbar,
+.services-toolbar,
+.branches-toolbar,
+.parts-toolbar {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 16px;
 }
 
 /* Scrollbar styling */
@@ -33,14 +132,14 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: #f0f0f0;
+  background: #eef2f7;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #bfbfbf;
+  background: #cbd5e1;
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #999;
+  background: #94a3b8;
 }

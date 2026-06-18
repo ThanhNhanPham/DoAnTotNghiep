@@ -1,6 +1,7 @@
 import apiClient from '@/constants/Api';
+import { MembershipTier } from './authService';
 
-export type PaymentMethod = 'CASH' | 'MOMO';
+export type PaymentMethod = 'CASH' | 'BANK_TRANSFER';
 
 export interface BookingPayload {
   vehicleId: number;
@@ -15,10 +16,13 @@ export interface BookingPayload {
 export interface BookingResponse {
   id: number;
   status?: string;
+  createdAt?: string;
   bookingTime?: string;
   arrivalSlotStart?: string;
   arrivalSlotEnd?: string;
   arrivalTime?: string | null;
+  repairStartTime?: string | null;
+  repairEndTime?: string | null;
   customerName?: string;
   vehicleOwnerName?: string | null;
   customerPhone?: string;
@@ -31,6 +35,13 @@ export interface BookingResponse {
   serviceNames?: string[];
   partNames?: string[];
   cancelReason?: string | null;
+  serviceAmount?: number;
+  partAmount?: number;
+  membershipTierApplied?: MembershipTier | null;
+  membershipDiscountRate?: number;
+  membershipDiscountAmount?: number;
+  pointsEarned?: number;
+  finalAmount?: number;
   totalAmount?: number;
   paymentMethod?: PaymentMethod;
   paymentStatus?: string;

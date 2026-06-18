@@ -2,6 +2,7 @@ package com.example.smartgarage.controller;
 
 import com.example.smartgarage.dto.BranchNearbyResponse;
 import com.example.smartgarage.entity.Branch;
+import com.example.smartgarage.service.AdminScopeService;
 import com.example.smartgarage.service.BranchService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -11,10 +12,12 @@ import jakarta.validation.constraints.DecimalMin;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @Tag(name = "Branch API", description = "Quản lý chi nhánh cửa hàng")
 @RestController
@@ -22,9 +25,11 @@ import java.util.List;
 @Validated
 public class BranchController {
     private final BranchService branchService;
+    private final AdminScopeService adminScopeService;
 
-    public BranchController(BranchService branchService) {
+    public BranchController(BranchService branchService, AdminScopeService adminScopeService) {
         this.branchService = branchService;
+        this.adminScopeService = adminScopeService;
     }
     @Operation(summary="Lấy tất cả chi nhánh của cửa hàng")
     @GetMapping
@@ -60,10 +65,9 @@ public class BranchController {
             double longitude) {
         return ResponseEntity.ok(branchService.getNearbyActiveBranches(latitude, longitude));
     }
-
     @Operation(summary="Thêm chi nhánh cửa hàng mới cho hệ thống")
     @PostMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'SUPERADMIN')")
+    @PreAuthorize("hasRole('SUPERADMIN')")
     public ResponseEntity<Branch> createBranch(@Valid @RequestBody Branch branch) {
         Branch result = branchService.createBranch(branch);
         return new ResponseEntity<>(result, HttpStatus.CREATED);
@@ -72,7 +76,10 @@ public class BranchController {
     @Operation(summary="Cập nhật chi nhánh cửa hàng cho hệ thống")
     @PutMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'SUPERADMIN')")
-    public ResponseEntity<Branch> updateBranch(@PathVariable Long id,@Valid @RequestBody Branch branchDetails) {
+    public ResponseEntity<Branch> updateBranch(@PathVariable Long id,
+                                               @Valid @RequestBody Branch branchDetails,
+                                               Authentication authentication) {
+        adminScopeService.ensureBranchAccess(authentication, id);
         return branchService.updateBranch(id, branchDetails)
                 .map(updatedBranch -> new ResponseEntity<>(updatedBranch, HttpStatus.OK))
                 .orElse(new ResponseEntity<>(HttpStatus.NOT_FOUND));
@@ -80,9 +87,9 @@ public class BranchController {
 
     @Operation(summary="Xoá chi nhánh cửa hàng", description="chuyển active từ true sang false")
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'SUPERADMIN')")
-    public ResponseEntity<String> deactivateBranch(@PathVariable Long id) {
+    @PreAuthorize("hasRole('SUPERADMIN')")
+    public ResponseEntity<?> deactivateBranch(@PathVariable Long id) {
         branchService.deactivateBranch(id);
-        return ResponseEntity.ok("Chi nhánh đã ngưng hoạt động.");
+        return ResponseEntity.ok(Map.of("message","Chi nhánh đã ngưng hoạt động."));
     }
 }

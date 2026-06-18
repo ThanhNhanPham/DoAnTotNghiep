@@ -38,6 +38,7 @@ const MainLayout = () => {
       <div className={`main-wrapper ${sidebarCollapsed ? 'collapsed' : ''}`}>
         <Header 
           onMenuClick={handleMobileMenu}
+          sidebarCollapsed={sidebarCollapsed}
         />
         
         <main className="main-content">

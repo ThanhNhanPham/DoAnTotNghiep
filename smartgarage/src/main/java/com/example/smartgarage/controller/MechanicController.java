@@ -11,6 +11,8 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
+
 @Tag(name = "Mechanic API", description = "Quản lý thợ sửa xe")
 @RestController
 @RequestMapping("/api/v1/mechanics")
@@ -60,9 +62,9 @@ public class MechanicController {
     @Operation(summary="chuyển trạng thái thợ sửa xe sang đã nghỉ việc")
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'SUPERADMIN')")
-    public ResponseEntity<String> softDeleteMechanic(@PathVariable Long id) {
+    public ResponseEntity<?> softDeleteMechanic(@PathVariable Long id) {
         mechanicService.softDeleteMechanic(id);
-        return ResponseEntity.ok("Đã chuyển trạng thái thợ sang nghỉ việc (INACTIVE).");
+        return ResponseEntity.ok(Map.of("message", "Đã chuyển trạng thái thợ sang nghỉ việc (INACTIVE)"));
     }
 
     @Operation(summary = "cập nhật thợ sửa xe")

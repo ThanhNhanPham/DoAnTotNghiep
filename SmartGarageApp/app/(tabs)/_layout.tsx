@@ -4,11 +4,13 @@ import React from 'react';
 import { HapticTab } from '@/components/haptic-tab';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
+import { useUnreadChatCount } from '@/hooks/use-unread-chat-count';
 import { useThemePreference
  } from '@/contexts/theme-preference';
 
 export default function TabLayout() {
   const { colorScheme } = useThemePreference();
+  const unreadChatCount = useUnreadChatCount();
 
   return (
     <Tabs
@@ -35,6 +37,16 @@ export default function TabLayout() {
         options={{
           title: 'Xe của tôi',
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="car.fill" color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="chat"
+        options={{
+          title: 'Chat',
+          tabBarIcon: ({ color }) => (
+            <IconSymbol size={28} name="bubble.left.and.bubble.right.fill" color={color} />
+          ),
+          tabBarBadge: unreadChatCount > 0 ? (unreadChatCount > 99 ? '99+' : unreadChatCount) : undefined,
         }}
       />
       <Tabs.Screen

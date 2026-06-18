@@ -1,5 +1,6 @@
 package com.example.smartgarage.entity;
 
+import com.example.smartgarage.enums.MembershipTier;
 import com.example.smartgarage.enums.Role;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -63,6 +64,15 @@ public class User {
     private LocalDateTime createdAt ;
     @Column(name = "is_active", nullable = false)
     private Boolean isActive;
+
+    @Builder.Default
+    @Column(name = "loyalty_points", nullable = false)
+    private Integer loyaltyPoints = 0; // Điểm tích lũy cho khách hàng thân thiết
+
+    @Builder.Default
+    @Enumerated(EnumType.STRING)
+    @Column(name = "membership_tier", nullable = false, length = 20)
+    private MembershipTier membershipTier = MembershipTier.REGULAR; // Cấp bậc thành viên
     // Các booking của user
     public String getFullAddress() {
         if (this.province == null) return "";
