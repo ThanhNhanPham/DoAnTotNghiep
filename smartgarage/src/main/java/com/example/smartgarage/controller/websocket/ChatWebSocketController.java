@@ -38,7 +38,6 @@ public class ChatWebSocketController {
         );
 
         ChatSocketMessageEvent event = ChatSocketMessageEvent.created(response);
-        messagingTemplate.convertAndSend("/topic/chat.rooms." + response.getRoomId(), event);
         messagingTemplate.convertAndSendToUser(authentication.getName(), "/queue/chat.acks", event);
     }
 

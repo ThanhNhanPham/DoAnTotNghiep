@@ -52,4 +52,11 @@ public class ChatSocketMessageEvent {
                 .room(room)
                 .build();
     }
+
+    public static ChatSocketMessageEvent roomDeleted(Long roomId) {
+        return ChatSocketMessageEvent.builder()
+                .type("ROOM_DELETED")
+                .roomId(roomId)
+                .build();
+    }
 }

@@ -12,6 +12,13 @@ import './Header.css';
 
 const NOTIFICATION_POLL_INTERVAL = 10000;
 
+const isChatNotification = (notification) => {
+  const title = (notification?.title || '').toLowerCase();
+  const content = (notification?.content || '').toLowerCase();
+
+  return title.includes('tin nhắn') || content.includes('vừa gửi tin nhắn');
+};
+
 const pageTitles = {
   '/admin/dashboard': { title: 'Dashboard', subtitle: 'Theo dõi vận hành hệ thống gara' },
   '/admin/bookings': { title: 'Đặt lịch', subtitle: 'Quản lý lịch hẹn và tiến độ sửa chữa' },
@@ -384,7 +391,8 @@ const Header = ({ onMenuClick, sidebarCollapsed }) => {
       }
 
       if (selected.bookingId) {
-        navigate(`/admin/bookings?bookingId=${selected.bookingId}`);
+        const targetPath = isChatNotification(selected) ? '/admin/chats' : '/admin/bookings';
+        navigate(`${targetPath}?bookingId=${selected.bookingId}`);
       } else {
         message.info('Thông báo này chưa liên kết với đơn hàng.');
       }

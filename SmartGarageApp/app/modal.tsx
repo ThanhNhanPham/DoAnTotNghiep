@@ -49,6 +49,37 @@ const formatCurrency = (value?: number) =>
 
 const formatDistanceKm = (value?: number | null) => (value == null ? '' : `${value.toFixed(2)} km`);
 
+const calculateDistanceKm = (
+  fromLatitude: number,
+  fromLongitude: number,
+  toLatitude?: number | null,
+  toLongitude?: number | null
+) => {
+  if (toLatitude == null || toLongitude == null) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  const earthRadiusKm = 6371;
+  const latDistance = ((toLatitude - fromLatitude) * Math.PI) / 180;
+  const lonDistance = ((toLongitude - fromLongitude) * Math.PI) / 180;
+  const startLat = (fromLatitude * Math.PI) / 180;
+  const endLat = (toLatitude * Math.PI) / 180;
+  const haversine =
+    Math.sin(latDistance / 2) * Math.sin(latDistance / 2) +
+    Math.cos(startLat) * Math.cos(endLat) * Math.sin(lonDistance / 2) * Math.sin(lonDistance / 2);
+  const distance = earthRadiusKm * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+
+  return Math.round(distance * 100) / 100;
+};
+
+const sortBranchesByCurrentLocation = (branches: Branch[], latitude: number, longitude: number) =>
+  branches
+    .map((branch) => ({
+      ...branch,
+      distanceKm: calculateDistanceKm(latitude, longitude, branch.latitude, branch.longitude),
+    }))
+    .sort((leftBranch, rightBranch) => (leftBranch.distanceKm ?? Infinity) - (rightBranch.distanceKm ?? Infinity));
+
 const getBranchDistanceLabel = (branch: Branch) => {
   if (branch.travelDistanceKm != null) {
     return `Quãng đường di chuyển ${formatDistanceKm(branch.travelDistanceKm)}`;
@@ -266,11 +297,23 @@ export default function BookingModalScreen() {
   }, [aiSuggestion, filteredServices]);
 
   useEffect(() => {
-    if (!selectedBranchId || nearestBranchId === selectedBranchId) {
+    if (!selectedBranchId) {
       return;
     }
 
-    if (selectedBranch) {
+    if (nearestBranchId === selectedBranchId) {
+      if (selectedBranch) {
+        const distanceLabel = getBranchDistanceLabel(selectedBranch);
+        setLocationHint(
+          `Đã chọn chi nhánh gần nhất: ${selectedBranch.name}${
+            distanceLabel ? ` (${distanceLabel})` : ''
+          }.`
+        );
+      }
+      return;
+    }
+
+    if (nearestBranchId && selectedBranch) {
       setLocationHint(
         `Bạn đang chọn thủ công: ${selectedBranch.name}. Ứng dụng vẫn gợi ý chi nhánh gần nhất khi có vị trí.`
       );
@@ -332,14 +375,35 @@ export default function BookingModalScreen() {
         return;
       }
 
-      const position = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
+      const position =
+        (await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        }).catch(() => null)) ||
+        (await Location.getLastKnownPositionAsync({
+          maxAge: 5 * 60 * 1000,
+          requiredAccuracy: 3000,
+        }));
 
-      const nearbyBranches = await branchService.getNearbyActiveBranches(
-        position.coords.latitude,
-        position.coords.longitude
-      );
+      if (!position) {
+        setLocationHint('Không thể lấy vị trí hiện tại. Bạn có thể chọn chi nhánh thủ công.');
+        return;
+      }
+
+      let nearbyBranches: Branch[] = [];
+
+      try {
+        nearbyBranches = await branchService.getNearbyActiveBranches(
+          position.coords.latitude,
+          position.coords.longitude
+        );
+      } catch (nearbyError) {
+        console.warn('Load nearby branches from server failed, using local distance fallback:', nearbyError);
+        nearbyBranches = sortBranchesByCurrentLocation(
+          fallbackBranches,
+          position.coords.latitude,
+          position.coords.longitude
+        );
+      }
 
       const activeNearbyBranches = (nearbyBranches || []).filter((branch) => branch.isActive !== false);
       if (activeNearbyBranches.length === 0) {

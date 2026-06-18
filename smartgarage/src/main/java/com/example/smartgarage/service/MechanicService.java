@@ -22,7 +22,7 @@ public class MechanicService {
     // Lấy danh sách thợ đang rảnh tại một chi nhánh cụ thể
     public List<Mechanic> getAvailableByBranch(Long branchId) {
         // "ACTIVE" là trạng thái thợ đang sẵn sàng nhận việc
-        return mechanicRepository.findByBranchIdAndStatus(branchId, "ACTIVE");
+        return mechanicRepository.findByBranchIdAndStatus(branchId, MechanicStatus.ACTIVE);
     }
     // Tìm thợ theo ID (Dùng để kiểm tra khi gán thợ vào lịch hẹn)
     public Mechanic getById(Long id) {

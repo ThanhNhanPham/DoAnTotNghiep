@@ -1,14 +1,15 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { BASE_URL } from '@/constants/Api';
-import { ChatMessage } from '@/services/chatService';
+import { ChatMessage, ChatRoom } from '@/services/chatService';
 
-type SocketEventType = 'MESSAGE_CREATED' | 'TYPING' | 'ROOM_READ';
+type SocketEventType = 'MESSAGE_CREATED' | 'TYPING' | 'ROOM_READ' | 'ROOM_UPSERT' | 'ROOM_DELETED';
 
 export interface ChatSocketEvent {
   type: SocketEventType;
   roomId: number;
   message?: ChatMessage;
+  room?: ChatRoom;
   actorRole?: string | null;
   actorName?: string | null;
   readAt?: string | null;
@@ -24,6 +25,7 @@ type Subscription = {
 
 const CONNECT_COMMAND = ['CONNECT', 'accept-version:1.2', 'heart-beat:0,0', '', ''].join('\n');
 const RECONNECT_DELAY_MS = 2000;
+const CONNECT_TIMEOUT_MS = 8000;
 
 class ChatSocketService {
   private socket: WebSocket | null = null;
@@ -46,7 +48,10 @@ class ChatSocketService {
     }
 
     this.manuallyClosed = false;
-    this.connectPromise = this.openSocket();
+    this.connectPromise = this.openSocket().catch((error) => {
+      this.connectPromise = null;
+      throw error;
+    });
     return this.connectPromise;
   }
 
@@ -70,6 +75,10 @@ class ChatSocketService {
 
   async subscribeToUserQueue(handler: EventHandler) {
     return this.subscribe('/user/queue/chat.acks', handler);
+  }
+
+  async subscribeToUserRoomQueue(handler: EventHandler) {
+    return this.subscribe('/user/queue/chat.rooms', handler);
   }
 
   unsubscribe(subscriptionId: string) {
@@ -147,6 +156,34 @@ class ChatSocketService {
     await new Promise<void>((resolve, reject) => {
       const socket = new WebSocket(wsUrl);
       let settled = false;
+      const timeoutId = setTimeout(() => {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+        this.socket = null;
+        this.isConnected = false;
+        this.isConnecting = false;
+
+        try {
+          socket.close();
+        } catch {
+          // Ignore close failures after a timed-out socket attempt.
+        }
+
+        reject(new Error('Chat socket connection timed out'));
+      }, CONNECT_TIMEOUT_MS);
+
+      const settle = (callback: () => void) => {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+        clearTimeout(timeoutId);
+        callback();
+      };
 
       socket.onopen = () => {
         this.socket = socket;
@@ -156,18 +193,12 @@ class ChatSocketService {
       socket.onmessage = (event) => {
         const raw = typeof event.data === 'string' ? event.data : '';
         this.handleIncoming(raw, () => {
-          if (!settled) {
-            settled = true;
-            resolve();
-          }
+          settle(() => resolve());
         });
       };
 
       socket.onerror = () => {
-        if (!settled) {
-          settled = true;
-          reject(new Error('Chat socket connection failed'));
-        }
+        settle(() => reject(new Error('Chat socket connection failed')));
       };
 
       socket.onclose = () => {
@@ -177,8 +208,7 @@ class ChatSocketService {
         this.connectPromise = null;
 
         if (!settled) {
-          settled = true;
-          reject(new Error('Chat socket closed before CONNECTED frame'));
+          settle(() => reject(new Error('Chat socket closed before CONNECTED frame')));
         }
 
         if (!this.manuallyClosed && this.subscriptions.size > 0) {

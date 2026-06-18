@@ -30,26 +30,34 @@ public class DashboardService {
         this.bookingRepository = bookingRepository;
     }
 
-    public DashboardStatusDTO getDashboardStatus() {
+    public DashboardStatusDTO getDashboardStatus(Long branchId) {
         DashboardStatusDTO dto = new DashboardStatusDTO();
-        dto.setTotalBookings(bookingRepository.count());
-        dto.setPendingBookings(bookingRepository.countByStatus(BookingStatus.PENDING));
-        dto.setConfirmedBookings(bookingRepository.countByStatus(BookingStatus.CONFIRMED));
-        dto.setCompletedBookings(bookingRepository.countByStatus(BookingStatus.COMPLETED));
-        dto.setCancelledBookings(bookingRepository.countByStatus(BookingStatus.CANCELLED));
+        dto.setTotalBookings(countBookings(branchId));
+        dto.setPendingBookings(countBookingsByStatus(branchId, BookingStatus.PENDING));
+        dto.setConfirmedBookings(countBookingsByStatus(branchId, BookingStatus.CONFIRMED));
+        dto.setCompletedBookings(countBookingsByStatus(branchId, BookingStatus.COMPLETED));
+        dto.setCancelledBookings(countBookingsByStatus(branchId, BookingStatus.CANCELLED));
 
         BigDecimal revenue = bookingRepository.calculateRevenueByPeriod(
                 BookingStatus.COMPLETED,
                 LocalDate.of(2000, 1, 1).atStartOfDay(),
                 LocalDate.now().atTime(LocalTime.MAX)
         );
+        if (branchId != null) {
+            revenue = bookingRepository.calculateRevenueByPeriodAndBranch(
+                    branchId,
+                    BookingStatus.COMPLETED,
+                    LocalDate.of(2000, 1, 1).atStartOfDay(),
+                    LocalDate.now().atTime(LocalTime.MAX)
+            );
+        }
         dto.setTotalRevenue(revenue != null ? revenue : BigDecimal.ZERO);
-        dto.setTopServices(bookingRepository.findTopServices(PageRequest.of(0, 5)));
+        dto.setTopServices(findTopServices(branchId, 5));
         return dto;
     }
 
-    public DashboardOverviewDTO getDashboardOverview() {
-        DashboardStatusDTO status = getDashboardStatus();
+    public DashboardOverviewDTO getDashboardOverview(Long branchId) {
+        DashboardStatusDTO status = getDashboardStatus(branchId);
         LocalDate today = LocalDate.now();
         LocalDate startOfWeek = today.with(DayOfWeek.MONDAY);
         LocalDate startOfMonth = today.withDayOfMonth(1);
@@ -60,16 +68,19 @@ public class DashboardService {
                 .confirmedBookings(status.getConfirmedBookings())
                 .completedBookings(status.getCompletedBookings())
                 .cancelledBookings(status.getCancelledBookings())
-                .newBookingsToday(bookingRepository.countNewBookingsToday(today.atStartOfDay()))
+                .newBookingsToday(countNewBookingsToday(branchId, today))
                 .totalRevenue(status.getTotalRevenue())
-                .revenueToday(getRevenueOrZero(today, today))
-                .revenueThisWeek(getRevenueOrZero(startOfWeek, today))
-                .revenueThisMonth(getRevenueOrZero(startOfMonth, today))
+                .revenueToday(getRevenueOrZero(branchId, today, today))
+                .revenueThisWeek(getRevenueOrZero(branchId, startOfWeek, today))
+                .revenueThisMonth(getRevenueOrZero(branchId, startOfMonth, today))
                 .build();
     }
 
-    public List<StatusCountDTO> getBookingStatusDistribution() {
-        return bookingRepository.countAllStatusRaw().stream()
+    public List<StatusCountDTO> getBookingStatusDistribution(Long branchId) {
+        List<Object[]> rows = branchId != null
+                ? bookingRepository.countAllStatusRawByBranch(branchId)
+                : bookingRepository.countAllStatusRaw();
+        return rows.stream()
                 .map(item -> new StatusCountDTO(
                         item[0] != null ? item[0].toString() : null,
                         item[1] instanceof Number ? ((Number) item[1]).longValue() : 0L
@@ -77,19 +88,11 @@ public class DashboardService {
                 .toList();
     }
 
-    public RevenueSummaryDTO getRevenueSummary(String period, LocalDate from, LocalDate to) {
+    public RevenueSummaryDTO getRevenueSummary(Long branchId, String period, LocalDate from, LocalDate to) {
         LocalDateRange range = resolveDateRange(period, from, to);
-        BigDecimal revenue = getRevenueOrZero(range.from(), range.to());
-        long completedBookings = bookingRepository.countByStatusAndBookingTimeBetween(
-                BookingStatus.COMPLETED,
-                range.from().atStartOfDay(),
-                range.to().atTime(LocalTime.MAX)
-        );
-        BigDecimal averageOrderValue = bookingRepository.calculateAverageOrderValueByPeriod(
-                BookingStatus.COMPLETED,
-                range.from().atStartOfDay(),
-                range.to().atTime(LocalTime.MAX)
-        );
+        BigDecimal revenue = getRevenueOrZero(branchId, range.from(), range.to());
+        long completedBookings = countCompletedBookings(branchId, range);
+        BigDecimal averageOrderValue = calculateAverageOrderValue(branchId, range);
 
         return RevenueSummaryDTO.builder()
                 .period(period != null && !period.isBlank() ? period : "custom")
@@ -101,7 +104,7 @@ public class DashboardService {
                 .build();
     }
 
-    public List<RevenueTrendPointDTO> getRevenueTrend(String groupBy, LocalDate from, LocalDate to) {
+    public List<RevenueTrendPointDTO> getRevenueTrend(Long branchId, String groupBy, LocalDate from, LocalDate to) {
         if (!"day".equalsIgnoreCase(groupBy) && !"month".equalsIgnoreCase(groupBy)) {
             throw new BadRequestException("groupBy chỉ hỗ trợ day hoặc month.");
         }
@@ -109,13 +112,24 @@ public class DashboardService {
         String normalizedGroupBy = groupBy.trim().toLowerCase();
         String formatPattern = "day".equals(normalizedGroupBy) ? "YYYY-MM-DD" : "YYYY-MM";
 
-        return bookingRepository.findRevenueTrendRaw(
+        List<Object[]> rows = branchId != null
+                ? bookingRepository.findRevenueTrendRawByBranch(
+                        branchId,
                         BookingStatus.COMPLETED.name(),
                         normalizedGroupBy,
                         formatPattern,
                         range.from().atStartOfDay(),
                         range.to().atTime(LocalTime.MAX)
-                ).stream()
+                )
+                : bookingRepository.findRevenueTrendRaw(
+                        BookingStatus.COMPLETED.name(),
+                        normalizedGroupBy,
+                        formatPattern,
+                        range.from().atStartOfDay(),
+                        range.to().atTime(LocalTime.MAX)
+                );
+
+        return rows.stream()
                 .map(row -> RevenueTrendPointDTO.builder()
                         .label(row[0] != null ? row[0].toString() : null)
                         .revenue(toBigDecimal(row[1]))
@@ -124,18 +138,22 @@ public class DashboardService {
                 .toList();
     }
 
-    public List<ServiceStatisticDTO> getTopServices(int limit) {
-        int safeLimit = Math.min(Math.max(limit, 1), 20);
-        return bookingRepository.findTopServices(PageRequest.of(0, safeLimit));
+    public List<ServiceStatisticDTO> getTopServices(Long branchId, int limit) {
+        return findTopServices(branchId, limit);
     }
 
-    public List<RecentBookingDTO> getRecentBookings(int limit) {
-        int safeLimit = Math.min(Math.max(limit, 1), 50);
-        return bookingRepository.findAll(PageRequest.of(
+    public List<RecentBookingDTO> getRecentBookings(Long branchId, int limit) {
+        int safeLimit = Math.min(Math.max(limit, 1), 20);
+        int safeRecentLimit = Math.min(Math.max(limit, 1), 50);
+        PageRequest pageRequest = PageRequest.of(
                         0,
-                        safeLimit,
+                        safeRecentLimit,
                         Sort.by(Sort.Order.desc("bookingTime"), Sort.Order.desc("id"))
-                )).stream()
+                );
+        return (branchId != null
+                ? bookingRepository.findAllByBranchId(branchId, pageRequest)
+                : bookingRepository.findAll(pageRequest))
+                .stream()
                 .map(this::mapToRecentBooking)
                 .toList();
     }
@@ -157,13 +175,73 @@ public class DashboardService {
                 .build();
     }
 
-    private BigDecimal getRevenueOrZero(LocalDate from, LocalDate to) {
-        BigDecimal revenue = bookingRepository.calculateRevenueByPeriod(
-                BookingStatus.COMPLETED,
-                from.atStartOfDay(),
-                to.atTime(LocalTime.MAX)
-        );
+    private long countBookings(Long branchId) {
+        return branchId != null ? bookingRepository.countByBranchId(branchId) : bookingRepository.count();
+    }
+
+    private long countBookingsByStatus(Long branchId, BookingStatus status) {
+        return branchId != null
+                ? bookingRepository.countByBranchIdAndStatus(branchId, status)
+                : bookingRepository.countByStatus(status);
+    }
+
+    private long countNewBookingsToday(Long branchId, LocalDate today) {
+        return branchId != null
+                ? bookingRepository.countNewBookingsTodayByBranch(branchId, today.atStartOfDay())
+                : bookingRepository.countNewBookingsToday(today.atStartOfDay());
+    }
+
+    private BigDecimal getRevenueOrZero(Long branchId, LocalDate from, LocalDate to) {
+        BigDecimal revenue = branchId != null
+                ? bookingRepository.calculateRevenueByPeriodAndBranch(
+                        branchId,
+                        BookingStatus.COMPLETED,
+                        from.atStartOfDay(),
+                        to.atTime(LocalTime.MAX)
+                )
+                : bookingRepository.calculateRevenueByPeriod(
+                        BookingStatus.COMPLETED,
+                        from.atStartOfDay(),
+                        to.atTime(LocalTime.MAX)
+                );
         return revenue != null ? revenue : BigDecimal.ZERO;
+    }
+
+    private long countCompletedBookings(Long branchId, LocalDateRange range) {
+        return branchId != null
+                ? bookingRepository.countByBranchIdAndStatusAndBookingTimeBetween(
+                        branchId,
+                        BookingStatus.COMPLETED,
+                        range.from().atStartOfDay(),
+                        range.to().atTime(LocalTime.MAX)
+                )
+                : bookingRepository.countByStatusAndBookingTimeBetween(
+                        BookingStatus.COMPLETED,
+                        range.from().atStartOfDay(),
+                        range.to().atTime(LocalTime.MAX)
+                );
+    }
+
+    private BigDecimal calculateAverageOrderValue(Long branchId, LocalDateRange range) {
+        return branchId != null
+                ? bookingRepository.calculateAverageOrderValueByPeriodAndBranch(
+                        branchId,
+                        BookingStatus.COMPLETED,
+                        range.from().atStartOfDay(),
+                        range.to().atTime(LocalTime.MAX)
+                )
+                : bookingRepository.calculateAverageOrderValueByPeriod(
+                        BookingStatus.COMPLETED,
+                        range.from().atStartOfDay(),
+                        range.to().atTime(LocalTime.MAX)
+                );
+    }
+
+    private List<ServiceStatisticDTO> findTopServices(Long branchId, int limit) {
+        int safeLimit = Math.min(Math.max(limit, 1), 20);
+        return branchId != null
+                ? bookingRepository.findTopServicesByBranch(branchId, PageRequest.of(0, safeLimit))
+                : bookingRepository.findTopServices(PageRequest.of(0, safeLimit));
     }
 
     private BigDecimal toBigDecimal(Object value) {

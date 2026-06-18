@@ -74,6 +74,10 @@ public class ChatService {
                         .build()));
 
         validateRoomAccess(currentUser, room);
+        boolean visibilityChanged = restoreVisibilityForUser(room, currentUser);
+        if (visibilityChanged) {
+            room = chatRoomRepository.save(room);
+        }
         ChatRoomResponse response = mapRoomToResponse(room, currentUser);
         publishRoomUpdates(room);
         return response;
@@ -93,6 +97,7 @@ public class ChatService {
     public ChatMessageResponse sendMessage(String email, Long roomId, String content) {
         User currentUser = getUserByEmail(email);
         ChatRoom room = getAccessibleRoom(currentUser, roomId);
+        restoreVisibilityForAllParticipants(room);
 
         ChatMessage message = ChatMessage.builder()
                 .room(room)
@@ -106,9 +111,11 @@ public class ChatService {
         room.setLastMessageAt(savedMessage.getCreatedAt() != null ? savedMessage.getCreatedAt() : LocalDateTime.now());
         chatRoomRepository.save(room);
 
+        ChatMessageResponse response = mapMessageToResponse(savedMessage);
         createNotificationsForNewMessage(room, currentUser, savedMessage.getContent());
+        publishMessageCreated(response);
         publishRoomUpdates(room);
-        return mapMessageToResponse(savedMessage);
+        return response;
     }
 
     @Transactional
@@ -117,6 +124,18 @@ public class ChatService {
         ChatRoom room = getAccessibleRoom(currentUser, roomId);
         chatMessageRepository.markRoomMessagesAsRead(room.getId(), currentUser.getId());
         publishRoomUpdates(room);
+    }
+
+    @Transactional
+    public void deleteRoom(String email, Long roomId) {
+        User currentUser = getUserByEmail(email);
+        ChatRoom room = getAccessibleRoom(currentUser, roomId);
+        if (!hideRoomForUser(room, currentUser)) {
+            return;
+        }
+
+        chatRoomRepository.save(room);
+        publishRoomDeleted(room.getId(), List.of(currentUser));
     }
 
     @Transactional(readOnly = true)
@@ -174,6 +193,36 @@ public class ChatService {
         if (room.getBranch() == null || !Objects.equals(room.getBranch().getId(), branchId)) {
             throw new ForbiddenException("Bạn không có quyền truy cập phòng chat ngoài chi nhánh của mình.");
         }
+    }
+
+    private boolean hideRoomForUser(ChatRoom room, User currentUser) {
+        return switch (currentUser.getRole()) {
+            case CUSTOMER -> updateFlag(room.isHiddenForCustomer(), room::setHiddenForCustomer, true);
+            case ADMIN -> updateFlag(room.isHiddenForAdmin(), room::setHiddenForAdmin, true);
+            case SUPERADMIN -> updateFlag(room.isHiddenForSuperadmin(), room::setHiddenForSuperadmin, true);
+        };
+    }
+
+    private boolean restoreVisibilityForUser(ChatRoom room, User currentUser) {
+        return switch (currentUser.getRole()) {
+            case CUSTOMER -> updateFlag(room.isHiddenForCustomer(), room::setHiddenForCustomer, false);
+            case ADMIN -> updateFlag(room.isHiddenForAdmin(), room::setHiddenForAdmin, false);
+            case SUPERADMIN -> updateFlag(room.isHiddenForSuperadmin(), room::setHiddenForSuperadmin, false);
+        };
+    }
+
+    private void restoreVisibilityForAllParticipants(ChatRoom room) {
+        room.setHiddenForCustomer(false);
+        room.setHiddenForAdmin(false);
+        room.setHiddenForSuperadmin(false);
+    }
+
+    private boolean updateFlag(boolean currentValue, java.util.function.Consumer<Boolean> setter, boolean nextValue) {
+        if (currentValue == nextValue) {
+            return false;
+        }
+        setter.accept(nextValue);
+        return true;
     }
 
     private Long requireBranchId(User user) {
@@ -280,6 +329,33 @@ public class ChatService {
 
             ChatRoomResponse roomResponse = mapRoomToResponse(room, recipient);
             ChatSocketMessageEvent event = ChatSocketMessageEvent.roomUpsert(roomResponse);
+            messagingTemplate.convertAndSendToUser(email, "/queue/chat.rooms", event);
+        }
+    }
+
+    private void publishMessageCreated(ChatMessageResponse message) {
+        if (message == null || message.getRoomId() == null) {
+            return;
+        }
+
+        messagingTemplate.convertAndSend(
+                "/topic/chat.rooms." + message.getRoomId(),
+                ChatSocketMessageEvent.created(message)
+        );
+    }
+
+    private void publishRoomDeleted(Long roomId, List<User> recipients) {
+        if (roomId == null || recipients == null || recipients.isEmpty()) {
+            return;
+        }
+
+        ChatSocketMessageEvent event = ChatSocketMessageEvent.roomDeleted(roomId);
+        for (User recipient : recipients) {
+            String email = recipient.getEmail();
+            if (email == null || email.isBlank()) {
+                continue;
+            }
+
             messagingTemplate.convertAndSendToUser(email, "/queue/chat.rooms", event);
         }
     }

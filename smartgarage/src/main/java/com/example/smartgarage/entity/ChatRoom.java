@@ -29,6 +29,18 @@ public class ChatRoom {
     @JoinColumn(name = "branch_id", nullable = false)
     private Branch branch;
 
+    @Column(name = "hidden_for_customer", nullable = false)
+    @Builder.Default
+    private boolean hiddenForCustomer = false;
+
+    @Column(name = "hidden_for_admin", nullable = false)
+    @Builder.Default
+    private boolean hiddenForAdmin = false;
+
+    @Column(name = "hidden_for_superadmin", nullable = false)
+    @Builder.Default
+    private boolean hiddenForSuperadmin = false;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

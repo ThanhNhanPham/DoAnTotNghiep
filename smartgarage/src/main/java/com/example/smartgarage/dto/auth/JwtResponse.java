@@ -15,4 +15,6 @@ public class JwtResponse {
     private Long userId;
     private String fullAddress;
     private String fullName;
+    private Long branchId;
+    private String branchName;
 }

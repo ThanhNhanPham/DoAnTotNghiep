@@ -35,6 +35,7 @@ function RootNavigator() {
         <Stack.Screen name="chat/[bookingId]" options={{ headerShown: false }} />
         <Stack.Screen name="invoice-detail" options={{ headerShown: false }} />
         <Stack.Screen name="settings" options={{ headerShown: false }} />
+        <Stack.Screen name="maintenance-docs" options={{ headerShown: false }} />
       </Stack>
       <StatusBar style={toStatusBarStyle(colorScheme)} />
     </ThemeProvider>

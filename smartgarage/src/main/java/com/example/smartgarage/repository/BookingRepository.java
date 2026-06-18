@@ -67,6 +67,10 @@ public interface BookingRepository extends JpaRepository<Booking,Long> {
     @Query("SELECT COUNT(b) FROM Booking b WHERE b.status = :status")
     long countByStatus(@Param("status") BookingStatus status);
 
+    long countByBranchId(Long branchId);
+
+    long countByBranchIdAndStatus(Long branchId, BookingStatus status);
+
     long countByMechanicIdAndStatusInAndIdNot(Long mechanicId, List<BookingStatus> statuses, Long id);
 
     // 2. Sửa lỗi: Truyền tham số Enum vào thay vì viết cứng chuỗi 'COMPLETED'
@@ -83,6 +87,10 @@ public interface BookingRepository extends JpaRepository<Booking,Long> {
     @Query("SELECT COUNT(b) FROM Booking b WHERE b.bookingTime >= :startOfDay")
     long countNewBookingsToday(@Param("startOfDay") LocalDateTime startOfDay);
 
+    @Query("SELECT COUNT(b) FROM Booking b WHERE b.branch.id = :branchId AND b.bookingTime >= :startOfDay")
+    long countNewBookingsTodayByBranch(@Param("branchId") Long branchId,
+                                       @Param("startOfDay") LocalDateTime startOfDay);
+
     // 3. Tối ưu hóa: Thêm tham số status để linh hoạt tính doanh thu theo kỳ
     @Query("SELECT SUM(b.totalAmount) FROM Booking b " +
             "WHERE b.status = :status AND b.bookingTime BETWEEN :startDate AND :endDate")
@@ -90,17 +98,36 @@ public interface BookingRepository extends JpaRepository<Booking,Long> {
                                         @Param("startDate") LocalDateTime startDate,
                                         @Param("endDate") LocalDateTime endDate);
 
+    @Query("SELECT SUM(b.totalAmount) FROM Booking b " +
+            "WHERE b.branch.id = :branchId AND b.status = :status AND b.bookingTime BETWEEN :startDate AND :endDate")
+    BigDecimal calculateRevenueByPeriodAndBranch(@Param("branchId") Long branchId,
+                                                 @Param("status") BookingStatus status,
+                                                 @Param("startDate") LocalDateTime startDate,
+                                                 @Param("endDate") LocalDateTime endDate);
+
     @Query("SELECT COUNT(b) FROM Booking b " +
             "WHERE b.status = :status AND b.bookingTime BETWEEN :startDate AND :endDate")
     long countByStatusAndBookingTimeBetween(@Param("status") BookingStatus status,
                                             @Param("startDate") LocalDateTime startDate,
                                             @Param("endDate") LocalDateTime endDate);
 
+    long countByBranchIdAndStatusAndBookingTimeBetween(Long branchId,
+                                                       BookingStatus status,
+                                                       LocalDateTime startDate,
+                                                       LocalDateTime endDate);
+
     @Query("SELECT AVG(b.totalAmount) FROM Booking b " +
             "WHERE b.status = :status AND b.bookingTime BETWEEN :startDate AND :endDate")
     BigDecimal calculateAverageOrderValueByPeriod(@Param("status") BookingStatus status,
                                                   @Param("startDate") LocalDateTime startDate,
                                                   @Param("endDate") LocalDateTime endDate);
+
+    @Query("SELECT AVG(b.totalAmount) FROM Booking b " +
+            "WHERE b.branch.id = :branchId AND b.status = :status AND b.bookingTime BETWEEN :startDate AND :endDate")
+    BigDecimal calculateAverageOrderValueByPeriodAndBranch(@Param("branchId") Long branchId,
+                                                           @Param("status") BookingStatus status,
+                                                           @Param("startDate") LocalDateTime startDate,
+                                                           @Param("endDate") LocalDateTime endDate);
 
     @Query(value = """
             SELECT TO_CHAR(grouped.period_start, :formatPattern) AS label,
@@ -122,10 +149,43 @@ public interface BookingRepository extends JpaRepository<Booking,Long> {
                                        @Param("startDate") LocalDateTime startDate,
                                        @Param("endDate") LocalDateTime endDate);
 
+    @Query(value = """
+            SELECT TO_CHAR(grouped.period_start, :formatPattern) AS label,
+                   COALESCE(SUM(grouped.total_amount), 0) AS revenue,
+                   COUNT(*) AS completed_bookings
+            FROM (
+                SELECT DATE_TRUNC(:groupBy, b.booking_time) AS period_start,
+                       b.total_amount
+                FROM bookings b
+                WHERE b.branch_id = :branchId
+                  AND b.status = :status
+                  AND b.booking_time BETWEEN :startDate AND :endDate
+            ) grouped
+            GROUP BY grouped.period_start
+            ORDER BY grouped.period_start
+            """, nativeQuery = true)
+    List<Object[]> findRevenueTrendRawByBranch(@Param("branchId") Long branchId,
+                                               @Param("status") String status,
+                                               @Param("groupBy") String groupBy,
+                                               @Param("formatPattern") String formatPattern,
+                                               @Param("startDate") LocalDateTime startDate,
+                                               @Param("endDate") LocalDateTime endDate);
+
     @Query("SELECT b.status, COUNT(b) FROM Booking b GROUP BY b.status")
     List<Object[]> countAllStatusRaw();
 
+    @Query("SELECT b.status, COUNT(b) FROM Booking b WHERE b.branch.id = :branchId GROUP BY b.status")
+    List<Object[]> countAllStatusRawByBranch(@Param("branchId") Long branchId);
+
     Page<Booking> findAllByBranchId(Long branchId, Pageable pageable);
+
+    @Query("SELECT new com.example.smartgarage.dto.ServiceStatisticDTO(s.name, COUNT(bs)) " +
+            "FROM Booking b " +
+            "JOIN b.bookedServices bs " +
+            "JOIN bs.service s " +
+            "WHERE b.branch.id = :branchId " +
+            "GROUP BY s.name ORDER BY COUNT(bs) DESC")
+    List<ServiceStatisticDTO> findTopServicesByBranch(@Param("branchId") Long branchId, Pageable pageable);
     // tìm tất cả booking hoàn thành cách đây 6 tháng
     @Query("SELECT b FROM Booking b WHERE b.status = 'COMPLETED' AND b.updatedAt >= :startDate AND b.updatedAt < :endDate")
     List<Booking> findBookingsForReminder(@Param("startDate") LocalDateTime startDate, @Param("endDate") LocalDateTime endDate);

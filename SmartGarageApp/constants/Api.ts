@@ -1,5 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
+import { router } from 'expo-router';
+import { Alert } from 'react-native';
 
 // Đối với Emulator/Simulator:
 // - iOS: localhost hoặc IP máy tính
@@ -15,6 +17,31 @@ const apiClient = axios.create({
   },
 });
 
+let isRedirectingToLogin = false;
+
+const PUBLIC_AUTH_PATHS = [
+  '/auth/login',
+  '/auth/register',
+  '/auth/forgot-password',
+  '/auth/reset-password',
+];
+
+const isPublicAuthRequest = (url?: string) =>
+  Boolean(url && PUBLIC_AUTH_PATHS.some((path) => url.includes(path)));
+
+const redirectToLoginForExpiredSession = async () => {
+  if (isRedirectingToLogin) {
+    return;
+  }
+
+  isRedirectingToLogin = true;
+  await AsyncStorage.clear();
+  router.replace('/login');
+
+  Alert.alert('Phiên đăng nhập hết hạn', 'Vui lòng đăng nhập lại để tiếp tục.');
+  isRedirectingToLogin = false;
+};
+
 apiClient.interceptors.request.use(async (config) => {
   const token = await AsyncStorage.getItem('token');
 
@@ -24,5 +51,21 @@ apiClient.interceptors.request.use(async (config) => {
 
   return config;
 });
+
+apiClient.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const status = error?.response?.status;
+    const requestUrl = error?.config?.url;
+    const hasToken = Boolean(await AsyncStorage.getItem('token'));
+    const isAuthError = status === 401 || status === 403;
+
+    if (hasToken && isAuthError && !isPublicAuthRequest(requestUrl)) {
+      await redirectToLoginForExpiredSession();
+    }
+
+    return Promise.reject(error);
+  }
+);
 
 export default apiClient;

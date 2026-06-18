@@ -66,4 +66,11 @@ public class ChatController {
         chatService.markRoomAsRead(authentication.getName(), roomId);
         return ResponseEntity.ok(Map.of("message", "Đã đánh dấu tin nhắn là đã đọc"));
     }
+    @Operation(summary = "Xoá phòng chat theo ID")
+    @DeleteMapping("/rooms/{roomId}")
+    public ResponseEntity<Void> deleteRoom(@PathVariable Long roomId,
+                                           Authentication authentication) {
+        chatService.deleteRoom(authentication.getName(), roomId);
+        return ResponseEntity.noContent().build();
+    }
 }

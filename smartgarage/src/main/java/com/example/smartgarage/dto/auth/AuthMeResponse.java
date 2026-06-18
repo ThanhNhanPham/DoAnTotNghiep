@@ -18,4 +18,6 @@ public class AuthMeResponse {
     private Boolean isActive;
     private Integer loyaltyPoints;
     private MembershipTier membershipTier;
+    private Long branchId;
+    private String branchName;
 }

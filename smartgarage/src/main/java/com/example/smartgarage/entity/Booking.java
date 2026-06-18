@@ -59,6 +59,12 @@ public class Booking {
     @Column(name = "arrival_time")
     private LocalDateTime arrivalTime;
 
+    @Column(name = "repair_start_time")
+    private LocalDateTime repairStartTime;
+
+    @Column(name = "repair_end_time")
+    private LocalDateTime repairEndTime;
+
     @NotNull(message = "Trạng thái đơn hàng không được để trống")
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)

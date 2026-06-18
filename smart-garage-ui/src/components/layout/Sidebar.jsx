@@ -15,6 +15,8 @@ import {
   MessageSquare
 } from 'lucide-react';
 import './Sidebar.css';
+import authService from '../../services/authService';
+import { ADMIN_ROUTE_PERMISSIONS } from '../../config/permissions';
 
 const Sidebar = ({ collapsed, onToggle }) => {
   const location = useLocation();
@@ -30,11 +32,14 @@ const Sidebar = ({ collapsed, onToggle }) => {
     { path: '/admin/parts', icon: Package, label: 'Phụ tùng' },
     { path: '/admin/branches', icon: Store, label: 'Chi nhánh' },
     { path: '/admin/chats', icon: MessageSquare, label: 'Chat khách hàng' },
-    { path: '/admin/settings', icon: Settings, label: 'Cài đặt' },
+    { path: '/admin/branch-settings', icon: Store, label: 'Cài đặt chi nhánh' },
+    { path: '/admin/settings', icon: Settings, label: 'Cài đặt hệ thống' },
   ];
 
-  const mainMenuItems = menuItems.slice(0, -1);
-  const utilityMenuItems = menuItems.slice(-1);
+  const visibleMenuItems = menuItems.filter((item) => authService.hasAnyRole(ADMIN_ROUTE_PERMISSIONS[item.path] || []));
+  const systemPaths = ['/admin/settings', '/admin/branch-settings'];
+  const mainMenuItems = visibleMenuItems.filter((item) => !systemPaths.includes(item.path));
+  const utilityMenuItems = visibleMenuItems.filter((item) => systemPaths.includes(item.path));
   const isActive = (path) => location.pathname === path;
 
   const renderNavItem = (item) => {
@@ -74,8 +79,12 @@ const Sidebar = ({ collapsed, onToggle }) => {
         {!collapsed && <div className="nav-section-label">Quản trị</div>}
         {mainMenuItems.map(renderNavItem)}
         <div className="nav-spacer" />
-        {!collapsed && <div className="nav-section-label">Hệ thống</div>}
-        {utilityMenuItems.map(renderNavItem)}
+        {utilityMenuItems.length > 0 ? (
+          <>
+            {!collapsed && <div className="nav-section-label">Hệ thống</div>}
+            {utilityMenuItems.map(renderNavItem)}
+          </>
+        ) : null}
       </nav>
     </aside>
   );

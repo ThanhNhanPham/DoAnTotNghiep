@@ -1,6 +1,7 @@
 import { getAuthToken } from '../config/api';
 
 const CONNECT_COMMAND = ['CONNECT', 'accept-version:1.2', 'heart-beat:0,0', '', ''].join('\n');
+const CONNECT_TIMEOUT_MS = 5000;
 const RECONNECT_DELAY_MS = 2000;
 
 class ChatSocketService {
@@ -128,6 +129,27 @@ class ChatSocketService {
     await new Promise((resolve, reject) => {
       const socket = new WebSocket(wsUrl);
       let settled = false;
+      let connectTimeout = null;
+
+      const settle = (callback, value) => {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+        if (connectTimeout) {
+          clearTimeout(connectTimeout);
+          connectTimeout = null;
+        }
+        callback(value);
+      };
+
+      connectTimeout = setTimeout(() => {
+        if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
+          socket.close();
+        }
+        settle(reject, new Error('Chat socket connection timed out'));
+      }, CONNECT_TIMEOUT_MS);
 
       socket.onopen = () => {
         this.socket = socket;
@@ -137,18 +159,12 @@ class ChatSocketService {
       socket.onmessage = (event) => {
         const raw = typeof event.data === 'string' ? event.data : '';
         this.handleIncoming(raw, () => {
-          if (!settled) {
-            settled = true;
-            resolve();
-          }
+          settle(resolve);
         });
       };
 
       socket.onerror = () => {
-        if (!settled) {
-          settled = true;
-          reject(new Error('Chat socket connection failed'));
-        }
+        settle(reject, new Error('Chat socket connection failed'));
       };
 
       socket.onclose = () => {
@@ -157,10 +173,7 @@ class ChatSocketService {
         this.isConnecting = false;
         this.connectPromise = null;
 
-        if (!settled) {
-          settled = true;
-          reject(new Error('Chat socket closed before CONNECTED frame'));
-        }
+        settle(reject, new Error('Chat socket closed before CONNECTED frame'));
 
         if (!this.manuallyClosed && this.subscriptions.size > 0) {
           this.scheduleReconnect();

@@ -1,8 +1,7 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   RefreshControl,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -11,15 +10,15 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { useThemePreference } from '@/contexts/theme-preference';
 import chatService, { ChatRoom } from '@/services/chatService';
 import chatSocketService, { ChatSocketEvent } from '@/services/socket/chatSocketService';
 
-const canLoadChatForRole = (role: string | null) => !role || role.toUpperCase().includes('CUSTOMER');
+const CHAT_POLL_INTERVAL_MS = 5000;
 
 const STATUS_LABELS: Record<string, string> = {
   PENDING: 'Chờ xác nhận',
@@ -51,7 +50,38 @@ const sortRooms = (items: ChatRoom[]) =>
     return timeB - timeA;
   });
 
+const upsertRoom = (rooms: ChatRoom[], nextRoom?: ChatRoom) => {
+  if (!nextRoom?.id) {
+    return rooms;
+  }
+
+  const index = rooms.findIndex((room) => room.id === nextRoom.id);
+  if (index < 0) {
+    return sortRooms([nextRoom, ...rooms]);
+  }
+
+  const nextRooms = [...rooms];
+  nextRooms[index] = { ...nextRooms[index], ...nextRoom };
+  return sortRooms(nextRooms);
+};
+
+const removeRoom = (rooms: ChatRoom[], roomId?: number) => {
+  if (!roomId) {
+    return rooms;
+  }
+
+  return rooms.filter((room) => room.id !== roomId);
+};
+
 const applyRoomEvent = (currentRooms: ChatRoom[], event: ChatSocketEvent) => {
+  if (event.type === 'ROOM_UPSERT') {
+    return upsertRoom(currentRooms, event.room);
+  }
+
+  if (event.type === 'ROOM_DELETED') {
+    return removeRoom(currentRooms, event.roomId);
+  }
+
   const index = currentRooms.findIndex((room) => room.id === event.roomId);
   if (index < 0) {
     return currentRooms;
@@ -83,6 +113,7 @@ export default function ChatTabScreen() {
   const [rooms, setRooms] = useState<ChatRoom[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const isLoadingRoomsRef = useRef(false);
 
   const isDark = colorScheme === 'dark';
   const palette = useMemo(
@@ -103,16 +134,14 @@ export default function ChatTabScreen() {
   );
 
   const loadRooms = useCallback(async (refreshing = false) => {
+    if (isLoadingRoomsRef.current) {
+      return;
+    }
+
     try {
+      isLoadingRoomsRef.current = true;
       if (refreshing) {
         setIsRefreshing(true);
-      }
-
-      const role = await AsyncStorage.getItem('userRole');
-
-      if (!canLoadChatForRole(role)) {
-        setRooms([]);
-        return;
       }
 
       const data = await chatService.getRooms();
@@ -125,6 +154,7 @@ export default function ChatTabScreen() {
       }
       setRooms([]);
     } finally {
+      isLoadingRoomsRef.current = false;
       setIsLoading(false);
       if (refreshing) {
         setIsRefreshing(false);
@@ -135,8 +165,45 @@ export default function ChatTabScreen() {
   useFocusEffect(
     useCallback(() => {
       loadRooms();
+
+      const intervalId = setInterval(() => {
+        loadRooms();
+      }, CHAT_POLL_INTERVAL_MS);
+
+      return () => {
+        clearInterval(intervalId);
+      };
     }, [loadRooms])
   );
+
+  useEffect(() => {
+    let isActive = true;
+    let queueSubscriptionId: string | null = null;
+
+    const subscribe = async () => {
+      try {
+        await chatSocketService.connect();
+        queueSubscriptionId = await chatSocketService.subscribeToUserRoomQueue((event) => {
+          if (!isActive) {
+            return;
+          }
+
+          setRooms((prev) => applyRoomEvent(prev, event));
+        });
+      } catch (error) {
+        console.warn('Subscribe chat room queue failed:', error);
+      }
+    };
+
+    subscribe();
+
+    return () => {
+      isActive = false;
+      if (queueSubscriptionId) {
+        chatSocketService.unsubscribe(queueSubscriptionId);
+      }
+    };
+  }, []);
 
   const roomIds = useMemo(() => rooms.map((room) => room.id), [rooms]);
   const roomIdsKey = useMemo(() => [...roomIds].sort((a, b) => a - b).join(','), [roomIds]);

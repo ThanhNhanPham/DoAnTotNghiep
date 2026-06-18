@@ -34,7 +34,7 @@ public class WebSocketAuthHandshakeInterceptor implements HandshakeInterceptor {
                                    org.springframework.web.socket.WebSocketHandler wsHandler,
                                    Map<String, Object> attributes) {
         String token = extractToken(request);
-        if (!StringUtils.hasText(token) || !jwtTokenProvider.validateToken(token)) {
+        if (!StringUtils.hasText(token) || jwtTokenProvider.isTokenExpired(token) || !jwtTokenProvider.validateToken(token)) {
             return false;
         }
 

@@ -5,7 +5,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   RefreshControl,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -14,6 +13,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -23,6 +23,7 @@ import chatSocketService, { ChatSocketEvent } from '@/services/socket/chatSocket
 
 const TYPING_THROTTLE_MS = 1200;
 const TYPING_VISIBLE_MS = 2500;
+const CHAT_POLL_INTERVAL_MS = 5000;
 
 const formatDateTime = (value?: string | null) => {
   if (!value) return '';
@@ -57,20 +58,29 @@ export default function BookingChatScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [isOtherTyping, setIsOtherTyping] = useState(false);
   const [lastReadAt, setLastReadAt] = useState<string | null>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTypingSentAtRef = useRef(0);
   const currentUserRoleRef = useRef<string | null>(null);
+  const isLoadingRoomRef = useRef(false);
 
-  const loadRoomAndMessages = useCallback(async (refreshing = false) => {
+  const loadRoomAndMessages = useCallback(async (refreshing = false, silent = false) => {
+    if (isLoadingRoomRef.current) {
+      return;
+    }
+
     if (!Number.isFinite(bookingId) || bookingId <= 0) {
       setIsLoading(false);
-      Alert.alert('Lỗi', 'Không tìm thấy booking để mở chat.');
+      if (!silent) {
+        Alert.alert('Lỗi', 'Không tìm thấy booking để mở chat.');
+      }
       return;
     }
 
     try {
+      isLoadingRoomRef.current = true;
       if (refreshing) {
         setIsRefreshing(true);
       }
@@ -80,20 +90,23 @@ export default function BookingChatScreen() {
 
       const messageData = await chatService.getMessages(roomData.id);
       setMessages(Array.isArray(messageData) ? sortMessages(messageData) : []);
-      await chatService.markRoomAsRead(roomData.id);
-      try {
-        await chatSocketService.markRoomAsRead(roomData.id);
-      } catch (socketError) {
-        console.warn('Emit room read event failed:', socketError);
-      }
+
+      void chatService.markRoomAsRead(roomData.id).catch((readError) => {
+        console.warn('Mark booking chat as read failed:', readError);
+      });
     } catch (error: any) {
       console.error('Load booking chat failed:', error);
+      if (silent) {
+        return;
+      }
+
       const serverMessage =
         error?.response?.data?.message ||
         error?.response?.data ||
         'Không thể tải cuộc trò chuyện lúc này.';
       Alert.alert('Lỗi', String(serverMessage));
     } finally {
+      isLoadingRoomRef.current = false;
       setIsLoading(false);
       if (refreshing) {
         setIsRefreshing(false);
@@ -113,9 +126,15 @@ export default function BookingChatScreen() {
       };
 
       initialize();
+      const intervalId = setInterval(() => {
+        if (isActive) {
+          loadRoomAndMessages(false, true);
+        }
+      }, CHAT_POLL_INTERVAL_MS);
 
       return () => {
         isActive = false;
+        clearInterval(intervalId);
       };
     }, [loadRoomAndMessages])
   );
@@ -215,6 +234,43 @@ export default function BookingChatScreen() {
     }
   };
 
+  const handleDeleteRoom = useCallback(() => {
+    if (!room?.id || isDeleting) {
+      return;
+    }
+
+    Alert.alert(
+      'Ẩn cuộc trò chuyện',
+      'Cuộc trò chuyện này sẽ chỉ bị ẩn khỏi tài khoản hiện tại.',
+      [
+        {
+          text: 'Huỷ',
+          style: 'cancel',
+        },
+        {
+          text: 'Ẩn',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setIsDeleting(true);
+              await chatService.deleteRoom(room.id);
+              router.replace('/(tabs)/chat' as any);
+            } catch (error: any) {
+              console.error('Hide booking chat failed:', error);
+              const serverMessage =
+                error?.response?.data?.message ||
+                error?.response?.data ||
+                'Không thể ẩn cuộc trò chuyện lúc này.';
+              Alert.alert('Lỗi', String(serverMessage));
+            } finally {
+              setIsDeleting(false);
+            }
+          },
+        },
+      ]
+    );
+  }, [isDeleting, room?.id, router]);
+
   useEffect(() => {
     if (!room?.id || !draft.trim()) {
       return undefined;
@@ -241,6 +297,20 @@ export default function BookingChatScreen() {
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()} activeOpacity={0.85}>
           <Ionicons name="chevron-back" size={20} color="#FFFFFF" />
           <Text style={styles.backButtonText}>Quay lại</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.hideButton, isDeleting && styles.hideButtonDisabled]}
+          onPress={handleDeleteRoom}
+          activeOpacity={0.85}
+          disabled={!room?.id || isDeleting}>
+          {isDeleting ? (
+            <ActivityIndicator color="#FFFFFF" size="small" />
+          ) : (
+            <>
+              <Ionicons name="archive-outline" size={16} color="#FFFFFF" />
+              <Text style={styles.hideButtonText}>Ẩn chat</Text>
+            </>
+          )}
         </TouchableOpacity>
       </View>
 
@@ -362,6 +432,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 10,
     paddingBottom: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   backButton: {
     alignSelf: 'flex-start',
@@ -374,6 +447,23 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   backButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  hideButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#B91C1C',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 999,
+  },
+  hideButtonDisabled: {
+    opacity: 0.7,
+  },
+  hideButtonText: {
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '700',

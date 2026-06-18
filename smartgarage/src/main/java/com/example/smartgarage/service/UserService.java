@@ -70,7 +70,9 @@ public class UserService {
                 user.getRole().name(),
                 user.getId(),
                 user.getFullAddress(),
-                user.getFullName()
+                user.getFullName(),
+                user.getBranch() != null ? user.getBranch().getId() : null,
+                user.getBranch() != null ? user.getBranch().getName() : null
         );
     }
 
@@ -86,7 +88,9 @@ public class UserService {
                 user.getFullAddress(),
                 user.getIsActive(),
                 user.getLoyaltyPoints(),
-                user.getMembershipTier()
+                user.getMembershipTier(),
+                user.getBranch() != null ? user.getBranch().getId() : null,
+                user.getBranch() != null ? user.getBranch().getName() : null
         );
     }
 

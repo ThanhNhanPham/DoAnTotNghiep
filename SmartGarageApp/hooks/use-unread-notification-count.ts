@@ -17,9 +17,7 @@ export function useUnreadNotificationCount(refreshIntervalMs = 20000) {
           if (isActive) {
             setUnreadCount(count);
           }
-        } catch (error) {
-          console.error('Load unread notification count failed:', error);
-
+        } catch {
           if (isActive) {
             setUnreadCount(0);
           }

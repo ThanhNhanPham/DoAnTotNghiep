@@ -28,7 +28,6 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.io.ByteArrayOutputStream;
-import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -37,8 +36,8 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
@@ -81,8 +80,11 @@ public class BookingService {
         if (!vehicle.getUser().getId().equals(user.getId())) {
             throw new ForbiddenException("Xe này không thuộc sở hữu của bạn.");
         }
-        Branch branch = branchRepository.findById(request.getBranchId())
+        Branch branch = branchRepository.findByIdForUpdate(request.getBranchId())
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy chi nhánh"));
+        if (!Boolean.TRUE.equals(branch.getIsActive())) {
+            throw new ConflictException("Chi nhánh hiện không hoạt động.");
+        }
 
         LocalDateTime arrivalSlotStart = request.getArrivalSlotStart() != null
                 ? request.getArrivalSlotStart()
@@ -98,6 +100,7 @@ public class BookingService {
         if (!arrivalSlotEnd.isAfter(arrivalSlotStart)) {
             throw new BadRequestException("Khung giờ đến cửa hàng không hợp lệ.");
         }
+        ensureSlotHasCapacity(branch.getId(), arrivalSlotStart, arrivalSlotEnd);
 
         // 3. Tạo thực thể Booking
         Booking booking = new Booking();
@@ -122,7 +125,7 @@ public class BookingService {
     }
 
     private void notifyAdminsAboutNewBooking(Booking booking) {
-        List<User> admins = userRepository.findByRoleIn(List.of(Role.ADMIN, Role.SUPERADMIN));
+        List<User> admins = findAdminNotificationRecipients(booking);
         if (admins.isEmpty()) {
             return;
         }
@@ -147,6 +150,22 @@ public class BookingService {
         }).collect(Collectors.toList());
 
         notificationRepository.saveAll(notifications);
+    }
+
+    private List<User> findAdminNotificationRecipients(Booking booking) {
+        List<User> recipients = new ArrayList<>();
+        Long branchId = booking.getBranch() != null ? booking.getBranch().getId() : null;
+
+        if (branchId != null) {
+            recipients.addAll(userRepository.findByRoleAndBranchId(Role.ADMIN, branchId));
+        }
+
+        recipients.addAll(userRepository.findByRoleIn(List.of(Role.SUPERADMIN)));
+
+        return recipients.stream()
+                .filter(user -> user.getId() != null)
+                .distinct()
+                .collect(Collectors.toList());
     }
 
     private void notifyCustomerAboutAdminCancellation(Booking booking, String reason) {
@@ -230,7 +249,7 @@ public class BookingService {
     }
 
     private void notifyAdminsAboutCustomerCancellation(Booking booking, String reason) {
-        List<User> admins = userRepository.findByRoleIn(List.of(Role.ADMIN, Role.SUPERADMIN));
+        List<User> admins = findAdminNotificationRecipients(booking);
         if (admins.isEmpty()) {
             return;
         }
@@ -301,6 +320,19 @@ public class BookingService {
         return mapToResponse(booking);
     }
 
+    public void assertBookingInBranch(Long bookingId, Long branchId) {
+        if (branchId == null) {
+            return;
+        }
+
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy lịch hẹn ID: " + bookingId));
+
+        if (booking.getBranch() == null || !Objects.equals(booking.getBranch().getId(), branchId)) {
+            throw new ForbiddenException("Bạn chỉ được thao tác với lịch hẹn thuộc chi nhánh được phân công.");
+        }
+    }
+
     @Transactional(readOnly = true)
     public BookingResponse getBookingById(Long bookingId, String currentUserEmail) {
         Booking booking = bookingRepository.findById(bookingId)
@@ -343,10 +375,13 @@ public class BookingService {
         return BookingResponse.builder()
                 .id(booking.getId())
                 .status(booking.getStatus())
+                .createdAt(booking.getCreatedAt())
                 .bookingTime(booking.getBookingTime())
                 .arrivalSlotStart(booking.getArrivalSlotStart())
                 .arrivalSlotEnd(booking.getArrivalSlotEnd())
                 .arrivalTime(booking.getArrivalTime())
+                .repairStartTime(booking.getRepairStartTime())
+                .repairEndTime(booking.getRepairEndTime())
                 .customerName(booking.getUser() != null ? booking.getUser().getFullName() : "Khách vãng lai")
                 .vehicleOwnerName(booking.getVehicleOwnerName())
                 .customerPhone(booking.getUser() != null ? booking.getUser().getPhone() : "N/A")
@@ -437,12 +472,7 @@ public class BookingService {
         // 2. Tìm Thợ sửa xe (Mechanic)
         Mechanic mechanic = mechanicRepository.findById(mechanicId)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy thợ ID: " + mechanicId));
-
-        // 3. KIỂM TRA TRẠNG THÁI THỢ (Tối ưu quan trọng)
-        // Giả sử trạng thái sẵn sàng của bạn là "AVAILABLE" hoặc "ACTIVE"
-        if (mechanic.getStatus() != MechanicStatus.ACTIVE) {
-            throw new ConflictException("Thợ " + mechanic.getFullName() + " hiện đang bận hoặc không sẵn sàng làm việc.");
-        }
+        ensureMechanicAssignableToBooking(booking, mechanic);
 
         // 4. CẬP NHẬT TRẠNG THÁI
         // Gán thợ cho đơn hàng
@@ -486,6 +516,7 @@ public class BookingService {
         if (booking.getMechanic() == null) {
             throw new ConflictException("Booking chưa được gán thợ để bắt đầu xử lý.");
         }
+        ensureMechanicNotRepairingAnotherBooking(booking.getMechanic(), booking.getId());
 
         String normalizedVehicleCondition = vehicleConditionBeforeRepair != null ? vehicleConditionBeforeRepair.trim() : "";
         if (normalizedVehicleCondition.isBlank()) {
@@ -493,8 +524,12 @@ public class BookingService {
         }
 
         booking.setVehicleConditionBeforeRepair(normalizedVehicleCondition);
+        booking.setRepairStartTime(LocalDateTime.now());
+        booking.setRepairEndTime(null);
         booking.setStatus(BookingStatus.IN_PROGRESS);
+        booking.getMechanic().setStatus(MechanicStatus.BUSY);
         Booking savedBooking = bookingRepository.save(booking);
+        mechanicRepository.save(booking.getMechanic());
         notifyCustomerAboutAdminBookingUpdate(
                 savedBooking,
                 "Xe đang được xử lý",
@@ -577,9 +612,7 @@ public class BookingService {
             throw new ConflictException("Chi nhánh hiện không hoạt động.");
         }
 
-        int branchCapacity = (int) mechanicRepository.findByBranchId(branchId).stream()
-                .filter(mechanic -> mechanic.getStatus() != MechanicStatus.INACTIVE)
-                .count();
+        int branchCapacity = getActiveMechanicCapacity(branchId);
         if (branchCapacity <= 0) {
             throw new ConflictException("Chi nhánh hiện chưa có thợ khả dụng để nhận lịch.");
         }
@@ -630,6 +663,30 @@ public class BookingService {
                 .build();
     }
 
+    private void ensureSlotHasCapacity(Long branchId, LocalDateTime slotStart, LocalDateTime slotEnd) {
+        int branchCapacity = getActiveMechanicCapacity(branchId);
+        if (branchCapacity <= 0) {
+            throw new ConflictException("Chi nhánh hiện chưa có thợ khả dụng để nhận lịch.");
+        }
+
+        long overlappingCount = bookingRepository.findOverlappingBookings(
+                branchId,
+                SLOT_BLOCKING_STATUSES,
+                slotStart,
+                slotEnd
+        ).size();
+
+        if (overlappingCount >= branchCapacity) {
+            throw new ConflictException("Khung giờ này đã hết chỗ, vui lòng chọn khung giờ khác.");
+        }
+    }
+
+    private int getActiveMechanicCapacity(Long branchId) {
+        return (int) mechanicRepository.findByBranchId(branchId).stream()
+                .filter(mechanic -> mechanic.getStatus() == MechanicStatus.ACTIVE)
+                .count();
+    }
+
     @Transactional
     public BookingResponse updateBooking(Long bookingId, String currentUserEmail, UpdateBookingRequest request) {
         Booking booking = getOwnedBooking(bookingId, currentUserEmail);
@@ -676,20 +733,33 @@ public class BookingService {
         return mapToResponse(bookingRepository.save(booking));
     }
 
-    public DashboardStatusDTO getDashboardStatus() {
+    public DashboardStatusDTO getDashboardStatus(Long branchId) {
         // 1. Đếm số lượng theo từng trạng thái
-        long total = bookingRepository.count();
-        long pending = bookingRepository.countByStatus(BookingStatus.PENDING);
-        long confirmed = bookingRepository.countByStatus(BookingStatus.CONFIRMED);
-        long completed = bookingRepository.countByStatus(BookingStatus.COMPLETED);
-        long cancelled = bookingRepository.countByStatus(BookingStatus.CANCELLED);
+        long total = branchId != null ? bookingRepository.countByBranchId(branchId) : bookingRepository.count();
+        long pending = countBookingsByBranchAndStatus(branchId, BookingStatus.PENDING);
+        long confirmed = countBookingsByBranchAndStatus(branchId, BookingStatus.CONFIRMED);
+        long completed = countBookingsByBranchAndStatus(branchId, BookingStatus.COMPLETED);
+        long cancelled = countBookingsByBranchAndStatus(branchId, BookingStatus.CANCELLED);
 
         // 2. Tính tổng doanh thu
-        BigDecimal revenue = bookingRepository.calculateTotalRevenue();
+        BigDecimal revenue = branchId != null
+                ? bookingRepository.calculateRevenueByPeriodAndBranch(
+                        branchId,
+                        BookingStatus.COMPLETED,
+                        LocalDate.of(2000, 1, 1).atStartOfDay(),
+                        LocalDate.now().atTime(LocalTime.MAX)
+                )
+                : bookingRepository.calculateRevenueByPeriod(
+                        BookingStatus.COMPLETED,
+                        LocalDate.of(2000, 1, 1).atStartOfDay(),
+                        LocalDate.now().atTime(LocalTime.MAX)
+                );
         if (revenue == null) revenue = BigDecimal.ZERO;
 
         // 3. Lấy Top 5 dịch vụ hay dùng nhất
-        List<ServiceStatisticDTO> topServices = bookingRepository.findTopServices(PageRequest.of(0, 5));
+        List<ServiceStatisticDTO> topServices = branchId != null
+                ? bookingRepository.findTopServicesByBranch(branchId, PageRequest.of(0, 5))
+                : bookingRepository.findTopServices(PageRequest.of(0, 5));
 
         // 4. Trả về kết quả tổng hợp
         return new DashboardStatusDTO(
@@ -702,6 +772,13 @@ public class BookingService {
                 topServices
         );
     }
+
+    private long countBookingsByBranchAndStatus(Long branchId, BookingStatus status) {
+        return branchId != null
+                ? bookingRepository.countByBranchIdAndStatus(branchId, status)
+                : bookingRepository.countByStatus(status);
+    }
+
     private CellStyle createHeaderStyle(Workbook workbook) {
         CellStyle style = workbook.createCellStyle();
         Font font = workbook.createFont();
@@ -833,6 +910,7 @@ public class BookingService {
 
         // 3. Cập nhật trạng thái Booking và Giải phóng thợ
         booking.setStatus(BookingStatus.COMPLETED);
+        booking.setRepairEndTime(LocalDateTime.now());
         rewardPointsIfNeeded(booking);
         if (booking.getMechanic() != null) {
             releaseMechanicIfIdle(booking.getMechanic(), booking.getId());
@@ -1042,6 +1120,18 @@ public class BookingService {
                 || !Objects.equals(mechanic.getBranch().getId(), booking.getBranch().getId())) {
             throw new ConflictException("Chỉ có thể gán thợ cùng chi nhánh với booking.");
         }
+        ensureMechanicNotRepairingAnotherBooking(mechanic, booking.getId());
+    }
+
+    private void ensureMechanicNotRepairingAnotherBooking(Mechanic mechanic, Long currentBookingId) {
+        long inProgressAssignments = bookingRepository.countByMechanicIdAndStatusInAndIdNot(
+                mechanic.getId(),
+                List.of(BookingStatus.IN_PROGRESS),
+                currentBookingId
+        );
+        if (inProgressAssignments > 0) {
+            throw new ConflictException("Thợ " + mechanic.getFullName() + " đang sửa xe khác. Vui lòng chờ hoàn tất hoặc chọn thợ khác.");
+        }
     }
 
     private void releaseMechanicIfIdle(Mechanic mechanic, Long currentBookingId) {
@@ -1189,7 +1279,7 @@ public class BookingService {
         }
     }
 
-    private java.util.Optional<BookedPart> findBookedPart(Booking booking, Long partId) {
+    private Optional<BookedPart> findBookedPart(Booking booking, Long partId) {
         return booking.getBookedParts().stream()
                 .filter(bookedPart -> bookedPart.getPart() != null && Objects.equals(bookedPart.getPart().getId(), partId))
                 .findFirst();

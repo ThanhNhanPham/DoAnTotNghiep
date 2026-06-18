@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Badge, Button, Card, Empty, Input, List, Space, Spin, Tag, Typography, message } from 'antd';
+import { Badge, Button, Card, Empty, Input, List, Popconfirm, Space, Spin, Tag, Typography, message } from 'antd';
 import { Building2, CarFront, MessageSquare, Send, UserRound } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 import chatService from '../../services/chatService';
 import chatSocketService from '../../services/chatSocketService';
 import './Chats.css';
@@ -64,7 +65,10 @@ const upsertRoom = (rooms, nextRoom) => {
   return sortRooms(nextRooms);
 };
 
+const removeRoom = (rooms, roomId) => rooms.filter((room) => room.id !== roomId);
+
 const Chats = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [rooms, setRooms] = useState([]);
   const [selectedRoomId, setSelectedRoomId] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -72,6 +76,7 @@ const Chats = () => {
   const [roomsLoading, setRoomsLoading] = useState(false);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [sending, setSending] = useState(false);
+  const [deletingRoomId, setDeletingRoomId] = useState(null);
   const [socketReady, setSocketReady] = useState(false);
   const [typingActorName, setTypingActorName] = useState('');
   const [isCustomerTyping, setIsCustomerTyping] = useState(false);
@@ -82,6 +87,7 @@ const Chats = () => {
     () => rooms.find((room) => room.id === selectedRoomId) || null,
     [rooms, selectedRoomId]
   );
+  const bookingIdFromNotification = searchParams.get('bookingId');
 
   const loadRooms = useCallback(async (preserveSelection = true) => {
     try {
@@ -149,11 +155,19 @@ const Chats = () => {
 
         setSocketReady(true);
         queueSubscriptionId = await chatSocketService.subscribeToUserRoomQueue((event) => {
-          if (!isActive || event.type !== 'ROOM_UPSERT' || !event.room) {
+          if (!isActive) {
             return;
           }
 
-          setRooms((prev) => upsertRoom(prev, event.room));
+          if (event.type === 'ROOM_UPSERT' && event.room) {
+            setRooms((prev) => upsertRoom(prev, event.room));
+            return;
+          }
+
+          if (event.type === 'ROOM_DELETED' && event.roomId) {
+            setRooms((prev) => removeRoom(prev, event.roomId));
+            setMessages((prev) => (selectedRoomId === event.roomId ? [] : prev));
+          }
         });
       } catch (error) {
         if (isActive) {
@@ -172,7 +186,7 @@ const Chats = () => {
         chatSocketService.unsubscribe(queueSubscriptionId);
       }
     };
-  }, []);
+  }, [selectedRoomId]);
 
   useEffect(() => {
     if (!selectedRoomId) {
@@ -255,6 +269,24 @@ const Chats = () => {
     }
   }, [rooms, selectedRoomId]);
 
+  useEffect(() => {
+    if (!bookingIdFromNotification || rooms.length === 0) {
+      return;
+    }
+
+    const bookingId = Number(bookingIdFromNotification);
+    if (!Number.isFinite(bookingId)) {
+      setSearchParams({}, { replace: true });
+      return;
+    }
+
+    const targetRoom = rooms.find((room) => Number(room.bookingId) === bookingId);
+    if (targetRoom) {
+      setSelectedRoomId(targetRoom.id);
+      setSearchParams({}, { replace: true });
+    }
+  }, [bookingIdFromNotification, rooms, setSearchParams]);
+
   const handleSend = async () => {
     const trimmed = draft.trim();
     if (!selectedRoomId || !trimmed) return;
@@ -289,6 +321,25 @@ const Chats = () => {
       setDraft(trimmed);
     } finally {
       setSending(false);
+    }
+  };
+
+  const handleDeleteRoom = async () => {
+    if (!selectedRoomId) {
+      return;
+    }
+
+    try {
+      setDeletingRoomId(selectedRoomId);
+      await chatService.deleteRoom(selectedRoomId);
+      setRooms((prev) => removeRoom(prev, selectedRoomId));
+      setMessages([]);
+      message.success('Đã ẩn cuộc trò chuyện khỏi tài khoản hiện tại.');
+    } catch (error) {
+      console.error('Hide chat room failed:', error);
+      message.error('Không thể ẩn cuộc trò chuyện.');
+    } finally {
+      setDeletingRoomId(null);
     }
   };
 
@@ -390,7 +441,19 @@ const Chats = () => {
                     </Typography.Text>
                   </Space>
                 </div>
-                <Tag color="blue">Booking #{selectedRoom.bookingId}</Tag>
+                <Space size={12}>
+                  <Tag color="blue">Booking #{selectedRoom.bookingId}</Tag>
+                  <Popconfirm
+                    title="Ẩn cuộc trò chuyện này?"
+                    description="Cuộc trò chuyện sẽ chỉ bị ẩn khỏi tài khoản hiện tại."
+                    okText="Ẩn"
+                    cancelText="Huỷ"
+                    onConfirm={handleDeleteRoom}>
+                    <Button danger loading={deletingRoomId === selectedRoom.id}>
+                      Ẩn chat
+                    </Button>
+                  </Popconfirm>
+                </Space>
               </div>
 
               <div className="chat-message-thread">

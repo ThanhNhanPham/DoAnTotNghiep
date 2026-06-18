@@ -41,6 +41,8 @@ import mechanicService from '../../services/mechanicService';
 import serviceService from '../../services/serviceService';
 import partService from '../../services/partService';
 import reviewService, { getApiErrorMessage } from '../../services/reviewService';
+import authService from '../../services/authService';
+import { ROLES } from '../../config/permissions';
 import './Bookings.css';
 
 const formatDistanceKm = (value) => (value == null ? '' : `${value.toFixed(2)} km`);
@@ -57,14 +59,34 @@ const getBranchDistanceLabel = (branch) => {
   return '';
 };
 
+const getGeolocationErrorMessage = (error) => {
+  if (typeof window !== 'undefined' && !window.isSecureContext) {
+    return 'Trang hiện không chạy trong môi trường bảo mật. Hãy mở bằng HTTPS hoặc localhost để lấy vị trí.';
+  }
+
+  switch (error?.code) {
+    case 1:
+      return 'Trình duyệt vẫn đang chặn quyền vị trí cho trang này.';
+    case 2:
+      return 'Thiết bị hoặc trình duyệt chưa xác định được vị trí hiện tại.';
+    case 3:
+      return 'Trình duyệt lấy vị trí quá lâu. Hãy thử lại hoặc kiểm tra Location Services.';
+    default:
+      return 'Không thể lấy vị trí hiện tại.';
+  }
+};
+
 const Bookings = () => {
   const [searchParams, setSearchParams] = useSearchParams();
+  const currentUserInfo = authService.getUserInfo();
+  const isBranchScopedAdmin = authService.getUserRole() === ROLES.ADMIN;
+  const assignedBranchId = currentUserInfo.branchId ? Number(currentUserInfo.branchId) : undefined;
   const [bookings, setBookings] = useState([]);
   const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(false);
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState(undefined);
-  const [branchFilter, setBranchFilter] = useState(undefined);
+  const [branchFilter, setBranchFilter] = useState(isBranchScopedAdmin ? assignedBranchId : undefined);
   const [bookingPagination, setBookingPagination] = useState({
     current: 1,
     pageSize: 10,
@@ -161,19 +183,41 @@ const Bookings = () => {
     setBookingPagination((prev) => ({ ...prev, current: 1 }));
   };
 
-  const fetchBranches = async () => {
+  const loadDefaultBranches = async ({ showError = true } = {}) => {
     try {
       const data = await branchService.getActiveBranches();
-      setBranches(data || []);
+      const activeBranches = (data || [])
+        .filter((branch) => branch.isActive !== false)
+        .filter((branch) => !isBranchScopedAdmin || branch.id === assignedBranchId);
+      setBranches(activeBranches);
       setNearestBranchId(null);
-      setBranchLocationHint('');
+      return activeBranches;
     } catch {
-      message.error('Lỗi khi tải danh sách chi nhánh!');
+      if (showError) {
+        message.error('Lỗi khi tải danh sách chi nhánh!');
+      }
+      return [];
     }
   };
 
+  const fetchBranches = async () => {
+    await loadDefaultBranches();
+    if (isBranchScopedAdmin && assignedBranchId) {
+      setBranchFilter(assignedBranchId);
+    }
+    setBranchLocationHint('');
+  };
+
   const locateNearbyBranches = async () => {
+    if (isBranchScopedAdmin) {
+      await loadDefaultBranches({ showError: false });
+      setBranchFilter(assignedBranchId);
+      setBranchLocationHint(`Tài khoản admin chỉ được xem dữ liệu chi nhánh ${currentUserInfo.branchName || 'được phân công'}.`);
+      return;
+    }
+
     if (!navigator.geolocation) {
+      await loadDefaultBranches({ showError: false });
       setBranchLocationHint('Trình duyệt này không hỗ trợ định vị. Hiển thị danh sách chi nhánh mặc định.');
       message.warning('Trình duyệt không hỗ trợ định vị.');
       return;
@@ -186,7 +230,7 @@ const Bookings = () => {
       const position = await new Promise((resolve, reject) => {
         navigator.geolocation.getCurrentPosition(resolve, reject, {
           enableHighAccuracy: false,
-          timeout: 10000,
+          timeout: 20000,
           maximumAge: 300000,
         });
       });
@@ -198,6 +242,7 @@ const Bookings = () => {
 
       const activeNearbyBranches = (nearbyBranches || []).filter((branch) => branch.isActive !== false);
       if (activeNearbyBranches.length === 0) {
+        await loadDefaultBranches({ showError: false });
         setNearestBranchId(null);
         setBranchLocationHint('Không tìm thấy chi nhánh gần bạn. Hiển thị danh sách mặc định.');
         return;
@@ -217,9 +262,11 @@ const Bookings = () => {
       message.success('Đã cập nhật danh sách chi nhánh theo vị trí hiện tại.');
     } catch (error) {
       console.error('Locate nearby branches failed:', error);
+      const locationErrorMessage = getGeolocationErrorMessage(error);
+      await loadDefaultBranches({ showError: false });
       setNearestBranchId(null);
-      setBranchLocationHint('Không thể lấy vị trí hiện tại. Hiển thị danh sách chi nhánh mặc định.');
-      message.warning('Không thể lấy vị trí hiện tại.');
+      setBranchLocationHint(`${locationErrorMessage} Hiển thị danh sách chi nhánh mặc định.`);
+      message.warning(locationErrorMessage);
     } finally {
       setBranchLocationLoading(false);
     }
@@ -403,8 +450,9 @@ const Bookings = () => {
       }
 
       partForm.resetFields();
-    } catch {
-      message.error('Lỗi khi tải chi tiết lịch hẹn!');
+    } catch (error) {
+      console.error('Open booking detail failed:', error);
+      message.error(getApiErrorMessage(error, 'Lỗi khi tải chi tiết lịch hẹn!'));
       setIsDetailModalVisible(false);
     } finally {
       setDetailLoading(false);
@@ -710,6 +758,16 @@ const Bookings = () => {
     return new Date(value).toLocaleString('vi-VN');
   };
 
+  const formatDuration = (start, end) => {
+    if (!start || !end) return 'Chưa hoàn tất';
+    const diffMinutes = Math.max(0, Math.round((new Date(end) - new Date(start)) / 60000));
+    const hours = Math.floor(diffMinutes / 60);
+    const minutes = diffMinutes % 60;
+    if (hours > 0 && minutes > 0) return `${hours} giờ ${minutes} phút`;
+    if (hours > 0) return `${hours} giờ`;
+    return `${minutes} phút`;
+  };
+
   const renderTagList = (items, emptyText = 'Chưa có') => {
     if (!items || items.length === 0) {
       return <span style={{ color: '#8c8c8c' }}>{emptyText}</span>;
@@ -892,13 +950,13 @@ const Bookings = () => {
     },
     {
       title: 'Thời gian đặt',
-      dataIndex: 'bookingTime',
-      key: 'bookingTime',
+      dataIndex: 'createdAt',
+      key: 'createdAt',
       width: 160,
-      render: (time) => (
+      render: (_, record) => (
         <div className="time-cell">
           <Calendar size={14} />
-          <span>{formatDateTime(time)}</span>
+          <span>{formatDateTime(record.createdAt || record.bookingTime)}</span>
         </div>
       ),
     },
@@ -1206,24 +1264,28 @@ const Bookings = () => {
                   placeholder="Chi nhánh"
                   value={branchFilter}
                   onChange={(value) => {
+                    if (isBranchScopedAdmin) return;
                     setBranchFilter(value);
                     resetBookingPagination();
                   }}
-                  allowClear
+                  allowClear={!isBranchScopedAdmin}
+                  disabled={isBranchScopedAdmin}
                   showSearch
                   optionLabelProp="label"
                   filterOption={(input, option) => (option?.searchLabel ?? '').includes(input.toLowerCase())}
                   style={{ width: '100%' }}
                   options={branchOptions}
                 />
-                <Button
-                  icon={<AimOutlined />}
-                  loading={branchLocationLoading}
-                  onClick={locateNearbyBranches}
-                  style={{ width: '100%' }}
-                >
-                  Sắp xếp theo vị trí hiện tại
-                </Button>
+                {!isBranchScopedAdmin ? (
+                  <Button
+                    icon={<AimOutlined />}
+                    loading={branchLocationLoading}
+                    onClick={locateNearbyBranches}
+                    style={{ width: '100%' }}
+                  >
+                    Sắp xếp theo vị trí hiện tại
+                  </Button>
+                ) : null}
               </div>
             </div>
             
@@ -1457,13 +1519,22 @@ const Bookings = () => {
               </Tag>
             </Descriptions.Item>
             <Descriptions.Item label="Thời gian đặt">
-              {formatDateTime(bookingDetail.bookingTime)}
+              {formatDateTime(bookingDetail.createdAt || bookingDetail.bookingTime)}
             </Descriptions.Item>
             <Descriptions.Item label="Khung giờ hẹn">
               {formatDateTime(bookingDetail.arrivalSlotStart)} - {formatDateTime(bookingDetail.arrivalSlotEnd)}
             </Descriptions.Item>
             <Descriptions.Item label="Giờ nhận xe">
               {formatDateTime(bookingDetail.arrivalTime)}
+            </Descriptions.Item>
+            <Descriptions.Item label="Bắt đầu sửa">
+              {formatDateTime(bookingDetail.repairStartTime)}
+            </Descriptions.Item>
+            <Descriptions.Item label="Hoàn tất sửa">
+              {formatDateTime(bookingDetail.repairEndTime)}
+            </Descriptions.Item>
+            <Descriptions.Item label="Thời gian sửa thực tế">
+              {formatDuration(bookingDetail.repairStartTime, bookingDetail.repairEndTime)}
             </Descriptions.Item>
             <Descriptions.Item label="Tình trạng xe trước sửa">
               {bookingDetail.vehicleConditionBeforeRepair || 'Chưa có'}

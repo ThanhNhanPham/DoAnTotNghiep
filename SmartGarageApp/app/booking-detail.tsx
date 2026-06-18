@@ -99,6 +99,21 @@ const formatTime = (value?: string | null) => {
   return date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
 };
 
+const formatDuration = (start?: string | null, end?: string | null) => {
+  const startDate = parseDate(start);
+  const endDate = parseDate(end);
+
+  if (!startDate || !endDate) return 'Chưa hoàn tất';
+
+  const diffMinutes = Math.max(0, Math.round((endDate.getTime() - startDate.getTime()) / 60000));
+  const hours = Math.floor(diffMinutes / 60);
+  const minutes = diffMinutes % 60;
+
+  if (hours > 0 && minutes > 0) return `${hours} giờ ${minutes} phút`;
+  if (hours > 0) return `${hours} giờ`;
+  return `${minutes} phút`;
+};
+
 function InfoRow({
   icon,
   label,
@@ -322,7 +337,7 @@ export default function BookingDetailScreen() {
               <InfoRow
                 icon="calendar-outline"
                 label="Thời gian đặt"
-                value={formatDateTime(booking.bookingTime)}
+                value={formatDateTime(booking.createdAt || booking.bookingTime)}
               />
               <InfoRow
                 icon="time-outline"
@@ -335,6 +350,21 @@ export default function BookingDetailScreen() {
                 icon="log-in-outline"
                 label="Thời gian tiếp nhận"
                 value={booking.arrivalTime ? formatDateTime(booking.arrivalTime) : 'Chưa tiếp nhận'}
+              />
+              <InfoRow
+                icon="construct-outline"
+                label="Bắt đầu sửa"
+                value={booking.repairStartTime ? formatDateTime(booking.repairStartTime) : 'Chưa bắt đầu'}
+              />
+              <InfoRow
+                icon="checkmark-done-outline"
+                label="Hoàn tất sửa"
+                value={booking.repairEndTime ? formatDateTime(booking.repairEndTime) : 'Chưa hoàn tất'}
+              />
+              <InfoRow
+                icon="hourglass-outline"
+                label="Thời gian sửa thực tế"
+                value={formatDuration(booking.repairStartTime, booking.repairEndTime)}
               />
               <InfoRow icon="business-outline" label="Chi nhánh" value={booking.branchName || 'Chưa có'} />
               <InfoRow icon="construct-outline" label="Thợ phụ trách" value={booking.mechanicName || 'Chưa có'} />

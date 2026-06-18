@@ -16,10 +16,13 @@ export interface BookingPayload {
 export interface BookingResponse {
   id: number;
   status?: string;
+  createdAt?: string;
   bookingTime?: string;
   arrivalSlotStart?: string;
   arrivalSlotEnd?: string;
   arrivalTime?: string | null;
+  repairStartTime?: string | null;
+  repairEndTime?: string | null;
   customerName?: string;
   vehicleOwnerName?: string | null;
   customerPhone?: string;

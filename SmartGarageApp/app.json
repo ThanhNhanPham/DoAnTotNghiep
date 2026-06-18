@@ -35,6 +35,12 @@
         }
       ],
       [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Cho phép SmartGarage sử dụng vị trí hiện tại để gợi ý chi nhánh gara gần bạn."
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "image": "./assets/images/splash-icon.png",

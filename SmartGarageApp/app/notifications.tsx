@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Alert,
   RefreshControl,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -12,6 +11,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 
@@ -25,7 +25,9 @@ const CHAT_NOTIFICATION_TITLES = new Set([
 
 const isChatNotification = (item: NotificationItem) => {
   const title = (item.title || '').trim();
-  return CHAT_NOTIFICATION_TITLES.has(title);
+  const content = (item.content || '').trim().toLowerCase();
+
+  return CHAT_NOTIFICATION_TITLES.has(title) || title.toLowerCase().includes('tin nhắn') || content.includes('tin nhắn');
 };
 
 export default function NotificationsScreen() {
@@ -90,7 +92,7 @@ export default function NotificationsScreen() {
     }, [loadNotifications])
   );
 
-  const handleMarkAsRead = async (item: NotificationItem) => {
+  const handleMarkAsRead = async (item: NotificationItem, showError = true) => {
     if (item.isRead) return;
 
     try {
@@ -102,6 +104,10 @@ export default function NotificationsScreen() {
       );
     } catch (error: any) {
       console.error('Mark notification read failed:', error);
+      if (!showError) {
+        return;
+      }
+
       const serverMessage =
         error?.response?.data?.message ||
         error?.response?.data ||
@@ -110,19 +116,16 @@ export default function NotificationsScreen() {
     }
   };
 
-  const handleOpenNotification = async (item: NotificationItem) => {
+  const handleOpenNotification = (item: NotificationItem) => {
     const bookingId = Number(item.bookingId ?? item.booking_id ?? item.bookingID);
     const hasBookingTarget = Number.isFinite(bookingId) && bookingId > 0;
 
     if (!item.isRead && !item.read) {
-      await handleMarkAsRead(item);
+      void handleMarkAsRead(item, false);
     }
 
     if (hasBookingTarget && isChatNotification(item)) {
-      router.push({
-        pathname: '/chat/[bookingId]',
-        params: { bookingId: String(bookingId) },
-      });
+      router.push(`/chat/${bookingId}` as any);
     } else if (hasBookingTarget) {
       router.push({
         pathname: '/booking-detail',

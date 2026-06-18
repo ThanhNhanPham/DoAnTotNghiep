@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { API_ENDPOINTS, getAuthConfig, getAuthToken } from '../config/api';
+import { ADMIN_ROLES, hasAnyRole, normalizeRole } from '../config/permissions';
 
 // Helper function để decode JWT token
 const decodeToken = (token) => {
@@ -14,6 +15,46 @@ const decodeToken = (token) => {
     console.error('Error decoding token:', error);
     return null;
   }
+};
+
+const persistBranchInfo = (data) => {
+  const branchId = data?.branchId || data?.branch?.id;
+  const branchName = data?.branchName || data?.branch?.name;
+
+  if (branchId) {
+    localStorage.setItem('branchId', String(branchId));
+  } else {
+    localStorage.removeItem('branchId');
+  }
+
+  if (branchName) {
+    localStorage.setItem('branchName', branchName);
+  } else {
+    localStorage.removeItem('branchName');
+  }
+};
+
+const persistUserSession = (data) => {
+  if (!data) return;
+
+  const email = data.email || data.username;
+  const role = data.role;
+  const userId = data.userId || data.id;
+
+  if (email) {
+    localStorage.setItem('userEmail', email);
+  }
+
+  if (role) {
+    localStorage.setItem('userRole', role);
+  }
+
+  if (userId) {
+    localStorage.setItem('userId', String(userId));
+  }
+
+  persistBranchInfo(data);
+  localStorage.setItem('isAuthenticated', 'true');
 };
 
 const authService = {
@@ -31,8 +72,7 @@ const authService = {
       if (response.data.token) {
         const token = response.data.token;
         localStorage.setItem('authToken', token);
-        localStorage.setItem('userEmail', response.data.email);
-        localStorage.setItem('userRole', response.data.role);
+        persistUserSession(response.data);
         
         // Decode JWT token để lấy userId
         const decodedToken = decodeToken(token);
@@ -54,7 +94,6 @@ const authService = {
           localStorage.setItem('userId', response.data.userId || response.data.id);
         }
         
-        localStorage.setItem('isAuthenticated', 'true');
       }
       
       return response.data;
@@ -92,6 +131,8 @@ const authService = {
     localStorage.removeItem('userEmail');
     localStorage.removeItem('userRole');
     localStorage.removeItem('userId');
+    localStorage.removeItem('branchId');
+    localStorage.removeItem('branchName');
     localStorage.removeItem('isAuthenticated');
   },
 
@@ -102,8 +143,7 @@ const authService = {
 
   // Kiểm tra đăng nhập
   isAuthenticated: () => {
-    return localStorage.getItem('isAuthenticated') === 'true' && 
-           localStorage.getItem('authToken') !== null;
+    return Boolean(getAuthToken());
   },
 
   // Lấy thông tin user
@@ -112,7 +152,38 @@ const authService = {
       email: localStorage.getItem('userEmail'),
       role: localStorage.getItem('userRole'),
       userId: localStorage.getItem('userId'),
+      branchId: localStorage.getItem('branchId'),
+      branchName: localStorage.getItem('branchName'),
     };
+  },
+
+  getUserRole: () => normalizeRole(localStorage.getItem('userRole')),
+
+  hasAnyRole: (allowedRoles) => hasAnyRole(localStorage.getItem('userRole'), allowedRoles),
+
+  isAdminUser: () => hasAnyRole(localStorage.getItem('userRole'), ADMIN_ROLES),
+
+  hasCompleteAdminSession: () => {
+    const role = normalizeRole(localStorage.getItem('userRole'));
+    if (!hasAnyRole(role, ADMIN_ROLES)) {
+      return false;
+    }
+
+    if (role === 'ADMIN' && !localStorage.getItem('branchId')) {
+      return false;
+    }
+
+    return true;
+  },
+
+  restoreSession: async () => {
+    if (!getAuthToken()) {
+      return null;
+    }
+
+    const response = await axios.get(`${API_ENDPOINTS.auth}/me`, getAuthConfig());
+    persistUserSession(response.data);
+    return response.data;
   },
 
   // API Đổi mật khẩu
@@ -162,6 +233,7 @@ const authService = {
             getAuthConfig()
           );
           console.log('getCurrentUser from /auth/me response:', response.data);
+          persistUserSession(response.data);
           return response.data;
         } catch (meError) {
           console.error('/auth/me endpoint error:', meError);
@@ -175,6 +247,7 @@ const authService = {
       );
       
       console.log('getCurrentUser response:', response.data);
+      persistUserSession(response.data);
       return response.data;
     } catch (error) {
       console.error('getCurrentUser error:', error);

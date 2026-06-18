@@ -25,6 +25,11 @@ const chatService = {
     const response = await axios.put(`${API_ENDPOINTS.chat}/rooms/${roomId}/read`, null, getAuthConfig());
     return response.data;
   },
+
+  deleteRoom: async (roomId) => {
+    const response = await axios.delete(`${API_ENDPOINTS.chat}/rooms/${roomId}`, getAuthConfig());
+    return response.data;
+  },
 };
 
 export default chatService;

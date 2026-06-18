@@ -38,6 +38,14 @@ export default function LoginScreen() {
       if (response.status === 200) {
         const data = response.data;
         console.log('API Login Response:', data); // Dòng này giúp bạn kiểm tra dữ liệu từ Server
+
+        if (data.role !== 'CUSTOMER') {
+          Alert.alert(
+            'Không thể đăng nhập',
+            'Ứng dụng mobile chỉ dành cho tài khoản khách hàng. Vui lòng đăng nhập bằng tài khoản CUSTOMER.'
+          );
+          return;
+        }
         
         // Lưu chuyển hướng và token
         await AsyncStorage.setItem('token', data.token);

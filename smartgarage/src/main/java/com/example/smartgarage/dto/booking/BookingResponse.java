@@ -21,10 +21,13 @@ import java.util.List;
 public class BookingResponse {
     private Long id;
     private BookingStatus status;
+    private LocalDateTime createdAt;
     private LocalDateTime bookingTime;
     private LocalDateTime arrivalSlotStart;
     private LocalDateTime arrivalSlotEnd;
     private LocalDateTime arrivalTime;
+    private LocalDateTime repairStartTime;
+    private LocalDateTime repairEndTime;
     private String customerName;
     private String vehicleOwnerName;
     private String customerPhone;

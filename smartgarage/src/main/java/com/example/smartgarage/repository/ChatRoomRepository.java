@@ -14,6 +14,7 @@ public interface ChatRoomRepository extends JpaRepository<ChatRoom, Long> {
     @Query("""
             SELECT r FROM ChatRoom r
             WHERE r.customer.id = :customerId
+              AND r.hiddenForCustomer = false
             ORDER BY COALESCE(r.lastMessageAt, r.createdAt) DESC, r.id DESC
             """)
     List<ChatRoom> findRoomsForCustomer(@Param("customerId") Long customerId);
@@ -21,12 +22,14 @@ public interface ChatRoomRepository extends JpaRepository<ChatRoom, Long> {
     @Query("""
             SELECT r FROM ChatRoom r
             WHERE r.branch.id = :branchId
+              AND r.hiddenForAdmin = false
             ORDER BY COALESCE(r.lastMessageAt, r.createdAt) DESC, r.id DESC
             """)
     List<ChatRoom> findRoomsForBranch(@Param("branchId") Long branchId);
 
     @Query("""
             SELECT r FROM ChatRoom r
+            WHERE r.hiddenForSuperadmin = false
             ORDER BY COALESCE(r.lastMessageAt, r.createdAt) DESC, r.id DESC
             """)
     List<ChatRoom> findAllRoomsOrdered();

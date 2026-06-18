@@ -53,6 +53,11 @@ const chatService = {
     const response = await apiClient.put(`/chat/rooms/${roomId}/read`);
     return response.data;
   },
+
+  async deleteRoom(roomId: number) {
+    const response = await apiClient.delete(`/chat/rooms/${roomId}`);
+    return response.data;
+  },
 };
 
 export default chatService;
