@@ -1,5 +1,7 @@
 .vehicles-page {
-  padding: 24px;
+  width: 100%;
+  max-width: 100%;
+  padding: 0;
 }
 
 .page-header {
@@ -7,43 +9,59 @@
 }
 
 .page-header h1 {
-  margin: 0;
-  font-size: 24px;
+  margin: 0 0 8px 0;
+  font-size: 28px;
   font-weight: 600;
+  color: #262626;
 }
 
 .page-header p {
-  margin: 4px 0 0 0;
-  color: #666;
+  margin: 0;
+  color: #8c8c8c;
+  font-size: 14px;
 }
 
 .vehicles-card {
   border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
+}
+
+.vehicles-card .ant-card-body {
+  padding: 24px;
 }
 
 .vehicles-toolbar {
   margin-bottom: 24px;
+  padding: 16px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
 }
 
 .stat-item {
-  background: #f8f9fa;
+  height: 100%;
+  background: #ffffff;
   padding: 16px;
   border-radius: 8px;
   text-align: center;
-  border: 1px solid #f0f0f0;
+  border: 1px solid #e2e8f0;
+  border-left: 4px solid #2563eb;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.04);
 }
 
 .stat-value {
   font-size: 24px;
-  font-weight: 600;
-  color: #1890ff;
+  font-weight: 800;
+  color: #111827;
+  line-height: 1;
 }
 
 .stat-label {
-  font-size: 14px;
-  color: #666;
-  margin-top: 4px;
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 700;
+  margin-top: 8px;
 }
 
 /* Cell styles */
@@ -81,18 +99,73 @@
   color: #1f1f1f;
 }
 
+.vehicle-image-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.vehicle-thumbnail {
+  border-radius: 8px;
+  object-fit: cover;
+}
+
+.vehicle-image-empty {
+  color: #8c8c8c;
+  font-size: 12px;
+}
+
+.vehicle-detail-image {
+  border-radius: 8px;
+  object-fit: cover;
+}
+
 .text-right {
   text-align: right;
 }
 
 /* Table customization */
-.ant-table-thead > tr > th {
-  background: #fafafa;
-  font-weight: 600;
+.vehicles-card .ant-table {
+  background: transparent;
+}
+
+.vehicles-card .ant-table-thead > tr > th {
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+  color: #334155;
+  font-weight: 800;
+}
+
+.vehicles-card .ant-table-tbody > tr:hover > td {
+  background: #f8fbff;
 }
 
 /* Responsive adjustments */
 @media (max-width: 768px) {
+  .page-header h1 {
+    font-size: 24px;
+  }
+
+  .vehicles-card .ant-card-body {
+    padding: 16px;
+  }
+
+  .vehicles-toolbar {
+    padding: 16px;
+  }
+
+  .stat-item {
+    padding: 12px;
+  }
+
+  .stat-value {
+    font-size: 20px;
+  }
+
+  .stat-label {
+    font-size: 11px;
+  }
+
   .text-right {
     text-align: left;
   }

@@ -11,6 +11,36 @@ public class EmailTemplateService {
     public EmailTemplateService(JavaMailSender mailSender) {
         this.mailSender = mailSender;
     }
+
+    public String buildBookingConfirmedEmail(String customerName,
+                                             Long bookingId,
+                                             String branchName,
+                                             String licensePlate,
+                                             String mechanicName,
+                                             String arrivalWindow) {
+        return "<div style='font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #ddd; border-radius: 8px; overflow: hidden;'>" +
+                "  <div style='background-color: #0f766e; color: white; padding: 20px; text-align: center;'>" +
+                "    <h2 style='margin: 0;'>SMART GARAGE</h2>" +
+                "    <p style='margin: 8px 0 0;'>Lịch hẹn của bạn đã được xác nhận</p>" +
+                "  </div>" +
+                "  <div style='padding: 20px; line-height: 1.6; color: #333;'>" +
+                "    <p>Chào <b>" + customerName + "</b>,</p>" +
+                "    <p>Smart Garage đã xác nhận lịch hẹn <b>#" + bookingId + "</b> của bạn.</p>" +
+                "    <div style='background-color: #f8fafc; padding: 16px; border-radius: 6px; border-left: 4px solid #0f766e; margin: 16px 0;'>" +
+                "      <p style='margin: 0 0 8px;'><b>Chi nhánh:</b> " + branchName + "</p>" +
+                "      <p style='margin: 0 0 8px;'><b>Biển số xe:</b> " + licensePlate + "</p>" +
+                "      <p style='margin: 0 0 8px;'><b>Thợ phụ trách:</b> " + mechanicName + "</p>" +
+                "      <p style='margin: 0;'><b>Khung giờ tiếp nhận:</b> " + arrivalWindow + "</p>" +
+                "    </div>" +
+                "    <p>Vui lòng đến gara đúng khung giờ đã đặt để đội ngũ kỹ thuật tiếp nhận xe nhanh hơn.</p>" +
+                "    <p>Cảm ơn bạn đã sử dụng dịch vụ tại Smart Garage.</p>" +
+                "  </div>" +
+                "  <div style='background-color: #eee; padding: 10px; text-align: center; font-size: 12px; color: #777;'>" +
+                "    Đây là email tự động, vui lòng không trả lời email này." +
+                "  </div>" +
+                "</div>";
+    }
+
     public String buildAdminReplyEmail(String customerName,String reviewComment,String adminReply){
         return "<div style='font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #ddd; border-radius: 8px; overflow: hidden;'>" +
                 "  <div style='background-color: #2c3e50; color: white; padding: 20px; text-align: center;'>" +
@@ -57,7 +87,7 @@ public class EmailTemplateService {
                 "      <li>Kiểm tra hệ thống phanh</li>" +
                 "      <li>Kiểm tra nước làm mát & lốp xe</li>" +
                 "    </ul>" +
-                "    <p><a href='http://localhost:3000/booking' style='background-color: #f39c12; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;'>Đặt lịch ngay bây giờ</a></p>" +
+                "    <p><a href='http://localhost:3000/booking' style='background-color: #f39c12; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;'> Vào App Đặt lịch ngay bạn nhé</a></p>" +
                 "    <p>Hẹn gặp lại bạn tại Gara!</p>" +
                 "  </div>" +
                 "</div>";

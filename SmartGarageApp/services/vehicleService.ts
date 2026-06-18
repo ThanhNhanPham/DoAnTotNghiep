@@ -7,6 +7,7 @@ export interface VehiclePayload {
   brand: string;
   model: string;
   color?: string;
+  imageUrl?: string;
   type: VehicleType;
   isActive?: boolean;
 }
@@ -15,6 +16,12 @@ export interface Vehicle extends VehiclePayload {
   id: number;
   ownerName?: string | null;
   isActive: boolean;
+}
+
+interface VehicleImageUploadPayload {
+  uri: string;
+  fileName?: string | null;
+  mimeType?: string | null;
 }
 
 const vehicleService = {
@@ -31,6 +38,22 @@ const vehicleService = {
   async updateVehicle(id: number, vehicleData: VehiclePayload) {
     const response = await apiClient.put<Vehicle>(`/vehicles/${id}`, vehicleData);
     return response.data;
+  },
+
+  async uploadVehicleImage(file: VehicleImageUploadPayload) {
+    const formData = new FormData();
+    formData.append('file', {
+      uri: file.uri,
+      name: file.fileName || `vehicle-${Date.now()}.jpg`,
+      type: file.mimeType || 'image/jpeg',
+    } as any);
+
+    const response = await apiClient.post<{ imageUrl: string }>('/vehicles/upload-image', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data.imageUrl;
   },
 
   async deleteVehicle(id: number) {

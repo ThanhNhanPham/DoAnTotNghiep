@@ -2,8 +2,8 @@ package com.example.smartgarage.controller;
 
 import com.example.smartgarage.dto.AIConsultationRequest;
 import com.example.smartgarage.entity.ConsultationHistory;
-import com.example.smartgarage.repository.ConsultationHistoryRepository;
 import com.example.smartgarage.service.AIService;
+import com.example.smartgarage.service.ConsultationHistoryService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -19,11 +19,11 @@ import java.util.List;
 public class AIController {
 
     private final AIService aiService;
-    private final ConsultationHistoryRepository consultationHistoryRepository;
+    private final ConsultationHistoryService consultationHistoryService;
 
-    public AIController(AIService aiService, ConsultationHistoryRepository consultationHistoryRepository) {
+    public AIController(AIService aiService, ConsultationHistoryService consultationHistoryService) {
         this.aiService = aiService;
-        this.consultationHistoryRepository = consultationHistoryRepository;
+        this.consultationHistoryService = consultationHistoryService;
     }
     @Operation(summary="AI gợi ý dịch vụ cho khách hàng")
     @PostMapping("/suggest")
@@ -33,7 +33,7 @@ public class AIController {
                 return ResponseEntity.badRequest().body("Dữ liệu gửi lên không hợp lệ");
             }
             String username = auth.getName();
-            String suggestion = aiService.suggestService(request.getIssue(),username);
+            String suggestion = aiService.suggestService(request.getIssue(), request.getVehicleType(), username);
             return ResponseEntity.ok(suggestion);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
@@ -46,7 +46,7 @@ public class AIController {
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<List<ConsultationHistory>> getAllHistory() {
         try {
-            List<ConsultationHistory> histories = consultationHistoryRepository.findAllByOrderByCreatedAtDesc();
+            List<ConsultationHistory> histories = consultationHistoryService.findAllByOrderByCreatedAtDesc();
             if (histories.isEmpty()) {
                 return ResponseEntity.noContent().build();
             }
@@ -62,7 +62,7 @@ public class AIController {
         try {
             String username = auth.getName();
             List<ConsultationHistory> histories =
-                    consultationHistoryRepository.findByCustomerEmailOrderByCreatedAtDesc(username);
+                    consultationHistoryService.findByCustomerEmailOrderByCreatedAtDesc(username);
             if (histories.isEmpty()) {
                 return ResponseEntity.noContent().build();
             }
@@ -70,5 +70,13 @@ public class AIController {
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
+    }
+
+    @Operation(summary = "Xóa lịch sử truy vấn AI của user đang đăng nhập theo id")
+    @DeleteMapping("/history/{id}/me")
+    public ResponseEntity<String> deleteMyHistory(@PathVariable Long id, Authentication auth) {
+        String username = auth.getName();
+        consultationHistoryService.deleteMyHistoryById(id, username);
+        return ResponseEntity.ok("Lịch sử truy vấn của bạn được xóa thành công.");
     }
 }

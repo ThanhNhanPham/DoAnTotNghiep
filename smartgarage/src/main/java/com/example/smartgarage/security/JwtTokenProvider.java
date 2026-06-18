@@ -1,6 +1,7 @@
 package com.example.smartgarage.security;
 
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
@@ -24,8 +25,12 @@ public class JwtTokenProvider {
     }
 
     public String generateToken(String email) {
+        return generateToken(email, JWT_EXPIRATION);
+    }
+
+    public String generateToken(String email, long expirationMillis) {
         Date now = new Date();
-        Date expiryDate = new Date(now.getTime() + JWT_EXPIRATION);
+        Date expiryDate = new Date(now.getTime() + expirationMillis);
 
         return Jwts.builder()
                 .setSubject(email)
@@ -50,6 +55,20 @@ public class JwtTokenProvider {
                     .setSigningKey(getSigningKey())
                     .build()
                     .parseClaimsJws(authToken);
+            return true;
+        } catch (Exception ex) {
+            return false;
+        }
+    }
+
+    public boolean isTokenExpired(String authToken) {
+        try {
+            Jwts.parserBuilder()
+                    .setSigningKey(getSigningKey())
+                    .build()
+                    .parseClaimsJws(authToken);
+            return false;
+        } catch (ExpiredJwtException ex) {
             return true;
         } catch (Exception ex) {
             return false;

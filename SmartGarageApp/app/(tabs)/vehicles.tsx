@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Image,
   RefreshControl,
   SafeAreaView,
   ScrollView,
@@ -13,6 +14,7 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 
@@ -31,6 +33,7 @@ const EMPTY_FORM: VehiclePayload = {
   brand: '',
   model: '',
   color: '',
+  imageUrl: '',
   isActive: true,
 };
 
@@ -43,6 +46,7 @@ export default function VehiclesScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
 
   useEffect(() => {
     bootstrap();
@@ -121,6 +125,79 @@ export default function VehiclesScreen() {
     return true;
   };
 
+  const uploadSelectedImage = async (asset: ImagePicker.ImagePickerAsset) => {
+    try {
+      setIsUploadingImage(true);
+      const imageUrl = await vehicleService.uploadVehicleImage({
+        uri: asset.uri,
+        fileName: asset.fileName,
+        mimeType: asset.mimeType,
+      });
+      updateForm('imageUrl', imageUrl);
+      Alert.alert('Thành công', 'Ảnh xe đã được tải lên.');
+    } catch (error: any) {
+      console.error('Upload vehicle image failed:', error);
+      const serverMessage =
+        error?.response?.data?.message ||
+        error?.response?.data ||
+        'Không thể tải ảnh lên. Vui lòng thử lại.';
+
+      Alert.alert('Tải ảnh thất bại', String(serverMessage));
+    } finally {
+      setIsUploadingImage(false);
+    }
+  };
+
+  const handlePickImageFromLibrary = async (allowsEditing = false) => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Thiếu quyền', 'Bạn cần cho phép truy cập thư viện ảnh để chọn ảnh xe.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing,
+      quality: 1,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      await uploadSelectedImage(result.assets[0]);
+    }
+  };
+
+  const handleCaptureVehicleImage = async (allowsEditing = false) => {
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Thiếu quyền', 'Bạn cần cho phép sử dụng camera để chụp ảnh xe.');
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['images'],
+      allowsEditing,
+      quality: 1,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      await uploadSelectedImage(result.assets[0]);
+    }
+  };
+
+  const openVehicleImageOptions = () => {
+    if (isUploadingImage) {
+      return;
+    }
+
+    Alert.alert('Hình ảnh', 'Bạn muốn tải ảnh gốc hay chỉnh sửa trước khi tải lên?', [
+      { text: 'Huỷ', style: 'cancel' },
+      { text: 'Chụp ảnh gốc', onPress: () => handleCaptureVehicleImage(false) },
+      { text: 'Chụp & chỉnh sửa', onPress: () => handleCaptureVehicleImage(true) },
+      { text: 'Chọn ảnh gốc', onPress: () => handlePickImageFromLibrary(false) },
+      { text: 'Chọn & chỉnh sửa', onPress: () => handlePickImageFromLibrary(true) },
+    ]);
+  };
+
   const resetForm = () => {
     setForm(EMPTY_FORM);
     setEditingVehicleId(null);
@@ -134,6 +211,7 @@ export default function VehiclesScreen() {
       brand: vehicle.brand,
       model: vehicle.model,
       color: vehicle.color || '',
+      imageUrl: vehicle.imageUrl || '',
       isActive: vehicle.isActive,
     });
   };
@@ -182,6 +260,7 @@ export default function VehiclesScreen() {
         brand: form.brand.trim(),
         model: form.model.trim(),
         color: form.color?.trim() || '',
+        imageUrl: form.imageUrl?.trim() || '',
         isActive: form.isActive ?? true,
       };
 
@@ -353,10 +432,57 @@ export default function VehiclesScreen() {
             onChangeText={(value) => updateForm('color', value)}
           />
 
+          <Text style={styles.fieldLabel}>Hình ảnh</Text>
+          <View style={styles.imageUploadCard}>
+            {form.imageUrl ? (
+              <Image source={{ uri: form.imageUrl }} style={styles.formVehicleImage} resizeMode="contain" />
+            ) : (
+              <View style={styles.formVehicleImagePlaceholder}>
+                <Ionicons name={form.type === 'CAR' ? 'car-sport-outline' : 'bicycle-outline'} size={30} color="#60A5FA" />
+              </View>
+            )}
+
+            <View style={styles.imageUploadContent}>
+              <Text style={styles.imageUploadTitle}>
+                {form.imageUrl ? 'Ảnh xe đã sẵn sàng' : 'Thêm ảnh cho phương tiện'}
+              </Text>
+              <Text style={styles.imageUploadText}>
+                Chụp ảnh mới hoặc chọn ảnh có sẵn từ thư viện trên thiết bị.
+              </Text>
+
+              <View style={styles.imageUploadActions}>
+                <TouchableOpacity
+                  style={[styles.imageActionButton, isUploadingImage && styles.submitButtonDisabled]}
+                  onPress={openVehicleImageOptions}
+                  disabled={isUploadingImage}>
+                  {isUploadingImage ? (
+                    <ActivityIndicator color="#1D4ED8" />
+                  ) : (
+                    <>
+                      <Ionicons name="camera-outline" size={18} color="#1D4ED8" />
+                      <Text style={styles.imageActionButtonText}>
+                        {form.imageUrl ? 'Đổi ảnh xe' : 'Thêm ảnh xe'}
+                      </Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+
+                {form.imageUrl ? (
+                  <TouchableOpacity
+                    style={styles.removeImageButton}
+                    onPress={() => updateForm('imageUrl', '')}
+                    disabled={isUploadingImage}>
+                    <Text style={styles.removeImageButtonText}>Xoá ảnh</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            </View>
+          </View>
+
           <TouchableOpacity
             style={[styles.submitButton, isSubmitting && styles.submitButtonDisabled]}
             onPress={handleSubmitVehicle}
-            disabled={isSubmitting}>
+            disabled={isSubmitting || isUploadingImage}>
             {isSubmitting ? (
               <ActivityIndicator color="#FFFFFF" />
             ) : (
@@ -386,6 +512,18 @@ export default function VehiclesScreen() {
             vehicles.map((vehicle) => (
               <View key={vehicle.id} style={styles.vehicleCard}>
                 <View style={styles.vehicleMainRow}>
+                  {vehicle.imageUrl ? (
+                    <Image source={{ uri: vehicle.imageUrl }} style={styles.vehicleImage} resizeMode="contain" />
+                  ) : (
+                    <View style={styles.vehicleImagePlaceholder}>
+                      <Ionicons
+                        name={vehicle.type === 'CAR' ? 'car-sport-outline' : 'bicycle-outline'}
+                        size={28}
+                        color="#60A5FA"
+                      />
+                    </View>
+                  )}
+
                   <View style={styles.vehicleInfo}>
                     <View style={styles.vehicleHeader}>
                       <View style={styles.vehicleBadgeRow}>
@@ -565,6 +703,78 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#0F172A',
   },
+  imageUploadCard: {
+    flexDirection: 'row',
+    gap: 14,
+    borderWidth: 1,
+    borderColor: '#DBEAFE',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 20,
+    padding: 14,
+  },
+  formVehicleImage: {
+    width: 96,
+    height: 96,
+    borderRadius: 18,
+    backgroundColor: '#DBEAFE',
+  },
+  formVehicleImagePlaceholder: {
+    width: 96,
+    height: 96,
+    borderRadius: 18,
+    backgroundColor: '#EFF6FF',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imageUploadContent: {
+    flex: 1,
+  },
+  imageUploadTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  imageUploadText: {
+    marginTop: 6,
+    fontSize: 13,
+    lineHeight: 19,
+    color: '#64748B',
+  },
+  imageUploadActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 12,
+    flexWrap: 'wrap',
+  },
+  imageActionButton: {
+    minHeight: 42,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    backgroundColor: '#DBEAFE',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    justifyContent: 'center',
+  },
+  imageActionButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1D4ED8',
+  },
+  removeImageButton: {
+    minHeight: 42,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    backgroundColor: '#FEE2E2',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  removeImageButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#DC2626',
+  },
   brandWrap: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -654,6 +864,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 14,
+  },
+  vehicleImage: {
+    width: 84,
+    height: 84,
+    borderRadius: 18,
+    backgroundColor: '#DBEAFE',
+  },
+  vehicleImagePlaceholder: {
+    width: 84,
+    height: 84,
+    borderRadius: 18,
+    backgroundColor: '#EFF6FF',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   vehicleInfo: {
     flex: 1,

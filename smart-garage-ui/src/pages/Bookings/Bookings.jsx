@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Card,
   Table,
@@ -7,103 +8,630 @@ import {
   Space,
   Tag,
   Popconfirm,
-  Row,
-  Col,
   Select,
   message,
   Tooltip,
   Modal,
-  Form
+  Form,
+  Descriptions,
+  Divider,
+  InputNumber,
+  Rate,
 } from 'antd';
 import {
-  DeleteOutlined,
   SearchOutlined,
   CheckCircleOutlined,
   ToolOutlined,
-  CloseCircleOutlined
+  CloseCircleOutlined,
+  LoginOutlined,
+  PlayCircleOutlined,
+  SwapOutlined,
+  EyeOutlined,
+  EditOutlined,
+  DeleteOutlined,
+  DollarCircleOutlined,
+  EnvironmentOutlined,
+  AimOutlined,
 } from '@ant-design/icons';
 import { Calendar, User, Car, Bike, Building2, Wrench, DollarSign } from 'lucide-react';
 import bookingService from '../../services/bookingService';
+import paymentService from '../../services/paymentService';
 import branchService from '../../services/branchService';
 import mechanicService from '../../services/mechanicService';
+import serviceService from '../../services/serviceService';
+import partService from '../../services/partService';
+import reviewService, { getApiErrorMessage } from '../../services/reviewService';
+import authService from '../../services/authService';
+import { ROLES } from '../../config/permissions';
 import './Bookings.css';
 
+const formatDistanceKm = (value) => (value == null ? '' : `${value.toFixed(2)} km`);
+
+const getBranchDistanceLabel = (branch) => {
+  if (branch?.travelDistanceKm != null) {
+    return `Quãng đường ${formatDistanceKm(branch.travelDistanceKm)}`;
+  }
+
+  if (branch?.distanceKm != null) {
+    return `Ước tính ${formatDistanceKm(branch.distanceKm)}`;
+  }
+
+  return '';
+};
+
+const getGeolocationErrorMessage = (error) => {
+  if (typeof window !== 'undefined' && !window.isSecureContext) {
+    return 'Trang hiện không chạy trong môi trường bảo mật. Hãy mở bằng HTTPS hoặc localhost để lấy vị trí.';
+  }
+
+  switch (error?.code) {
+    case 1:
+      return 'Trình duyệt vẫn đang chặn quyền vị trí cho trang này.';
+    case 2:
+      return 'Thiết bị hoặc trình duyệt chưa xác định được vị trí hiện tại.';
+    case 3:
+      return 'Trình duyệt lấy vị trí quá lâu. Hãy thử lại hoặc kiểm tra Location Services.';
+    default:
+      return 'Không thể lấy vị trí hiện tại.';
+  }
+};
+
 const Bookings = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const currentUserInfo = authService.getUserInfo();
+  const isBranchScopedAdmin = authService.getUserRole() === ROLES.ADMIN;
+  const assignedBranchId = currentUserInfo.branchId ? Number(currentUserInfo.branchId) : undefined;
   const [bookings, setBookings] = useState([]);
   const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(false);
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState(undefined);
-  const [branchFilter, setBranchFilter] = useState(undefined);
+  const [branchFilter, setBranchFilter] = useState(isBranchScopedAdmin ? assignedBranchId : undefined);
+  const [bookingPagination, setBookingPagination] = useState({
+    current: 1,
+    pageSize: 10,
+    total: 0,
+  });
+  const [cancelForm] = Form.useForm();
+  const [partForm] = Form.useForm();
+  const [startBookingForm] = Form.useForm();
 
   // States for Confirming Booking
   const [isConfirmModalVisible, setIsConfirmModalVisible] = useState(false);
   const [bookingToConfirm, setBookingToConfirm] = useState(null);
+  const [mechanicModalMode, setMechanicModalMode] = useState('confirm');
   const [mechanics, setMechanics] = useState([]);
+  const [mechanicsLoading, setMechanicsLoading] = useState(false);
   const [selectedMechanicId, setSelectedMechanicId] = useState(undefined);
   const [confirmLoading, setConfirmLoading] = useState(false);
+  const [isCancelModalVisible, setIsCancelModalVisible] = useState(false);
+  const [bookingToCancel, setBookingToCancel] = useState(null);
+  const [cancelLoading, setCancelLoading] = useState(false);
+  const [isStartModalVisible, setIsStartModalVisible] = useState(false);
+  const [bookingToStart, setBookingToStart] = useState(null);
+  const [startLoading, setStartLoading] = useState(false);
+  const [isDetailModalVisible, setIsDetailModalVisible] = useState(false);
+  const [bookingDetail, setBookingDetail] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [serviceCatalog, setServiceCatalog] = useState([]);
+  const [partCatalog, setPartCatalog] = useState([]);
+  const [serviceToAddId, setServiceToAddId] = useState(undefined);
+  const [bookingItemLoading, setBookingItemLoading] = useState(false);
+  const [paymentConfirmingId, setPaymentConfirmingId] = useState(null);
+  const [bookingReview, setBookingReview] = useState(null);
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [reviewReplyText, setReviewReplyText] = useState('');
+  const [reviewReplyLoading, setReviewReplyLoading] = useState(false);
+  const [branchLocationLoading, setBranchLocationLoading] = useState(false);
+  const [branchLocationHint, setBranchLocationHint] = useState('');
+  const [nearestBranchId, setNearestBranchId] = useState(null);
+  const bookingIdFromNotification = searchParams.get('bookingId');
+
+  useEffect(() => {
+    fetchBranches();
+    fetchCatalogs();
+  }, []);
 
   useEffect(() => {
     fetchBookings();
-    fetchBranches();
-    fetchMechanics();
-  }, []);
+  }, [bookingPagination.current, bookingPagination.pageSize, statusFilter, branchFilter, searchText]);
+
+  useEffect(() => {
+    if (!bookingIdFromNotification) return;
+
+    const bookingId = Number(bookingIdFromNotification);
+    if (!Number.isFinite(bookingId)) {
+      setSearchParams({}, { replace: true });
+      return;
+    }
+
+    openDetailModal(bookingId);
+    setSearchParams({}, { replace: true });
+  }, [bookingIdFromNotification, setSearchParams]);
 
   const fetchBookings = async () => {
     setLoading(true);
     try {
-      const data = await bookingService.getAllBookings();
-      setBookings(data || []);
-    } catch (error) {
+      const data = await bookingService.getAllBookings({
+        page: bookingPagination.current,
+        size: bookingPagination.pageSize,
+        status: statusFilter,
+        branchId: branchFilter,
+        keyword: searchText,
+      });
+
+      if (Array.isArray(data)) {
+        setBookings(data);
+        setBookingPagination((prev) => ({ ...prev, total: data.length }));
+      } else {
+        setBookings(data?.content || []);
+        setBookingPagination((prev) => ({
+          ...prev,
+          current: (data?.number ?? prev.current - 1) + 1,
+          pageSize: data?.size || prev.pageSize,
+          total: data?.totalElements || 0,
+        }));
+      }
+    } catch {
       message.error('Lỗi khi tải danh sách lịch hẹn!');
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchBranches = async () => {
+  const resetBookingPagination = () => {
+    setBookingPagination((prev) => ({ ...prev, current: 1 }));
+  };
+
+  const loadDefaultBranches = async ({ showError = true } = {}) => {
     try {
       const data = await branchService.getActiveBranches();
-      setBranches(data || []);
-    } catch (error) {
-      message.error('Lỗi khi tải danh sách chi nhánh!');
+      const activeBranches = (data || [])
+        .filter((branch) => branch.isActive !== false)
+        .filter((branch) => !isBranchScopedAdmin || branch.id === assignedBranchId);
+      setBranches(activeBranches);
+      setNearestBranchId(null);
+      return activeBranches;
+    } catch {
+      if (showError) {
+        message.error('Lỗi khi tải danh sách chi nhánh!');
+      }
+      return [];
     }
   };
 
-  const fetchMechanics = async () => {
+  const fetchBranches = async () => {
+    await loadDefaultBranches();
+    if (isBranchScopedAdmin && assignedBranchId) {
+      setBranchFilter(assignedBranchId);
+    }
+    setBranchLocationHint('');
+  };
+
+  const locateNearbyBranches = async () => {
+    if (isBranchScopedAdmin) {
+      await loadDefaultBranches({ showError: false });
+      setBranchFilter(assignedBranchId);
+      setBranchLocationHint(`Tài khoản admin chỉ được xem dữ liệu chi nhánh ${currentUserInfo.branchName || 'được phân công'}.`);
+      return;
+    }
+
+    if (!navigator.geolocation) {
+      await loadDefaultBranches({ showError: false });
+      setBranchLocationHint('Trình duyệt này không hỗ trợ định vị. Hiển thị danh sách chi nhánh mặc định.');
+      message.warning('Trình duyệt không hỗ trợ định vị.');
+      return;
+    }
+
+    setBranchLocationLoading(true);
+    setBranchLocationHint('');
+
     try {
-      const data = await mechanicService.getAllMechanics(); // you can filter active ones later
+      const position = await new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: false,
+          timeout: 20000,
+          maximumAge: 300000,
+        });
+      });
+
+      const nearbyBranches = await branchService.getNearbyActiveBranches(
+        position.coords.latitude,
+        position.coords.longitude
+      );
+
+      const activeNearbyBranches = (nearbyBranches || []).filter((branch) => branch.isActive !== false);
+      if (activeNearbyBranches.length === 0) {
+        await loadDefaultBranches({ showError: false });
+        setNearestBranchId(null);
+        setBranchLocationHint('Không tìm thấy chi nhánh gần bạn. Hiển thị danh sách mặc định.');
+        return;
+      }
+
+      const nearestBranch = activeNearbyBranches[0];
+      const distanceLabel = getBranchDistanceLabel(nearestBranch);
+      const sourceLabel = nearestBranch.travelDistanceKm != null ? 'theo lộ trình thực tế' : 'theo khoảng cách ước tính';
+
+      setBranches(activeNearbyBranches);
+      setNearestBranchId(nearestBranch.id);
+      setBranchLocationHint(
+        `Đã sắp xếp chi nhánh gần bạn nhất ${sourceLabel}: ${nearestBranch.name}${
+          distanceLabel ? ` (${distanceLabel})` : ''
+        }.`
+      );
+      message.success('Đã cập nhật danh sách chi nhánh theo vị trí hiện tại.');
+    } catch (error) {
+      console.error('Locate nearby branches failed:', error);
+      const locationErrorMessage = getGeolocationErrorMessage(error);
+      await loadDefaultBranches({ showError: false });
+      setNearestBranchId(null);
+      setBranchLocationHint(`${locationErrorMessage} Hiển thị danh sách chi nhánh mặc định.`);
+      message.warning(locationErrorMessage);
+    } finally {
+      setBranchLocationLoading(false);
+    }
+  };
+
+  const fetchMechanicsByBookingBranch = async (booking) => {
+    const branchId = getBookingBranchId(booking);
+    if (!branchId) {
+      setMechanics([]);
+      message.warning('Không xác định được chi nhánh của lịch hẹn này.');
+      return [];
+    }
+
+    setMechanicsLoading(true);
+    try {
+      const data = await mechanicService.getMechanicsByBranch(branchId);
       setMechanics(data || []);
+      return data || [];
     } catch (error) {
       console.error(error);
+      setMechanics([]);
+      message.error('Lỗi khi tải danh sách thợ theo chi nhánh!');
+      return [];
+    } finally {
+      setMechanicsLoading(false);
     }
   };
 
-  // Filter Bookings
-  const filteredBookings = bookings.filter((booking) => {
-    const userStr = booking.vehicleOwnerName || booking.customerName || booking.user?.fullName || booking.userName || booking.email || '';
-    const plateStr = booking.vehicle?.licensePlate || booking.licensePlate || '';
-    const matchSearch =
-      userStr.toLowerCase().includes(searchText.toLowerCase()) ||
-      plateStr.toLowerCase().includes(searchText.toLowerCase());
-    
-    // Fallbacks because response schema is unknown yet
-    const currentStatus = booking.status || 'PENDING'; 
-    const matchStatus = !statusFilter || currentStatus === statusFilter;
-    
+  const getBookingBranchId = (booking) => {
+    if (!booking) return undefined;
     const branchId = booking.branch?.id || booking.branchId;
-    const matchBranch = !branchFilter || branchId === branchFilter;
-    
-    return matchSearch && matchStatus && matchBranch;
-  });
+    if (branchId) return branchId;
+    return branches.find((branch) => branch.name === booking.branchName)?.id;
+  };
 
-  const handleDeleteBooking = async (bookingId) => {
+  const isLockedBooking = (booking) => ['COMPLETED', 'CANCELLED'].includes(booking?.status);
+
+  const canConfirmPayment = (booking) =>
+    booking?.status === 'COMPLETED' &&
+    ['CASH', 'BANK_TRANSFER'].includes(booking?.paymentMethod) &&
+    booking?.paymentStatus !== 'SUCCESS';
+
+  const getPaymentConfirmText = (booking) => {
+    if (booking?.paymentMethod === 'CASH') {
+      return {
+        action: 'Xác nhận tiền mặt',
+        title: 'Xác nhận thanh toán tiền mặt?',
+        description: 'Xác nhận khách đã thanh toán tiền mặt trực tiếp tại gara?',
+        success: 'Xác nhận thanh toán tiền mặt thành công!',
+      };
+    }
+
+    return {
+      action: 'Xác nhận chuyển khoản',
+      title: 'Xác nhận thanh toán chuyển khoản?',
+      description: 'Xác nhận gara đã nhận được tiền chuyển khoản cho booking này?',
+      success: 'Xác nhận thanh toán chuyển khoản thành công!',
+    };
+  };
+
+  const getPaymentConfirmButtonStyle = (booking) =>
+    booking?.paymentMethod === 'CASH'
+      ? { background: '#d97706', borderColor: '#d97706' }
+      : { background: '#0f766e', borderColor: '#0f766e' };
+
+  const showLockedBookingMessage = (booking) => {
+    if (booking?.status === 'COMPLETED') {
+      message.warning('Không thể thực hiện thao tác vì đơn hàng đã hoàn thành.');
+      return;
+    }
+
+    if (booking?.status === 'CANCELLED') {
+      message.warning('Không thể thực hiện thao tác vì đơn hàng đã hủy.');
+      return;
+    }
+
+    message.warning('Không thể thực hiện thao tác với đơn hàng này.');
+  };
+
+  const fetchCatalogs = async () => {
     try {
-      await bookingService.cancelBooking(bookingId);
-      message.success('Đã xóa/hủy lịch hẹn thành công!');
+      const [servicesData, partsData] = await Promise.all([
+        serviceService.getAllServices(),
+        partService.getAllParts(),
+      ]);
+
+      setServiceCatalog(servicesData || []);
+      setPartCatalog(partsData || []);
+    } catch (error) {
+      console.error(error);
+      message.error('Lỗi khi tải danh mục dịch vụ/linh kiện!');
+    }
+  };
+
+  const openCancelModal = (booking) => {
+    setBookingToCancel(booking);
+    cancelForm.resetFields();
+    setIsCancelModalVisible(true);
+  };
+
+  const handleCancelBooking = async () => {
+    try {
+      const values = await cancelForm.validateFields();
+      setCancelLoading(true);
+      await bookingService.cancelBooking(bookingToCancel.id, values.cancelReason);
+      message.success('Hủy lịch hẹn thành công!');
+      setIsCancelModalVisible(false);
       fetchBookings();
     } catch (error) {
-       message.error('Lỗi khi hủy lịch hẹn!');
+      if (error?.errorFields) return;
+      message.error('Lỗi khi hủy lịch hẹn!');
+    } finally {
+      setCancelLoading(false);
+    }
+  };
+
+  const handleMarkArrived = async (bookingId) => {
+    try {
+      await bookingService.markArrived(bookingId);
+      message.success('Đã xác nhận khách tới cửa hàng!');
+      fetchBookings();
+    } catch {
+      message.error('Lỗi khi cập nhật trạng thái khách tới!');
+    }
+  };
+
+  const openStartModal = (booking) => {
+    setBookingToStart(booking);
+    startBookingForm.setFieldsValue({
+      vehicleConditionBeforeRepair: booking?.vehicleConditionBeforeRepair || '',
+    });
+    setIsStartModalVisible(true);
+  };
+
+  const handleStartBooking = async () => {
+    try {
+      const values = await startBookingForm.validateFields();
+      setStartLoading(true);
+      await bookingService.startBooking(bookingToStart.id, values.vehicleConditionBeforeRepair);
+      message.success('Đã bắt đầu xử lý xe!');
+      setIsStartModalVisible(false);
+      startBookingForm.resetFields();
+      await fetchBookings();
+      if (bookingDetail?.id === bookingToStart?.id) {
+        await refreshBookingDetail(bookingToStart.id);
+      }
+      setBookingToStart(null);
+    } catch (error) {
+      if (error?.errorFields) return;
+      message.error(getApiErrorMessage(error, 'Lỗi khi bắt đầu xử lý xe!'));
+    } finally {
+      setStartLoading(false);
+    }
+  };
+
+  const openDetailModal = async (bookingId) => {
+    setIsDetailModalVisible(true);
+    setDetailLoading(true);
+    setReviewLoading(true);
+    setBookingReview(null);
+    setReviewReplyText('');
+    try {
+      const [bookingResult, reviewResult] = await Promise.allSettled([
+        bookingService.getBookingById(bookingId),
+        reviewService.getReviewByBooking(bookingId),
+      ]);
+
+      if (bookingResult.status === 'rejected') {
+        throw bookingResult.reason;
+      }
+
+      const data = bookingResult.value;
+      setBookingDetail(data);
+      setServiceToAddId(undefined);
+
+      if (reviewResult.status === 'fulfilled') {
+        setBookingReview(reviewResult.value);
+        setReviewReplyText(reviewResult.value.adminReply || '');
+      } else if (reviewResult.reason?.response?.status !== 404) {
+        message.warning('Không tải được đánh giá của đơn hàng.');
+      }
+
+      partForm.resetFields();
+    } catch (error) {
+      console.error('Open booking detail failed:', error);
+      message.error(getApiErrorMessage(error, 'Lỗi khi tải chi tiết lịch hẹn!'));
+      setIsDetailModalVisible(false);
+    } finally {
+      setDetailLoading(false);
+      setReviewLoading(false);
+    }
+  };
+
+  const refreshBookingDetail = async (bookingId) => {
+    const data = await bookingService.getBookingById(bookingId);
+    setBookingDetail(data);
+    setServiceToAddId(undefined);
+    await fetchBookings();
+    return data;
+  };
+
+  const handleAddService = async () => {
+    if (!bookingDetail) return;
+    if (isLockedBooking(bookingDetail)) {
+      showLockedBookingMessage(bookingDetail);
+      return;
+    }
+
+    if (!serviceToAddId) {
+      message.warning('Vui lòng chọn dịch vụ cần thêm!');
+      return;
+    }
+
+    setBookingItemLoading(true);
+    try {
+      await bookingService.addServiceToBooking(bookingDetail.id, serviceToAddId);
+      await refreshBookingDetail(bookingDetail.id);
+      message.success('Đã thêm dịch vụ vào lịch hẹn!');
+    } catch {
+      message.error('Lỗi khi thêm dịch vụ!');
+    } finally {
+      setBookingItemLoading(false);
+    }
+  };
+
+  const handleRemoveService = async (serviceName) => {
+    if (isLockedBooking(bookingDetail)) {
+      showLockedBookingMessage(bookingDetail);
+      return;
+    }
+
+    const service = serviceCatalog.find((item) => item.name === serviceName);
+
+    if (!bookingDetail || !service) {
+      message.warning('Không tìm thấy dịch vụ tương ứng để xóa!');
+      return;
+    }
+
+    setBookingItemLoading(true);
+    try {
+      await bookingService.removeServiceFromBooking(bookingDetail.id, service.id);
+      await refreshBookingDetail(bookingDetail.id);
+      message.success('Đã xóa dịch vụ khỏi lịch hẹn!');
+    } catch {
+      message.error('Lỗi khi xóa dịch vụ!');
+    } finally {
+      setBookingItemLoading(false);
+    }
+  };
+
+  const handleAddPart = async () => {
+    if (!bookingDetail) return;
+    if (isLockedBooking(bookingDetail)) {
+      showLockedBookingMessage(bookingDetail);
+      return;
+    }
+
+    try {
+      const values = await partForm.validateFields();
+      setBookingItemLoading(true);
+      await bookingService.addPartToBooking(bookingDetail.id, values.partId, values.quantity);
+      await refreshBookingDetail(bookingDetail.id);
+      partForm.resetFields();
+      message.success('Đã thêm linh kiện vào lịch hẹn!');
+    } catch (error) {
+      if (error?.errorFields) return;
+      message.error('Lỗi khi thêm linh kiện!');
+    } finally {
+      setBookingItemLoading(false);
+    }
+  };
+
+  const handleUpdatePartQuantity = async () => {
+    if (!bookingDetail) return;
+    if (isLockedBooking(bookingDetail)) {
+      showLockedBookingMessage(bookingDetail);
+      return;
+    }
+
+    try {
+      const values = await partForm.validateFields();
+      setBookingItemLoading(true);
+      await bookingService.updatePartInBooking(bookingDetail.id, values.partId, values.quantity);
+      await refreshBookingDetail(bookingDetail.id);
+      message.success('Đã cập nhật số lượng linh kiện!');
+    } catch (error) {
+      if (error?.errorFields) return;
+      message.error('Lỗi khi cập nhật số lượng linh kiện!');
+    } finally {
+      setBookingItemLoading(false);
+    }
+  };
+
+  const renderManageableServiceTags = () => {
+    if (!bookingDetail?.serviceNames || bookingDetail.serviceNames.length === 0) {
+      return <span style={{ color: '#8c8c8c' }}>Chưa chọn dịch vụ</span>;
+    }
+
+    return (
+      <Space size={[4, 4]} wrap>
+        {bookingDetail.serviceNames.map((name) => (
+          <Tag
+            key={name}
+            color="processing"
+            closable
+            onClose={(event) => {
+              event.preventDefault();
+              handleRemoveService(name);
+            }}
+            style={{ marginInlineEnd: 0 }}
+          >
+            {name}
+          </Tag>
+        ))}
+      </Space>
+    );
+  };
+
+  const renderManageablePartTags = () => {
+    if (!bookingDetail?.partNames || bookingDetail.partNames.length === 0) {
+      return <span style={{ color: '#8c8c8c' }}>Chưa có linh kiện</span>;
+    }
+
+    return (
+      <Space size={[4, 4]} wrap>
+        {bookingDetail.partNames.map((name) => (
+          <Tag
+            key={name}
+            color="geekblue"
+            closable
+            onClose={(event) => {
+              event.preventDefault();
+              handleRemovePart(name);
+            }}
+            style={{ marginInlineEnd: 0 }}
+          >
+            {name}
+          </Tag>
+        ))}
+      </Space>
+    );
+  };
+
+  const handleRemovePart = async (partName) => {
+    if (isLockedBooking(bookingDetail)) {
+      showLockedBookingMessage(bookingDetail);
+      return;
+    }
+
+    const part = partCatalog.find((item) => item.name === partName);
+
+    if (!bookingDetail || !part) {
+      message.warning('Không tìm thấy linh kiện tương ứng để xóa!');
+      return;
+    }
+
+    setBookingItemLoading(true);
+    try {
+      await bookingService.removePartFromBooking(bookingDetail.id, part.id);
+      await refreshBookingDetail(bookingDetail.id);
+      message.success('Đã xóa linh kiện khỏi lịch hẹn!');
+    } catch {
+      message.error('Lỗi khi xóa linh kiện!');
+    } finally {
+      setBookingItemLoading(false);
     }
   };
 
@@ -112,16 +640,69 @@ const Bookings = () => {
       await bookingService.completeBooking(bookingId);
       message.success('Đánh dấu hoàn thành lịch sửa xe thành công!');
       fetchBookings();
-    } catch (error) {
+    } catch {
       message.error('Lỗi khi hoàn thành lịch hẹn!');
+    }
+  };
+
+  const handleConfirmPayment = async (booking) => {
+    const bookingId = booking?.id;
+    if (!bookingId) return;
+
+    setPaymentConfirmingId(bookingId);
+    try {
+      if (booking.paymentMethod === 'CASH') {
+        await paymentService.confirmCashPayment(bookingId);
+      } else {
+        await paymentService.confirmBankTransferPayment(bookingId);
+      }
+      message.success(getPaymentConfirmText(booking).success);
+      await fetchBookings();
+      if (bookingDetail?.id === bookingId) {
+        await refreshBookingDetail(bookingId);
+      }
+    } catch (error) {
+      message.error(getApiErrorMessage(error, 'Lỗi khi xác nhận thanh toán!'));
+    } finally {
+      setPaymentConfirmingId(null);
+    }
+  };
+
+  const handleReplyToReview = async () => {
+    if (!bookingReview) return;
+
+    setReviewReplyLoading(true);
+    try {
+      const updatedReview = await reviewService.replyToReview(bookingReview.id, reviewReplyText);
+      setBookingReview(updatedReview);
+      setReviewReplyText(updatedReview.adminReply || '');
+      message.success('Đã gửi phản hồi đánh giá!');
+    } catch (error) {
+      message.error(getApiErrorMessage(error, 'Lỗi khi gửi phản hồi đánh giá!'));
+    } finally {
+      setReviewReplyLoading(false);
     }
   };
   
   // Logic to show confirm modal
-  const openConfirmModal = (booking) => {
+  const openConfirmModal = async (booking) => {
     setBookingToConfirm(booking);
+    setMechanicModalMode('confirm');
     setSelectedMechanicId(undefined);
+    setMechanics([]);
     setIsConfirmModalVisible(true);
+    await fetchMechanicsByBookingBranch(booking);
+  };
+
+  const openReassignModal = async (booking) => {
+    setBookingToConfirm(booking);
+    setMechanicModalMode('reassign');
+    setSelectedMechanicId(undefined);
+    setMechanics([]);
+    setIsConfirmModalVisible(true);
+    const branchMechanics = await fetchMechanicsByBookingBranch(booking);
+    const currentMechanic = branchMechanics.find((mechanic) => mechanic.fullName === booking.mechanicName);
+    setSelectedMechanicId(booking.mechanic?.id || booking.mechanicId || currentMechanic?.id);
   };
   
   const handleConfirmBooking = async () => {
@@ -131,12 +712,21 @@ const Bookings = () => {
     }
     setConfirmLoading(true);
     try {
-      await bookingService.confirmBooking(bookingToConfirm.id, selectedMechanicId);
-      message.success('Xác nhận lịch hẹn thành công!');
+      if (mechanicModalMode === 'reassign') {
+        await bookingService.reassignMechanic(bookingToConfirm.id, selectedMechanicId);
+        message.success('Đổi thợ phụ trách thành công!');
+      } else {
+        await bookingService.confirmBooking(bookingToConfirm.id, selectedMechanicId);
+        message.success('Xác nhận lịch hẹn thành công!');
+      }
       setIsConfirmModalVisible(false);
       fetchBookings();
     } catch (error) {
-      message.error('Lỗi khi xác nhận lịch hẹn!');
+      message.error(
+        mechanicModalMode === 'reassign'
+          ? getApiErrorMessage(error, 'Lỗi khi đổi thợ!')
+          : getApiErrorMessage(error, 'Lỗi khi xác nhận lịch hẹn!')
+      );
     } finally {
       setConfirmLoading(false);
     }
@@ -145,13 +735,14 @@ const Bookings = () => {
   const statusConfig = {
     PENDING: { color: 'orange', text: 'Chờ xử lý' },
     CONFIRMED: { color: 'blue', text: 'Đã xác nhận' },
+    ARRIVED: { color: 'cyan', text: 'Khách đã tới' },
+    IN_PROGRESS: { color: 'processing', text: 'Đang sửa' },
     COMPLETED: { color: 'green', text: 'Hoàn thành' },
     CANCELLED: { color: 'red', text: 'Đã hủy' },
   };
 
   const paymentMethodConfig = {
     CASH: { color: 'default', text: 'Tiền mặt' },
-    MOMO: { color: 'magenta', text: 'MoMo' },
     BANK_TRANSFER: { color: 'geekblue', text: 'Chuyển khoản' },
   };
 
@@ -167,6 +758,16 @@ const Bookings = () => {
     return new Date(value).toLocaleString('vi-VN');
   };
 
+  const formatDuration = (start, end) => {
+    if (!start || !end) return 'Chưa hoàn tất';
+    const diffMinutes = Math.max(0, Math.round((new Date(end) - new Date(start)) / 60000));
+    const hours = Math.floor(diffMinutes / 60);
+    const minutes = diffMinutes % 60;
+    if (hours > 0 && minutes > 0) return `${hours} giờ ${minutes} phút`;
+    if (hours > 0) return `${hours} giờ`;
+    return `${minutes} phút`;
+  };
+
   const renderTagList = (items, emptyText = 'Chưa có') => {
     if (!items || items.length === 0) {
       return <span style={{ color: '#8c8c8c' }}>{emptyText}</span>;
@@ -180,6 +781,90 @@ const Bookings = () => {
           </Tag>
         ))}
       </Space>
+    );
+  };
+
+  const inferVehicleType = (record) => {
+    const explicitType = record.vehicleType || record.vehicle?.type;
+    if (explicitType) return explicitType;
+
+    const plate = record.vehicle?.licensePlate || record.licensePlate || '';
+    const vehicleName = `${record.vehicleName || ''} ${record.vehicle?.name || ''} ${record.brand || ''}`.toLowerCase();
+    const likelyCarBrands = [
+      'bmw',
+      'toyota',
+      'honda city',
+      'hyundai',
+      'kia',
+      'mazda',
+      'ford',
+      'mercedes',
+      'audi',
+      'vinfast',
+      'mitsubishi',
+      'nissan',
+      'suzuki ertiga',
+      'chevrolet',
+    ];
+
+    if (/^[0-9]{2}[A-Z]-[0-9]{4,5}$/i.test(plate) || likelyCarBrands.some((brand) => vehicleName.includes(brand))) {
+      return 'CAR';
+    }
+
+    if (/^[0-9]{2}[A-Z][0-9A-Z]-[0-9]{4,5}$/i.test(plate)) {
+      return 'MOTORBIKE';
+    }
+
+    return undefined;
+  };
+
+  const renderBookingReview = () => {
+    if (reviewLoading) {
+      return <div className="review-empty">Đang tải đánh giá...</div>;
+    }
+
+    if (!bookingReview) {
+      return <div className="review-empty">Khách hàng chưa đánh giá đơn hàng này.</div>;
+    }
+
+    return (
+      <div className="booking-review-box">
+        <div className="review-header">
+          <div>
+            <div className="review-title">Đánh giá của khách hàng</div>
+            <Rate disabled value={bookingReview.rating || 0} />
+          </div>
+          <span className="review-time">{formatDateTime(bookingReview.createdAt)}</span>
+        </div>
+
+        <div className="review-comment">
+          {bookingReview.comment || 'Khách hàng đã đánh giá nhưng chưa để lại bình luận.'}
+        </div>
+
+        {bookingReview.adminReply && (
+          <div className="admin-reply-box">
+            <div className="admin-reply-title">Phản hồi hiện tại</div>
+            <div>{bookingReview.adminReply}</div>
+            {bookingReview.repliedAt && (
+              <div className="review-time">Phản hồi lúc {formatDateTime(bookingReview.repliedAt)}</div>
+            )}
+          </div>
+        )}
+
+        <Input.TextArea
+          rows={4}
+          maxLength={2000}
+          showCount
+          value={reviewReplyText}
+          onChange={(event) => setReviewReplyText(event.target.value)}
+          placeholder="Nhập phản hồi cho đánh giá của khách hàng"
+        />
+        <div className="review-actions">
+          <Button type="primary" loading={reviewReplyLoading} onClick={handleReplyToReview}>
+            {bookingReview.adminReply ? 'Cập nhật phản hồi' : 'Gửi phản hồi'}
+          </Button>
+        </div>
+      </div>
     );
   };
 
@@ -216,8 +901,9 @@ const Bookings = () => {
       render: (_, record) => {
         const plate = record.vehicle?.licensePlate || record.licensePlate || 'Chưa rõ';
         const vehicleName = record.vehicleName || record.vehicle?.name || record.brand || '';
-        const type = record.vehicle?.type || 'MOTORBIKE';
+        const type = inferVehicleType(record);
         const isCar = type === 'CAR';
+        const vehicleTypeLabel = type === 'CAR' ? 'Ô tô' : type === 'MOTORBIKE' ? 'Xe máy' : 'Chưa rõ loại xe';
         return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
             <div className="license-plate" style={{ fontSize: '14px', fontWeight: 600, color: '#262626' }}>
@@ -225,7 +911,7 @@ const Bookings = () => {
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               {isCar ? <Car size={14} color="#52c41a" /> : <Bike size={14} color="#fa8c16" />}
-              <span style={{ fontSize: '12px', color: '#8c8c8c' }}>{isCar ? 'Ô tô' : 'Xe máy'}</span>
+              <span style={{ fontSize: '12px', color: '#8c8c8c' }}>{vehicleTypeLabel}</span>
             </div>
             <div className="brand" style={{ fontSize: '12px', color: '#bfbfbf', fontStyle: 'italic' }}>
               {vehicleName}
@@ -264,13 +950,13 @@ const Bookings = () => {
     },
     {
       title: 'Thời gian đặt',
-      dataIndex: 'bookingTime',
-      key: 'bookingTime',
+      dataIndex: 'createdAt',
+      key: 'createdAt',
       width: 160,
-      render: (time) => (
+      render: (_, record) => (
         <div className="time-cell">
           <Calendar size={14} />
-          <span>{formatDateTime(time)}</span>
+          <span>{formatDateTime(record.createdAt || record.bookingTime)}</span>
         </div>
       ),
     },
@@ -323,7 +1009,7 @@ const Bookings = () => {
       key: 'totalAmount',
       width: 130,
       render: (_, record) => {
-        const amt = record.totalAmount || record.price || 0;
+        const amt = Number(record.totalAmount || record.price || 0);
         return (
           <div className="amount-cell">
             <DollarSign size={14} />
@@ -361,12 +1047,19 @@ const Bookings = () => {
     {
       title: 'Thao tác',
       key: 'actions',
-      width: 170,
+      width: 220,
       fixed: 'right',
       render: (_, record) => {
         const s = record.status || 'PENDING';
         return (
-          <Space>
+          <Space size={6} wrap>
+            <Tooltip title="Xem chi tiết">
+              <Button
+                icon={<EyeOutlined style={{ fontSize: '18px' }} />}
+                onClick={() => openDetailModal(record.id)}
+              />
+            </Tooltip>
+
             {s === 'PENDING' && (
               <Tooltip title="Xác nhận & Giao thợ">
                 <Button 
@@ -376,54 +1069,140 @@ const Bookings = () => {
                 />
               </Tooltip>
             )}
+
+            {['CONFIRMED', 'ARRIVED', 'IN_PROGRESS'].includes(s) && (
+              <Tooltip title="Đổi thợ phụ trách">
+                <Button
+                  icon={<SwapOutlined style={{ fontSize: '18px' }} />}
+                  onClick={() => openReassignModal(record)}
+                />
+              </Tooltip>
+            )}
+
             {s === 'CONFIRMED' && (
               <Popconfirm
-                title="Hoàn thành lịch"
-                description="Đánh dấu lịch này đã sửa xong chưa?"
-                onConfirm={() => handleCompleteBooking(record.id)}
+                title="Khách đã tới?"
+                description="Xác nhận khách hàng đã tới cửa hàng?"
+                onConfirm={() => handleMarkArrived(record.id)}
+                okText="Xác nhận"
+                cancelText="Thoát"
               >
-                <Tooltip title="Đánh dấu Hoàn thành">
+                <Tooltip title="Khách đã tới">
                   <Button 
                     type="primary" 
-                    className="btn-success"
-                    style={{ background: '#52c41a', borderColor: '#52c41a' }}
-                    icon={<ToolOutlined style={{ fontSize: '18px' }} />} 
+                    style={{ background: '#13c2c2', borderColor: '#13c2c2' }}
+                    icon={<LoginOutlined style={{ fontSize: '18px' }} />} 
                   />
                 </Tooltip>
               </Popconfirm>
             )}
-            
-            {(s === 'PENDING' || s === 'CONFIRMED') && (
+
+            {s === 'ARRIVED' && (
+              <Tooltip title="Bắt đầu sửa">
+                <Button
+                  type="primary"
+                  icon={<PlayCircleOutlined style={{ fontSize: '18px' }} />}
+                  onClick={() => openStartModal(record)}
+                />
+              </Tooltip>
+            )}
+
+            {s === 'IN_PROGRESS' && (
               <Popconfirm
-                title="Hủy đặt lịch"
-                description="Bạn có chắc muốn hủy đặt lịch này không?"
-                onConfirm={() => handleDeleteBooking(record.id)}
-                okText="Hủy lịch"
+                title="Hoàn thành lịch"
+                description="Đánh dấu lịch này đã sửa xong chưa?"
+                onConfirm={() => handleCompleteBooking(record.id)}
+                okText="Hoàn thành"
                 cancelText="Thoát"
               >
-                <Tooltip title="Hủy/Xóa đơn">
-                  <Button type="primary" danger icon={<CloseCircleOutlined style={{ fontSize: '18px' }} />} />
+                <Tooltip title="Đánh dấu hoàn thành">
+                  <Button
+                    type="primary"
+                    className="btn-success"
+                    style={{ background: '#52c41a', borderColor: '#52c41a' }}
+                    icon={<ToolOutlined style={{ fontSize: '18px' }} />}
+                  />
                 </Tooltip>
               </Popconfirm>
             )}
 
-            {(s === 'COMPLETED' || s === 'CANCELLED') && (
-               <Popconfirm
-               title="Xóa bản ghi"
-               description="Bạn có chắc muốn xóa vĩnh viễn không?"
-               onConfirm={() => handleDeleteBooking(record.id)}
-               okButtonProps={{ danger: true }}
-             >
-               <Tooltip title="Xóa">
-                 <Button type="text" danger icon={<DeleteOutlined style={{ fontSize: '18px' }} />} />
-               </Tooltip>
-             </Popconfirm>
+            {['COMPLETED', 'CANCELLED'].includes(s) && (
+              <>
+                {canConfirmPayment(record) && (
+                  <Popconfirm
+                    title={getPaymentConfirmText(record).title}
+                    description={getPaymentConfirmText(record).description}
+                    onConfirm={() => handleConfirmPayment(record)}
+                    okText="Xác nhận"
+                    cancelText="Thoát"
+                  >
+                    <Tooltip title={getPaymentConfirmText(record).action}>
+                      <Button
+                        type="primary"
+                        loading={paymentConfirmingId === record.id}
+                        style={getPaymentConfirmButtonStyle(record)}
+                        icon={<DollarCircleOutlined style={{ fontSize: '18px' }} />}
+                      />
+                    </Tooltip>
+                  </Popconfirm>
+                )}
+                <Tooltip title="Cập nhật">
+                  <Button
+                    icon={<EditOutlined style={{ fontSize: '18px' }} />}
+                    onClick={() => showLockedBookingMessage(record)}
+                  />
+                </Tooltip>
+                <Tooltip title="Xóa">
+                  <Button
+                    type="primary"
+                    danger
+                    icon={<DeleteOutlined style={{ fontSize: '18px' }} />}
+                    onClick={() => showLockedBookingMessage(record)}
+                  />
+                </Tooltip>
+              </>
+            )}
+            
+            {['PENDING', 'CONFIRMED', 'ARRIVED', 'IN_PROGRESS'].includes(s) && (
+              <Tooltip title="Hủy lịch">
+                <Button
+                  type="primary"
+                  danger
+                  icon={<CloseCircleOutlined style={{ fontSize: '18px' }} />}
+                  onClick={() => openCancelModal(record)}
+                />
+              </Tooltip>
             )}
           </Space>
         );
       },
     },
   ];
+
+  const branchOptions = branches.map((branch) => {
+    const distanceLabel = getBranchDistanceLabel(branch);
+
+    return {
+      value: branch.id,
+      label: (
+        <div className="branch-select-option">
+          <div className="branch-select-option__top">
+            <span className="branch-select-option__name">{branch.name}</span>
+            {nearestBranchId === branch.id ? (
+              <Tag color="green" style={{ marginInlineEnd: 0 }}>
+                Gần nhất
+              </Tag>
+            ) : null}
+          </div>
+          <div className="branch-select-option__meta">{branch.address}</div>
+          {distanceLabel ? (
+            <div className="branch-select-option__distance">{distanceLabel}</div>
+          ) : null}
+        </div>
+      ),
+      searchLabel: `${branch.name} ${branch.address || ''}`.toLowerCase(),
+    };
+  });
 
   return (
     <div className="bookings-page">
@@ -434,130 +1213,451 @@ const Bookings = () => {
 
       <Card className="bookings-card" bordered={false}>
         <div className="bookings-toolbar">
-          <Row gutter={[16, 16]} align="middle">
-            <Col xs={24} sm={12} md={8}>
+          <div className="booking-toolbar-header">
+            <div>
+              <h2>Bộ lọc đặt lịch</h2>
+              <p>Tìm nhanh theo khách hàng, biển số, chi nhánh hoặc trạng thái xử lý.</p>
+            </div>
+          </div>
+
+          <div className="booking-filter-grid">
+            <div className="booking-filter-item booking-filter-search">
+              <span className="booking-filter-label">Tìm kiếm</span>
               <Input
-                placeholder="Tìm kiếm theo khách hàng, biển số..."
+                placeholder="Tìm kiếm theo khách hàng, biển số, thợ, dịch vụ..."
                 prefix={<SearchOutlined />}
                 value={searchText}
-                onChange={(e) => setSearchText(e.target.value)}
+                onChange={(e) => {
+                  setSearchText(e.target.value);
+                  resetBookingPagination();
+                }}
                 allowClear
               />
-            </Col>
+            </div>
 
-            <Col xs={24} sm={12} md={5}>
+            <div className="booking-filter-item">
+              <span className="booking-filter-label">Trạng thái</span>
               <Select
                 placeholder="Trạng thái"
                 value={statusFilter}
-                onChange={setStatusFilter}
+                onChange={(value) => {
+                  setStatusFilter(value);
+                  resetBookingPagination();
+                }}
                 allowClear
                 style={{ width: '100%' }}
                 options={[
                   { label: 'Chờ xử lý', value: 'PENDING' },
                   { label: 'Đã xác nhận', value: 'CONFIRMED' },
+                  { label: 'Khách đã tới', value: 'ARRIVED' },
+                  { label: 'Đang sửa', value: 'IN_PROGRESS' },
                   { label: 'Hoàn thành', value: 'COMPLETED' },
                   { label: 'Đã hủy', value: 'CANCELLED' },
                 ]}
               />
-            </Col>
+            </div>
 
-            <Col xs={24} sm={12} md={5}>
-              <Select
-                placeholder="Chi nhánh"
-                value={branchFilter}
-                onChange={setBranchFilter}
-                allowClear
-                style={{ width: '100%' }}
-                options={branches.map((b) => ({ label: b.name, value: b.id }))}
-              />
-            </Col>
+            <div className="booking-filter-item booking-filter-branch">
+              <span className="booking-filter-label">Chi nhánh</span>
+              <div className="booking-branch-controls">
+                <Select
+                  placeholder="Chi nhánh"
+                  value={branchFilter}
+                  onChange={(value) => {
+                    if (isBranchScopedAdmin) return;
+                    setBranchFilter(value);
+                    resetBookingPagination();
+                  }}
+                  allowClear={!isBranchScopedAdmin}
+                  disabled={isBranchScopedAdmin}
+                  showSearch
+                  optionLabelProp="label"
+                  filterOption={(input, option) => (option?.searchLabel ?? '').includes(input.toLowerCase())}
+                  style={{ width: '100%' }}
+                  options={branchOptions}
+                />
+                {!isBranchScopedAdmin ? (
+                  <Button
+                    icon={<AimOutlined />}
+                    loading={branchLocationLoading}
+                    onClick={locateNearbyBranches}
+                    style={{ width: '100%' }}
+                  >
+                    Sắp xếp theo vị trí hiện tại
+                  </Button>
+                ) : null}
+              </div>
+            </div>
             
             {/* We removed the explicit "Add Booking" button here 
                 because Admins no longer manually create them. */}
-          </Row>
+          </div>
+
+          {branchLocationHint ? (
+            <div className={`branch-location-hint ${nearestBranchId ? '' : 'branch-location-hint--warning'}`}>
+              <EnvironmentOutlined />
+              <span>{branchLocationHint}</span>
+            </div>
+          ) : null}
         </div>
 
-        <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-          <Col xs={12} sm={6} md={4}>
+        <div className="booking-stats-grid">
+          <div>
             <div className="stat-item">
-              <div className="stat-value">{bookings.length}</div>
+              <div className="stat-value">{bookingPagination.total}</div>
               <div className="stat-label">Tổng đơn</div>
             </div>
-          </Col>
-          <Col xs={12} sm={6} md={5}>
+          </div>
+          <div>
             <div className="stat-item stat-pending">
               <div className="stat-value">
                 {bookings.filter((b) => (b.status || 'PENDING') === 'PENDING').length}
               </div>
               <div className="stat-label">Chờ xử lý</div>
             </div>
-          </Col>
-          <Col xs={12} sm={6} md={5}>
+          </div>
+          <div>
             <div className="stat-item stat-confirmed">
               <div className="stat-value">
                 {bookings.filter((b) => b.status === 'CONFIRMED').length}
               </div>
               <div className="stat-label">Đã xác nhận</div>
             </div>
-          </Col>
-          <Col xs={12} sm={6} md={5}>
+          </div>
+          <div>
+            <div className="stat-item">
+              <div className="stat-value">
+                {bookings.filter((b) => b.status === 'ARRIVED').length}
+              </div>
+              <div className="stat-label">Đã tới</div>
+            </div>
+          </div>
+          <div>
+            <div className="stat-item">
+              <div className="stat-value">
+                {bookings.filter((b) => b.status === 'IN_PROGRESS').length}
+              </div>
+              <div className="stat-label">Đang sửa</div>
+            </div>
+          </div>
+          <div>
             <div className="stat-item stat-completed">
               <div className="stat-value">
                 {bookings.filter((b) => b.status === 'COMPLETED').length}
               </div>
               <div className="stat-label">Hoàn thành</div>
             </div>
-          </Col>
-          <Col xs={12} sm={6} md={5}>
+          </div>
+          <div>
             <div className="stat-item stat-cancelled">
               <div className="stat-value">
                 {bookings.filter((b) => b.status === 'CANCELLED').length}
               </div>
               <div className="stat-label">Đã hủy</div>
             </div>
-          </Col>
-        </Row>
+          </div>
+        </div>
 
-        <Table
-          columns={columns}
-          dataSource={filteredBookings}
-          loading={loading}
-          rowKey="id"
-          pagination={{
-            pageSize: 10,
-            showTotal: (total) => `Tổng ${total} đặt lịch`,
-            showSizeChanger: true,
-            showQuickJumper: true,
-          }}
-          scroll={{ x: 2600 }}
-        />
+        <div className="booking-table-panel">
+          <div className="booking-table-heading">
+            <div>
+              <h2>Danh sách đặt lịch</h2>
+              <p>{bookingPagination.total} lịch hẹn trong hệ thống</p>
+            </div>
+          </div>
+
+          <Table
+            columns={columns}
+            dataSource={bookings}
+            loading={loading}
+            rowKey="id"
+            pagination={{
+              current: bookingPagination.current,
+              pageSize: bookingPagination.pageSize,
+              total: bookingPagination.total,
+              showTotal: (total) => `Tổng ${total} đặt lịch`,
+              showSizeChanger: true,
+              showQuickJumper: true,
+            }}
+            onChange={(pagination) => {
+              setBookingPagination((prev) => ({
+                ...prev,
+                current: pagination.current || 1,
+                pageSize: pagination.pageSize || prev.pageSize,
+              }));
+            }}
+            scroll={{ x: 2600 }}
+          />
+        </div>
       </Card>
       
       {/* Modal Confirm Booking */}
       <Modal
-        title="Xác nhận lịch hẹn & Phân công thợ"
+        title={mechanicModalMode === 'reassign' ? 'Đổi thợ phụ trách' : 'Xác nhận lịch hẹn & Phân công thợ'}
         open={isConfirmModalVisible}
         onOk={handleConfirmBooking}
         onCancel={() => setIsConfirmModalVisible(false)}
         confirmLoading={confirmLoading}
-        okText="Xác nhận"
+        okText={mechanicModalMode === 'reassign' ? 'Đổi thợ' : 'Xác nhận'}
         cancelText="Bỏ qua"
       >
-        <p>Chọn thợ sửa xe cho đơn hàng này:</p>
+        <p>{mechanicModalMode === 'reassign' ? 'Chọn thợ mới cho đơn hàng này:' : 'Chọn thợ sửa xe cho đơn hàng này:'}</p>
+        {bookingToConfirm ? (
+          <p style={{ marginTop: -4, color: '#64748b' }}>
+            Chi nhánh: {bookingToConfirm.branchName || bookingToConfirm.branch?.name || 'N/A'}
+          </p>
+        ) : null}
         <Select 
             placeholder="-- Chọn thợ rảnh --" 
             style={{ width: '100%' }}
             value={selectedMechanicId}
             onChange={setSelectedMechanicId}
             allowClear
+            loading={mechanicsLoading}
+            disabled={mechanicsLoading}
+            notFoundContent={mechanicsLoading ? 'Đang tải thợ...' : 'Không có thợ rảnh tại chi nhánh này'}
             options={mechanics
                 .filter(m => m.status === 'ACTIVE') // Khuyên dùng thợ ACTIVE
                 .map(m => ({
-                    label: `${m.fullName} - ${m.branch?.name || ''}`,
+                    label: `${m.fullName}${m.specialization ? ` - ${m.specialization}` : ''}`,
                     value: m.id
                 }))
             }
         />
+      </Modal>
+
+      <Modal
+        title="Hủy lịch hẹn"
+        open={isCancelModalVisible}
+        onOk={handleCancelBooking}
+        onCancel={() => setIsCancelModalVisible(false)}
+        confirmLoading={cancelLoading}
+        okText="Hủy lịch"
+        okButtonProps={{ danger: true }}
+        cancelText="Thoát"
+      >
+        <Form form={cancelForm} layout="vertical">
+          <Form.Item
+            label="Lý do hủy"
+            name="cancelReason"
+            rules={[
+              { required: true, whitespace: true, message: 'Vui lòng nhập lý do hủy' },
+              { max: 500, message: 'Lý do hủy không vượt quá 500 ký tự' },
+            ]}
+          >
+            <Input.TextArea rows={4} maxLength={500} showCount placeholder="Nhập lý do hủy lịch hẹn" />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title="Ghi nhận tình trạng xe trước sửa"
+        open={isStartModalVisible}
+        onOk={handleStartBooking}
+        onCancel={() => {
+          setIsStartModalVisible(false);
+          setBookingToStart(null);
+          startBookingForm.resetFields();
+        }}
+        confirmLoading={startLoading}
+        okText="Bắt đầu sửa"
+        cancelText="Thoát"
+        destroyOnHidden
+      >
+        <Form form={startBookingForm} layout="vertical">
+          <Form.Item
+            label="Tình trạng xe trước khi sửa"
+            name="vehicleConditionBeforeRepair"
+            rules={[
+              { required: true, whitespace: true, message: 'Vui lòng nhập tình trạng xe trước khi sửa' },
+              { max: 2000, message: 'Mô tả không vượt quá 2000 ký tự' },
+            ]}
+          >
+            <Input.TextArea
+              rows={5}
+              maxLength={2000}
+              showCount
+              placeholder="Ví dụ: Xe của bạn bị hư bạc đạn, đèn chiếu hậu không sáng."
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        className="detail-modal"
+        title="Chi tiết lịch hẹn"
+        open={isDetailModalVisible}
+        onCancel={() => setIsDetailModalVisible(false)}
+        footer={null}
+        width={820}
+        loading={detailLoading}
+      >
+        {bookingDetail && (
+          <Descriptions bordered column={1} size="small">
+            <Descriptions.Item label="Mã lịch hẹn">#{bookingDetail.id}</Descriptions.Item>
+            <Descriptions.Item label="Khách hàng">
+              {bookingDetail.vehicleOwnerName || bookingDetail.customerName || 'N/A'}
+            </Descriptions.Item>
+            <Descriptions.Item label="Số điện thoại">
+              {bookingDetail.customerPhone || 'N/A'}
+            </Descriptions.Item>
+            <Descriptions.Item label="Phương tiện">
+              {bookingDetail.vehicleName || 'N/A'}
+            </Descriptions.Item>
+            <Descriptions.Item label="Biển số">
+              {bookingDetail.licensePlate || 'N/A'}
+            </Descriptions.Item>
+            <Descriptions.Item label="Chi nhánh">
+              {bookingDetail.branchName || 'Chưa phân bổ'}
+            </Descriptions.Item>
+            <Descriptions.Item label="Thợ sửa">
+              {bookingDetail.mechanicName || 'Chưa phân công'}
+            </Descriptions.Item>
+            <Descriptions.Item label="Trạng thái">
+              <Tag color={(statusConfig[bookingDetail.status] || statusConfig.PENDING).color}>
+                {(statusConfig[bookingDetail.status] || statusConfig.PENDING).text}
+              </Tag>
+            </Descriptions.Item>
+            <Descriptions.Item label="Thời gian đặt">
+              {formatDateTime(bookingDetail.createdAt || bookingDetail.bookingTime)}
+            </Descriptions.Item>
+            <Descriptions.Item label="Khung giờ hẹn">
+              {formatDateTime(bookingDetail.arrivalSlotStart)} - {formatDateTime(bookingDetail.arrivalSlotEnd)}
+            </Descriptions.Item>
+            <Descriptions.Item label="Giờ nhận xe">
+              {formatDateTime(bookingDetail.arrivalTime)}
+            </Descriptions.Item>
+            <Descriptions.Item label="Bắt đầu sửa">
+              {formatDateTime(bookingDetail.repairStartTime)}
+            </Descriptions.Item>
+            <Descriptions.Item label="Hoàn tất sửa">
+              {formatDateTime(bookingDetail.repairEndTime)}
+            </Descriptions.Item>
+            <Descriptions.Item label="Thời gian sửa thực tế">
+              {formatDuration(bookingDetail.repairStartTime, bookingDetail.repairEndTime)}
+            </Descriptions.Item>
+            <Descriptions.Item label="Tình trạng xe trước sửa">
+              {bookingDetail.vehicleConditionBeforeRepair || 'Chưa có'}
+            </Descriptions.Item>
+            <Descriptions.Item label="Dịch vụ">
+              <Space direction="vertical" style={{ width: '100%' }} size={10}>
+                {renderManageableServiceTags()}
+                <Space.Compact style={{ width: '100%' }}>
+                  <Select
+                    showSearch
+                    placeholder="Chọn dịch vụ cần thêm"
+                    optionFilterProp="label"
+                    value={serviceToAddId}
+                    onChange={setServiceToAddId}
+                    disabled={bookingItemLoading}
+                    style={{ width: '100%' }}
+                    options={serviceCatalog
+                      .filter((service) => !bookingDetail.serviceNames?.includes(service.name))
+                      .map((service) => ({
+                        label: `${service.name} - ${Number(service.price || 0).toLocaleString('vi-VN')} đ`,
+                        value: service.id,
+                      }))}
+                  />
+                  <Button
+                    type="primary"
+                    loading={bookingItemLoading}
+                    onClick={handleAddService}
+                  >
+                    Thêm dịch vụ
+                  </Button>
+                </Space.Compact>
+              </Space>
+            </Descriptions.Item>
+            <Descriptions.Item label="Linh kiện">
+              <Space direction="vertical" style={{ width: '100%' }} size={10}>
+                {renderManageablePartTags()}
+                <Form form={partForm} layout="inline">
+                  <Form.Item
+                    name="partId"
+                    rules={[{ required: true, message: 'Chọn linh kiện' }]}
+                    style={{ flex: 1, minWidth: 260, marginBottom: 8 }}
+                  >
+                    <Select
+                      showSearch
+                      placeholder="Chọn linh kiện"
+                      optionFilterProp="label"
+                      disabled={bookingItemLoading}
+                      options={partCatalog.map((part) => ({
+                        label: `${part.name} - tồn ${part.quantity} ${part.unit || ''}`,
+                        value: part.id,
+                      }))}
+                    />
+                  </Form.Item>
+                  <Form.Item
+                    name="quantity"
+                    rules={[{ required: true, message: 'Nhập số lượng' }]}
+                    style={{ width: 130, marginBottom: 8 }}
+                  >
+                    <InputNumber min={1} placeholder="SL" style={{ width: '100%' }} disabled={bookingItemLoading} />
+                  </Form.Item>
+                  <Form.Item style={{ marginBottom: 8 }}>
+                    <Space>
+                      <Button type="primary" loading={bookingItemLoading} onClick={handleAddPart}>
+                        Thêm
+                      </Button>
+                      <Button loading={bookingItemLoading} onClick={handleUpdatePartQuantity}>
+                        Cập nhật SL
+                      </Button>
+                    </Space>
+                  </Form.Item>
+                </Form>
+              </Space>
+            </Descriptions.Item>
+            <Descriptions.Item label="Tổng tiền">
+              {Number(bookingDetail.totalAmount || 0).toLocaleString('vi-VN')} đ
+            </Descriptions.Item>
+            <Descriptions.Item label="Thanh toán">
+              <Space size={[4, 4]} wrap>
+                <span style={{ color: '#8c8c8c' }}>Khách chọn:</span>
+                <Tag color={(paymentMethodConfig[bookingDetail.paymentMethod] || {}).color || 'default'}>
+                  {(paymentMethodConfig[bookingDetail.paymentMethod] || {}).text || bookingDetail.paymentMethod || 'Chưa chọn'}
+                </Tag>
+                <Tag color={(paymentStatusConfig[bookingDetail.paymentStatus] || {}).color || 'default'}>
+                  {(paymentStatusConfig[bookingDetail.paymentStatus] || {}).text || bookingDetail.paymentStatus || 'Chưa rõ'}
+                </Tag>
+                {canConfirmPayment(bookingDetail) && (
+                  <Popconfirm
+                    title={getPaymentConfirmText(bookingDetail).title}
+                    description={getPaymentConfirmText(bookingDetail).description}
+                    onConfirm={() => handleConfirmPayment(bookingDetail)}
+                    okText="Xác nhận"
+                    cancelText="Thoát"
+                  >
+                    <Button
+                      type="primary"
+                      size="small"
+                      loading={paymentConfirmingId === bookingDetail.id}
+                      style={getPaymentConfirmButtonStyle(bookingDetail)}
+                      icon={<DollarCircleOutlined />}
+                    >
+                      {getPaymentConfirmText(bookingDetail).action}
+                    </Button>
+                  </Popconfirm>
+                )}
+              </Space>
+            </Descriptions.Item>
+            {bookingDetail.cancelReason && (
+              <Descriptions.Item label="Lý do hủy">
+                {bookingDetail.cancelReason}
+              </Descriptions.Item>
+            )}
+          </Descriptions>
+        )}
+        {bookingDetail && (
+          <>
+            <Divider />
+            {renderBookingReview()}
+            <Divider />
+            <p style={{ color: '#8c8c8c', marginBottom: 0 }}>
+              Bấm dấu x trên tag để xóa dịch vụ hoặc linh kiện khỏi lịch hẹn.
+            </p>
+          </>
+        )}
       </Modal>
 
     </div>

@@ -1,5 +1,6 @@
 .mechanics-page {
   width: 100%;
+  max-width: 100%;
 }
 
 .page-header {
@@ -21,7 +22,8 @@
 
 .mechanics-card {
   border-radius: 8px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
 }
 
 .mechanics-card .ant-card-body {
@@ -30,8 +32,10 @@
 
 .mechanics-toolbar {
   margin-bottom: 24px;
-  padding-bottom: 24px;
-  border-bottom: 1px solid #f0f0f0;
+  padding: 16px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
 }
 
 .text-right {
@@ -111,6 +115,14 @@
   white-space: nowrap;
 }
 
+.specialization-tag {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
 /* Cell with icon */
 .cell-with-icon {
   display: flex;
@@ -121,6 +133,19 @@
 .cell-with-icon svg {
   color: #1890ff;
   flex-shrink: 0;
+}
+
+.mechanic-detail-name {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-weight: 600;
+}
+
+.mechanic-detail-muted {
+  margin-top: 4px;
+  color: #8c8c8c;
+  font-size: 12px;
 }
 
 /* Experience cell */

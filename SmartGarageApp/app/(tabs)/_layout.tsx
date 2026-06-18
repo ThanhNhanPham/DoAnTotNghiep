@@ -4,17 +4,26 @@ import React from 'react';
 import { HapticTab } from '@/components/haptic-tab';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useUnreadChatCount } from '@/hooks/use-unread-chat-count';
+import { useThemePreference
+ } from '@/contexts/theme-preference';
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
+  const { colorScheme } = useThemePreference();
+  const unreadChatCount = useUnreadChatCount();
 
   return (
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
+        tabBarInactiveTintColor: Colors[colorScheme ?? 'light'].tabIconDefault,
+        tabBarStyle: {
+          backgroundColor: Colors[colorScheme ?? 'light'].background,
+          borderTopColor: colorScheme === 'dark' ? '#1E293B' : '#E2E8F0',
+        },
         headerShown: false,
         tabBarButton: HapticTab,
+        tabBarHideOnKeyboard: true,
       }}>
       <Tabs.Screen
         name="index"
@@ -31,9 +40,19 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="chat"
+        options={{
+          title: 'Chat',
+          tabBarIcon: ({ color }) => (
+            <IconSymbol size={28} name="bubble.left.and.bubble.right.fill" color={color} />
+          ),
+          tabBarBadge: unreadChatCount > 0 ? (unreadChatCount > 99 ? '99+' : unreadChatCount) : undefined,
+        }}
+      />
+      <Tabs.Screen
         name="explore"
         options={{
-          title: 'Khám phá',
+          title: 'AI tư vấn',
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
         }}
       />

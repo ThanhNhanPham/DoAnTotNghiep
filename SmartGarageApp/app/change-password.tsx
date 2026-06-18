@@ -49,8 +49,8 @@ export default function ChangePasswordScreen() {
       return;
     }
 
-    if (newPassword.length < 6) {
-      Alert.alert('Mật khẩu quá ngắn', 'Mật khẩu mới cần có ít nhất 6 ký tự.');
+    if (newPassword.length < 8) {
+      Alert.alert('Mật khẩu quá ngắn', 'Mật khẩu mới cần có ít nhất 8 ký tự.');
       return;
     }
 
@@ -65,6 +65,7 @@ export default function ChangePasswordScreen() {
       await authService.changePassword({
         oldPassword: currentPassword,
         newPassword,
+        confirmNewPassword: confirmPassword,
       });
 
       setCurrentPassword('');
@@ -116,7 +117,7 @@ export default function ChangePasswordScreen() {
               label="Mật khẩu mới"
               value={newPassword}
               onChangeText={setNewPassword}
-              placeholder="Ít nhất 6 ký tự"
+              placeholder="Ít nhất 8 ký tự"
               secureTextEntry={!showNewPassword}
               onToggleVisibility={() => setShowNewPassword((prev) => !prev)}
               isVisible={showNewPassword}

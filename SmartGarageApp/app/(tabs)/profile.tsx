@@ -17,25 +17,48 @@ import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 
 import { useThemePreference } from '@/contexts/theme-preference';
+import { useUnreadNotificationCount } from '@/hooks/use-unread-notification-count';
+import authService, { MembershipTier } from '@/services/authService';
 import vehicleService from '@/services/vehicleService';
 
 type ProfileData = {
   email: string | null;
   fullName: string | null;
+  phone: string | null;
   address: string | null;
   userId: string | null;
+  loyaltyPoints: number;
+  membershipTier: MembershipTier;
 };
 
 const INITIAL_PROFILE: ProfileData = {
   email: null,
   fullName: null,
+  phone: null,
   address: null,
   userId: null,
+  loyaltyPoints: 0,
+  membershipTier: 'REGULAR',
+};
+
+const MEMBERSHIP_LABELS: Record<MembershipTier, string> = {
+  REGULAR: 'Thường',
+  BRONZE: 'Đồng',
+  SILVER: 'Bạc',
+  GOLD: 'Vàng',
+};
+
+const MEMBERSHIP_DISCOUNT_LABELS: Record<MembershipTier, string> = {
+  REGULAR: '0%',
+  BRONZE: '10%',
+  SILVER: '15%',
+  GOLD: '20%',
 };
 
 export default function ProfileScreen() {
   const router = useRouter();
   const { colorScheme, preference, setPreference } = useThemePreference();
+  const unreadNotificationCount = useUnreadNotificationCount();
   const [profile, setProfile] = useState<ProfileData>(INITIAL_PROFILE);
   const [vehicleCount, setVehicleCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -47,10 +70,8 @@ export default function ProfileScreen() {
         setIsRefreshing(true);
       }
 
-      const [email, fullName, address, userId] = await Promise.all([
+      const [email, userId] = await Promise.all([
         AsyncStorage.getItem('userEmail'),
-        AsyncStorage.getItem('fullName'),
-        AsyncStorage.getItem('fullAddress'),
         AsyncStorage.getItem('userId'),
       ]);
 
@@ -59,11 +80,23 @@ export default function ProfileScreen() {
         return;
       }
 
+      const me = await authService.getMe();
+      await Promise.all([
+        AsyncStorage.setItem('fullName', me.fullName || ''),
+        AsyncStorage.setItem('fullAddress', me.fullAddress || ''),
+        AsyncStorage.setItem('userPhone', me.phone || ''),
+        AsyncStorage.setItem('loyaltyPoints', String(me.loyaltyPoints ?? 0)),
+        AsyncStorage.setItem('membershipTier', me.membershipTier || 'REGULAR'),
+      ]);
+
       setProfile({
-        email,
-        fullName,
-        address,
-        userId,
+        email: me.email || email,
+        fullName: me.fullName,
+        phone: me.phone,
+        address: me.fullAddress,
+        userId: String(me.userId ?? userId ?? ''),
+        loyaltyPoints: me.loyaltyPoints ?? 0,
+        membershipTier: me.membershipTier ?? 'REGULAR',
       });
 
       if (userId) {
@@ -122,6 +155,8 @@ export default function ProfileScreen() {
 
   const displayName = profile.fullName || 'Người dùng Smart Garage';
   const displayRole = 'Khách hàng';
+  const membershipLabel = MEMBERSHIP_LABELS[profile.membershipTier];
+  const membershipDiscount = MEMBERSHIP_DISCOUNT_LABELS[profile.membershipTier];
   const initials = displayName
     .split(' ')
     .filter(Boolean)
@@ -161,9 +196,23 @@ export default function ProfileScreen() {
               <View style={styles.avatar}>
                 <Text style={styles.avatarText}>{initials || 'SG'}</Text>
               </View>
-              <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-                <Ionicons name="log-out-outline" size={20} color="#FFFFFF" />
-              </TouchableOpacity>
+              <View style={styles.heroActions}>
+                <TouchableOpacity
+                  style={styles.iconButton}
+                  onPress={() => router.push('/notifications')}>
+                  <Ionicons name="notifications-outline" size={20} color="#FFFFFF" />
+                  {unreadNotificationCount > 0 ? (
+                    <View style={styles.notificationBadge}>
+                      <Text style={styles.notificationBadgeText}>
+                        {unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}
+                      </Text>
+                    </View>
+                  ) : null}
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.iconButton} onPress={handleLogout}>
+                  <Ionicons name="log-out-outline" size={20} color="#FFFFFF" />
+                </TouchableOpacity>
+              </View>
             </View>
 
             <Text style={styles.heroName}>{displayName}</Text>
@@ -177,11 +226,29 @@ export default function ProfileScreen() {
 
           <View style={styles.statsRow}>
             <StatCard
-              icon="car-sport-outline"
-              label="Xe đã đăng ký"
-              value={String(vehicleCount)}
-              accent={isDark ? '#5EEAD4' : '#0F766E'}
-              background={isDark ? '#0B2A26' : '#ECFDF5'}
+              icon="star-outline"
+              label="Điểm tích lũy"
+              value={String(profile.loyaltyPoints)}
+              accent="#0F766E"
+              background={palette.card}
+              textColor={palette.text}
+              labelColor={palette.subtext}
+            />
+            <StatCard
+              icon="ribbon-outline"
+              label="Hạng thành viên"
+              value={membershipLabel}
+              accent="#D97706"
+              background={palette.card}
+              textColor={palette.text}
+              labelColor={palette.subtext}
+            />
+            <StatCard
+              icon="pricetag-outline"
+              label="Ưu đãi"
+              value={membershipDiscount}
+              accent="#2563EB"
+              background={palette.card}
               textColor={palette.text}
               labelColor={palette.subtext}
             />
@@ -196,6 +263,7 @@ export default function ProfileScreen() {
               palette={palette}
             />
             <InfoRow icon="person-outline" label="Họ và tên" value={displayName} palette={palette} />
+            <InfoRow icon="call-outline" label="Số điện thoại" value={profile.phone || 'Chưa cập nhật'} palette={palette} />
             <InfoRow icon="shield-outline" label="Vai trò" value={displayRole} palette={palette} />
             <InfoRow
               icon="location-outline"
@@ -210,10 +278,23 @@ export default function ProfileScreen() {
               value={profile.userId || 'Chưa có'}
               palette={palette}
             />
+            <InfoRow
+              icon="medal-outline"
+              label="Thành viên"
+              value={`${membershipLabel} · Ưu đãi ${membershipDiscount}`}
+              palette={palette}
+            />
           </View>
 
           <View style={[styles.card, { backgroundColor: palette.card, shadowOpacity: isDark ? 0 : 0.06 }]}>
             <Text style={[styles.sectionTitle, { color: palette.text }]}>Tiện ích nhanh</Text>
+            <QuickActionRow
+              icon="create-outline"
+              title="Cập nhật thông tin cá nhân"
+              subtitle="Chỉnh sửa họ tên, số điện thoại và địa chỉ của bạn"
+              onPress={() => router.push('/edit-profile')}
+              palette={palette}
+            />
             <QuickActionRow
               icon="car-outline"
               title="Quản lý xe"
@@ -475,13 +556,39 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#FFFFFF',
   },
-  logoutButton: {
+  heroActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  iconButton: {
     width: 42,
     height: 42,
     borderRadius: 14,
     backgroundColor: 'rgba(255,255,255,0.16)',
     justifyContent: 'center',
     alignItems: 'center',
+    position: 'relative',
+  },
+  notificationBadge: {
+    position: 'absolute',
+    top: -5,
+    right: -5,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#EF4444',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  notificationBadgeText: {
+    fontSize: 9,
+    lineHeight: 12,
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
   heroName: {
     marginTop: 16,

@@ -88,10 +88,25 @@
 .service-desc {
   font-size: 12px;
   color: #8c8c8c;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  white-space: pre-wrap;
   max-width: 300px;
+}
+
+.service-detail-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.service-detail-image {
+  max-height: 160px;
+  object-fit: contain;
+  border-radius: 8px;
+  border: 1px solid #f0f0f0;
+  background: #fafafa;
 }
 
 /* Price cell */

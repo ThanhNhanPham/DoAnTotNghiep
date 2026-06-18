@@ -36,3 +36,6 @@ node_modules/
 dist/
 build/
 .env
+uploads/
+../smartgarage/src/main/resources/application.properties
+application.propertiessrc/main/resources/application.properties

@@ -6,6 +6,7 @@ import com.example.smartgarage.service.ServiceService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import org.springframework.data.domain.Page;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -13,6 +14,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @Tag(name = "Service API", description = "Quản lý dịch vụ sửa chữa")
 @RestController
@@ -27,14 +29,25 @@ public class ServiceController {
 
     @Operation(summary="lấy danh sách tất cả các service của cửa hàng")
     @GetMapping
-    public ResponseEntity<List<Service>> getAllServices(@RequestParam(required = false) VehicleType type) {
-        List<Service> services = serviceService.getAllServices(type);
+    public ResponseEntity<Page<Service>> getAllServices(@RequestParam(required = false) VehicleType type,
+                                                        @RequestParam(required = false) Boolean isActive,
+                                                        @RequestParam(required = false) String keyword,
+                                                        @RequestParam(defaultValue = "0") int page,
+                                                        @RequestParam(defaultValue = "10") int size) {
+        Page<Service> services = serviceService.getServices(type, isActive, keyword, page, size);
         return ResponseEntity.ok(services);
+    }
+
+    @Operation(summary="lấy thông tin chi tiết của một dịch vụ theo id")
+    @GetMapping("/{id}")
+    public ResponseEntity<Service> getServiceById(@PathVariable Long id) {
+       Service result = serviceService.getServiceById(id);
+       return result != null ? ResponseEntity.ok(result) : ResponseEntity.notFound().build();
     }
 
     @Operation(summary="thêm dịch vụ mới cho cửa hàng")
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPERADMIN')")
     public ResponseEntity<Service> createService(@Valid @RequestBody Service service) {
         try {
             Service savedService = serviceService.createService(service);
@@ -46,7 +59,7 @@ public class ServiceController {
 
     @Operation(summary="chỉnh sửa dịch vụ của cửa hàng")
     @PutMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPERADMIN')")
     public ResponseEntity<Service> updateService(@PathVariable Long id,@Valid @RequestBody Service service){
         try {
             return serviceService.updateService(id, service)
@@ -59,15 +72,15 @@ public class ServiceController {
 
     @Operation(summary="Xoá dịch vụ của cửa hàng")
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<String> deleteService(@PathVariable Long id) {
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPERADMIN')")
+    public ResponseEntity<?> deleteService(@PathVariable Long id) {
         try {
             if (!serviceService.deleteService(id)) {
-                return new ResponseEntity<>("Lỗi: Không tìm thấy dịch vụ có ID = " + id, HttpStatus.NOT_FOUND);
+                return new ResponseEntity<>(Map.of("message", "Lỗi: Không tìm thấy dịch vụ có ID = " + id), HttpStatus.NOT_FOUND);
             }
-            return new ResponseEntity<>("Đã xóa dịch vụ thành công!", HttpStatus.OK);
+            return ResponseEntity.ok(Map.of("message", "Đã xóa dịch vụ thành công!"));
         } catch (Exception e) {
-            return new ResponseEntity<>("Không thể xóa dịch vụ này vì có dữ liệu liên quan (thợ, lịch hẹn...)",
+            return new ResponseEntity<>(Map.of("message","Không thể xóa dịch vụ này vì có dữ liệu liên quan (thợ, lịch hẹn...)"),
                     HttpStatus.CONFLICT);
         }
     }

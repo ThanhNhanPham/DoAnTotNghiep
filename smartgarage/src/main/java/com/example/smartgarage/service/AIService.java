@@ -2,6 +2,7 @@ package com.example.smartgarage.service;
 
 import com.example.smartgarage.entity.ConsultationHistory;
 import com.example.smartgarage.entity.Service;
+import com.example.smartgarage.enums.VehicleType;
 import com.example.smartgarage.entity.User;
 import com.example.smartgarage.repository.ConsultationHistoryRepository;
 import com.example.smartgarage.repository.ServiceRepository;
@@ -11,20 +12,34 @@ import org.springframework.http.*;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.RestTemplate;
+
 import java.time.LocalDateTime;
-import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 @org.springframework.stereotype.Service
 public class AIService {
-    private static final int MAX_RETRIES = 3;
+    private static final int MAX_ATTEMPTS = 2;
     private static final long INITIAL_BACKOFF_MS = 1000L;
+    private static final long CACHE_TTL_MS = 10 * 60 * 1000L;
+    private static final long SERVICE_LIST_CACHE_TTL_MS = 10 * 60 * 1000L;
+    private static final long AI_FAILURE_COOLDOWN_MS = 30 * 1000L;
+    private static final long USER_MIN_REQUEST_INTERVAL_MS = 3 * 1000L;
+    private static final long USER_WINDOW_MS = 60 * 1000L;
+    private static final int USER_MAX_REQUESTS_PER_WINDOW = 5;
+    private static final int MAX_CONCURRENT_LOCAL_AI_REQUESTS = 4;
 
-    @Value("${gemini.api.key}")
-    private String apiKey;
+    @Value("${local-ai.base-url:http://localhost:11434}")
+    private String localAiBaseUrl;
 
-    @Value("${gemini.model}")
+    @Value("${local-ai.model:qwen2.5:7b}")
     private String modelName;
 
     private final ServiceRepository serviceRepository;
@@ -36,6 +51,13 @@ public class AIService {
     private final UserRepository userRepository;
     // Thêm Repository mới vào để lưu lịch sử
     private final ConsultationHistoryRepository historyRepository;
+    private final ConcurrentHashMap<String, CacheEntry> responseCache = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, CompletableFuture<String>> inFlightRequests = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, UserRequestTracker> userRequestTrackers = new ConcurrentHashMap<>();
+    private final Semaphore aiConcurrencyLimiter = new Semaphore(MAX_CONCURRENT_LOCAL_AI_REQUESTS);
+    private final AtomicLong aiCooldownUntilMs = new AtomicLong(0L);
+    private final ConcurrentHashMap<String, CacheEntry> serviceListCache = new ConcurrentHashMap<>();
+
     public AIService(ServiceRepository serviceRepository,
                      RestTemplate restTemplate,
                      UserRepository userRepository,
@@ -46,73 +68,106 @@ public class AIService {
         this.historyRepository = historyRepository;
     }
 
-    public String suggestService(String customerIssue, String username) {
+    public String suggestService(String customerIssue, VehicleType vehicleType, String username) {
+        String normalizedIssue = normalizeIssue(customerIssue);
+        if (normalizedIssue.isBlank()) {
+            return "Vui lòng nhập mô tả vấn đề của xe trước khi gửi yêu cầu.";
+        }
+        if (localAiBaseUrl == null || localAiBaseUrl.isBlank()) {
+            return "Chưa cấu hình địa chỉ AI local cho hệ thống.";
+        }
+        String rateLimitMessage = validateUserRequestRate(username);
+        if (rateLimitMessage != null) {
+            return rateLimitMessage;
+        }
+        if (isAiCooldownActive()) {
+            return "AI vừa chạm giới hạn tải, vui lòng thử lại sau khoảng 30 giây.";
+        }
+
+        String cacheKey = buildCacheKey(username, normalizedIssue, vehicleType);
+        String cachedResponse = getCachedResponse(cacheKey);
+        if (cachedResponse != null) {
+            return cachedResponse;
+        }
+
+        CompletableFuture<String> newFuture = new CompletableFuture<>();
+        CompletableFuture<String> existingFuture = inFlightRequests.putIfAbsent(cacheKey, newFuture);
+        if (existingFuture != null) {
+            return existingFuture.join();
+        }
+
         try {
-            // 1. Lấy danh sách dịch vụ thực tế từ DB
-            String availableServices = serviceRepository.findAll().stream()
-                    .map(Service::getName)
-                    .collect(Collectors.joining(", "));
+            String aiSuggestion = fetchSuggestionFromLocalAi(normalizedIssue, vehicleType, username);
+            if (shouldCache(aiSuggestion)) {
+                cacheResponse(cacheKey, aiSuggestion);
+            }
+            newFuture.complete(aiSuggestion);
+            return aiSuggestion;
+        } catch (RuntimeException runtimeException) {
+            newFuture.completeExceptionally(runtimeException);
+            throw runtimeException;
+        } finally {
+            inFlightRequests.remove(cacheKey, newFuture);
+        }
+    }
 
-            // 2. Tạo URL chuẩn xác (Sử dụng model 2.5 Flash để tránh lỗi 404)
-            // Sử dụng v1 cho các bản Stable năm 2026 (như Gemini 2.5 Flash)
-            String BASE_URL = "https://generativelanguage.googleapis.com/v1/models/";
-            String finalUrl = BASE_URL + modelName + ":generateContent?key=" + apiKey;
+    private String fetchSuggestionFromLocalAi(String customerIssue, VehicleType vehicleType, String username) {
+        if (!aiConcurrencyLimiter.tryAcquire()) {
+            return "AI đang xử lý quá nhiều yêu cầu cùng lúc, vui lòng thử lại sau ít giây.";
+        }
+        try {
+            String availableServices = getAvailableServicesForPrompt(vehicleType);
+            String vehicleTypeLabel = toVehicleTypeLabel(vehicleType);
+            String vehicleTypeInstruction = vehicleType != null
+                    ? "Chỉ được phép đề xuất dịch vụ phù hợp với đúng loại xe này. "
+                    : "Nếu chưa xác định chắc chắn loại xe, hãy nói rõ cần xác nhận xe là ô tô hay xe máy trước khi chốt dịch vụ. ";
+            String serviceConstraintInstruction = vehicleType != null
+                    ? "Danh sách dịch vụ hợp lệ của gara cho loại xe đó: [" + availableServices + "]. "
+                    : "Danh sách dịch vụ hiện có của gara: [" + availableServices + "]. ";
 
-            // 3. Thiết lập Header
+            String finalUrl = buildLocalAiGenerateUrl();
+
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
 
-            // 4. Tạo Prompt
             String promptText = String.format(
-                    "Bạn là chuyên gia tư vấn sửa chữa xe máy tại Việt Nam. " +
-                            "Gara của tôi có các dịch vụ: [%s]. " +
+                    "Bạn là chuyên gia tư vấn dịch vụ sửa chữa xe tại Việt Nam. " +
+                            "Loại xe khách đang sử dụng: %s. " +
+                            "%s" +
+                            "%s" +
                             "Khách hàng nói: '%s'. " +
-                            "Hãy phân tích lỗi và gợi ý dịch vụ phù hợp nhất. Trả về kết quả thân thiện, ngắn gọn dưới 100 từ.",
-                    availableServices, customerIssue
+                            "Hãy phân tích triệu chứng và gợi ý dịch vụ phù hợp nhất từ đúng danh sách trên. " +
+                            "Không được đề xuất dịch vụ không có trong danh sách, không được trộn dịch vụ của loại xe khác. " +
+                            " Tên dịch vụ được đề xuất phải được bọc bằng Markdown in đậm theo dạng **tên dịch vụ**. " +
+                            "Trả về kết quả thân thiện, ngắn gọn dưới 100 từ.",
+                    vehicleTypeLabel, vehicleTypeInstruction, serviceConstraintInstruction, customerIssue
             );
 
-            // 5. Cấu trúc JSON Body
             Map<String, Object> payload = Map.of(
-                    "contents", List.of(
-                            Map.of("parts", List.of(Map.of("text", promptText)))
-                    )
+                    "model", modelName,
+                    "prompt", promptText,
+                    "stream", false
             );
 
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(payload, headers);
-            // 6. Gọi API Google, retry ngắn khi model quá tải tạm thời
             ResponseEntity<Map> response = null;
-            for (int attempt = 1; true; attempt++) {
+            for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
                 try {
                     response = restTemplate.postForEntity(finalUrl, entity, Map.class);
                     break;
                 } catch (HttpServerErrorException.ServiceUnavailable ex) {
-                    if (attempt == MAX_RETRIES) {
+                    triggerAiCooldown();
+                    if (attempt == MAX_ATTEMPTS) {
                         return "AI đang quá tải tạm thời, vui lòng thử lại sau ít phút.";
                     }
                     sleepBeforeRetry(attempt);
                 }
             }
 
-            // 7. Bóc tách dữ liệu và LƯU LỊCH SỬ
-            if (response.getBody() != null && response.getBody().containsKey("candidates")) {
-                List<?> candidates = (List<?>) response.getBody().get("candidates");
-                if (!candidates.isEmpty()) {
-                    Map<?, ?> firstCandidate = (Map<?, ?>) candidates.getFirst();
-                    Map<?, ?> content = (Map<?, ?>) firstCandidate.get("content");
-                    List<?> parts = (List<?>) content.get("parts");
-                    Map<?, ?> firstPart = (Map<?, ?>) parts.getFirst();
-
-                    String aiSuggestion = (String) firstPart.get("text");
-                    User user = userRepository.findByEmail(username)
-                            .orElseThrow(() -> new RuntimeException("Không tìm thấy khách hàng: " + username));
-                    // --- BƯỚC MỚI: LƯU VÀO DATABASE ---
-                    ConsultationHistory history = new ConsultationHistory();
-                    history.setCustomerIssue(customerIssue);
-                    history.setAiSuggestion(aiSuggestion);
-                    history.setCustomer(user);
-                    history.setCreatedAt(LocalDateTime.now());
-                    historyRepository.save(history);
-
+            if (response.getBody() != null) {
+                String aiSuggestion = Objects.toString(response.getBody().get("response"), "").trim();
+                if (!aiSuggestion.isEmpty()) {
+                    saveHistory(customerIssue, username, aiSuggestion);
                     return aiSuggestion;
                 }
             }
@@ -120,23 +175,87 @@ public class AIService {
 
         } catch (HttpClientErrorException e) {
             String errorDetail = e.getResponseBodyAsString();
-            System.err.println("Chi tiết lỗi từ Google: " + errorDetail);
+            System.err.println("Chi tiết lỗi từ AI local: " + errorDetail);
 
             if (e.getStatusCode() == HttpStatus.TOO_MANY_REQUESTS) {
-                return "Hệ thống AI đang bận (Lỗi 429 - Hết hạn mức 1,500 yêu cầu/ngày).";
+                triggerAiCooldown();
+                return "Hệ thống AI đang bận (Lỗi 429 - Hết hạn mức yêu cầu).";
             } else if (e.getStatusCode() == HttpStatus.NOT_FOUND) {
-                return "Lỗi 404: Model không tồn tại. Hãy dùng Gemini 2.5 Flash.";
+                return "Lỗi 404: Model hoặc endpoint AI local không tồn tại. Hãy kiểm tra local-ai.model và local-ai.base-url.";
             }
             return "Lỗi kết nối AI: " + e.getStatusText();
         } catch (HttpServerErrorException e) {
             if (e.getStatusCode() == HttpStatus.SERVICE_UNAVAILABLE) {
+                triggerAiCooldown();
                 return "AI đang quá tải tạm thời, vui lòng thử lại sau ít phút.";
             }
             return "Dịch vụ AI đang gặp sự cố tạm thời: " + e.getStatusText();
+        } catch (CompletionException e) {
+            throw e;
         } catch (Exception e) {
             e.printStackTrace();
             return "Có lỗi xảy ra trong quá trình tư vấn AI: " + e.getMessage();
+        } finally {
+            aiConcurrencyLimiter.release();
         }
+    }
+
+    private String buildLocalAiGenerateUrl() {
+        String normalizedBaseUrl = localAiBaseUrl.endsWith("/")
+                ? localAiBaseUrl.substring(0, localAiBaseUrl.length() - 1)
+                : localAiBaseUrl;
+        return normalizedBaseUrl + "/api/generate";
+    }
+
+    private void saveHistory(String customerIssue, String username, String aiSuggestion) {
+        User user = userRepository.findByEmail(username)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy khách hàng: " + username));
+
+        ConsultationHistory history = new ConsultationHistory();
+        history.setCustomerIssue(customerIssue);
+        history.setAiSuggestion(aiSuggestion);
+        history.setCustomer(user);
+        history.setCreatedAt(LocalDateTime.now());
+        historyRepository.save(history);
+    }
+
+    private String normalizeIssue(String customerIssue) {
+        return customerIssue == null
+                ? ""
+                : customerIssue.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+    }
+
+    private String buildCacheKey(String username, String normalizedIssue, VehicleType vehicleType) {
+        return username + "|" + normalizedIssue + "|" + (vehicleType != null ? vehicleType.name() : "UNKNOWN");
+    }
+
+    private String getCachedResponse(String cacheKey) {
+        CacheEntry cacheEntry = responseCache.get(cacheKey);
+        if (cacheEntry == null) {
+            return null;
+        }
+        if (cacheEntry.expiresAt() < System.currentTimeMillis()) {
+            responseCache.remove(cacheKey, cacheEntry);
+            return null;
+        }
+        return cacheEntry.response();
+    }
+
+    private void cacheResponse(String cacheKey, String response) {
+        responseCache.put(cacheKey, new CacheEntry(response, System.currentTimeMillis() + CACHE_TTL_MS));
+    }
+
+    private boolean shouldCache(String response) {
+        return response != null
+                && !response.isBlank()
+                && !response.startsWith("Chưa cấu hình")
+                && !response.startsWith("AI vừa chạm giới hạn tải")
+                && !response.startsWith("AI đang xử lý quá nhiều yêu cầu")
+                && !response.startsWith("Hệ thống AI đang bận")
+                && !response.startsWith("AI đang quá tải")
+                && !response.startsWith("Lỗi ")
+                && !response.startsWith("Dịch vụ AI đang gặp sự cố")
+                && !response.startsWith("Có lỗi xảy ra");
     }
 
     private void sleepBeforeRetry(int attempt) {
@@ -146,5 +265,69 @@ public class AIService {
             Thread.currentThread().interrupt();
             throw new RuntimeException("Retry AI bị gián đoạn.", interruptedException);
         }
+    }
+
+    private String getAvailableServicesForPrompt(VehicleType vehicleType) {
+        String cacheKey = vehicleType != null ? vehicleType.name() : "UNKNOWN";
+        CacheEntry cacheEntry = serviceListCache.get(cacheKey);
+        long now = System.currentTimeMillis();
+        if (cacheEntry != null && cacheEntry.expiresAt() >= now) {
+            return cacheEntry.response();
+        }
+
+        String availableServices = (vehicleType != null
+                ? serviceRepository.findByIsActiveTrueAndType(vehicleType)
+                : serviceRepository.findByIsActiveTrue()).stream()
+                .map(Service::getName)
+                .collect(Collectors.joining(", "));
+        serviceListCache.put(cacheKey, new CacheEntry(availableServices, now + SERVICE_LIST_CACHE_TTL_MS));
+        return availableServices;
+    }
+
+    private String toVehicleTypeLabel(VehicleType vehicleType) {
+        if (vehicleType == null) {
+            return "chưa xác định";
+        }
+        return switch (vehicleType) {
+            case CAR -> "ô tô";
+            case MOTORBIKE -> "xe máy";
+        };
+    }
+
+    private String validateUserRequestRate(String username) {
+        long now = System.currentTimeMillis();
+        UserRequestTracker tracker = userRequestTrackers.computeIfAbsent(username, ignored -> new UserRequestTracker());
+        synchronized (tracker) {
+            if (tracker.lastRequestAt > 0 && now - tracker.lastRequestAt < USER_MIN_REQUEST_INTERVAL_MS) {
+                return "Bạn gửi yêu cầu quá nhanh. Vui lòng chờ vài giây rồi thử lại.";
+            }
+            if (now - tracker.windowStartedAt >= USER_WINDOW_MS) {
+                tracker.windowStartedAt = now;
+                tracker.requestCount = 0;
+            }
+            if (tracker.requestCount >= USER_MAX_REQUESTS_PER_WINDOW) {
+                return "Bạn đã dùng quá nhiều lượt tư vấn AI trong 1 phút. Vui lòng đợi rồi thử lại.";
+            }
+            tracker.lastRequestAt = now;
+            tracker.requestCount++;
+            return null;
+        }
+    }
+
+    private boolean isAiCooldownActive() {
+        return aiCooldownUntilMs.get() > System.currentTimeMillis();
+    }
+
+    private void triggerAiCooldown() {
+        aiCooldownUntilMs.set(System.currentTimeMillis() + AI_FAILURE_COOLDOWN_MS);
+    }
+
+    private record CacheEntry(String response, long expiresAt) {
+    }
+
+    private static final class UserRequestTracker {
+        private long windowStartedAt = System.currentTimeMillis();
+        private long lastRequestAt;
+        private int requestCount;
     }
 }

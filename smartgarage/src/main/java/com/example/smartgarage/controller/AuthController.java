@@ -1,24 +1,27 @@
 package com.example.smartgarage.controller;
 
-import com.example.smartgarage.dto.ChangePasswordRequest;
-import com.example.smartgarage.dto.JwtResponse;
-import com.example.smartgarage.dto.LoginRequest;
-import com.example.smartgarage.entity.User;
-import com.example.smartgarage.enums.Role;
-import com.example.smartgarage.repository.UserRepository;
-import com.example.smartgarage.security.JwtTokenProvider;
+import com.example.smartgarage.dto.auth.ChangePasswordRequest;
+import com.example.smartgarage.dto.auth.ForgotPasswordRequest;
+import com.example.smartgarage.dto.auth.LoginRequest;
+import com.example.smartgarage.dto.auth.RegisterRequest;
+import com.example.smartgarage.dto.auth.ResetPasswordRequest;
+import com.example.smartgarage.service.PasswordResetTokenService;
 import com.example.smartgarage.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
-import java.util.HashMap;
 import java.util.Map;
 
 @Tag(name = "Auth API", description = "Quản lý đăng ký và đăng nhập")
@@ -26,89 +29,54 @@ import java.util.Map;
 @RequestMapping("/api/v1/auth")
 @CrossOrigin("*")
 public class AuthController {
-    private final UserRepository userRepository;
-    private final PasswordEncoder passwordEncoder;
-    private final JwtTokenProvider jwtTokenProvider;
-    private final com.example.smartgarage.service.UserService userService;
+    private final UserService userService;
+    private final PasswordResetTokenService passwordResetTokenService;
 
-    public AuthController(UserRepository userRepository,
-                          PasswordEncoder passwordEncoder,
-                          JwtTokenProvider jwtTokenProvider, UserService userService) {
-        this.userRepository = userRepository;
-        this.passwordEncoder = passwordEncoder;
-        this.jwtTokenProvider = jwtTokenProvider;
-        this.userService= userService;
+    public AuthController(UserService userService,
+                          PasswordResetTokenService passwordResetTokenService) {
+        this.userService = userService;
+        this.passwordResetTokenService = passwordResetTokenService;
     }
 
-
-    @Operation(summary="Api dùng để tạo user mới")
+    @Operation(summary = "Api dùng để tạo user mới")
     @PostMapping("/register")
-    public ResponseEntity<?> register(@RequestBody User user) {
-        if (userRepository.findByEmail(user.getEmail()).isPresent()) {
-            return ResponseEntity.badRequest().body("Lỗi: Email đã tồn tại!");
-        }
-
-        // Mã hóa mật khẩu trước khi lưu
-        user.setPassword(passwordEncoder.encode(user.getPassword()));
-
-        // Gán role mặc định nếu không có
-        if (user.getRole() == null) user.setRole(Role.CUSTOMER);
-
-        userRepository.save(user);
-        return ResponseEntity.ok("Đăng ký thành công tài khoản: " + user.getEmail());
+    public ResponseEntity<Map<String, String>> register(@Valid @RequestBody RegisterRequest request) {
+        String message = userService.register(request);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(Map.of("message", message));
     }
 
-    // 2. API ĐĂNG NHẬP (Đã sửa lỗi ResponseEntity)
-    @Operation(summary="API dùng để đăng nhập")
+    @Operation(summary = "API dùng để đăng nhập")
     @PostMapping("/login")
     public ResponseEntity<?> login(@Valid @RequestBody LoginRequest loginRequest) {
-        // Tìm user theo email
-        var userOptional = userRepository.findByEmail(loginRequest.getEmail());
-        if (userOptional.isPresent()) {
-            User user = userOptional.get();
-
-            // Kiểm tra mật khẩu
-            if (passwordEncoder.matches(loginRequest.getPassword(), user.getPassword())) {
-                // Tạo token
-                String token = jwtTokenProvider.generateToken(user.getEmail());
-
-                // Trả về DTO JwtResponse (token, email, role, userId,address)
-                return ResponseEntity.ok(new JwtResponse(token, user.getEmail(), user.getRole().name(),user.getId(),user.getFullAddress(),user.getFullName()));
-            }
-        }
-        // Nếu không khớp email hoặc mật khẩu
-        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body("Email hoặc mật khẩu không chính xác!");
+        return ResponseEntity.ok(userService.login(loginRequest));
     }
 
-    @Operation(summary="api test mật khẩu")
-    @PostMapping("/debug-password")
-    public ResponseEntity<?> debugPassword(@RequestBody LoginRequest request) {
-        Map<String, Object> result = new HashMap<>();
-
-        userRepository.findByEmail(request.getEmail()).ifPresentOrElse(user -> {
-            boolean isMatch = passwordEncoder.matches(request.getPassword(), user.getPassword());
-
-            result.put("email", user.getEmail());
-            result.put("inputPassword", request.getPassword());
-            result.put("dbEncodedPassword", user.getPassword());
-            result.put("dbPasswordLength", user.getPassword().length());
-            result.put("isMatch", isMatch);
-
-            if (!isMatch && user.getPassword().length() < 60) {
-                result.put("error_hint", "Cảnh báo: Độ dài mật khẩu trong DB < 60 ký tự. Có thể cột bị cắt!");
-            }
-        }, () -> result.put("error", "Không tìm thấy User này trong database"));
-        return ResponseEntity.ok(result);
+    @Operation(summary = "Lấy thông tin user hiện tại")
+    @GetMapping("/me")
+    public ResponseEntity<?> me(Authentication authentication) {
+        return ResponseEntity.ok(userService.getCurrentUser(authentication.getName()));
     }
 
-    //4. Api đổi mật khẩu
+    @Operation(summary = "API dùng để đổi mật khẩu cho user đã đăng nhập")
     @PostMapping("/change-password")
-    public ResponseEntity<?> changePassword(
-            @AuthenticationPrincipal UserDetails userDetails, // Lấy user từ Token
+    public ResponseEntity<?> changePassword(@AuthenticationPrincipal UserDetails userDetails,
             @Valid @RequestBody ChangePasswordRequest request) {
         userService.changedPassword(userDetails.getUsername(), request);
-        return ResponseEntity.ok("Đổi mật khẩu thành công.");
+        return ResponseEntity.ok(Map.of("message", "Đổi mật khẩu thành công."));
     }
 
+    @Operation(summary = "Gửi mã xác nhận quên mật khẩu qua email")
+    @PostMapping("/forgot-password")
+    public ResponseEntity<?> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
+        passwordResetTokenService.requestPassReset(request.email());
+        return ResponseEntity.ok(Map.of("message", "Mã xác nhận đặt lại mật khẩu đã được gửi về email."));
+    }
+
+    @Operation(summary = "Đặt lại mật khẩu bằng mã xác nhận")
+    @PostMapping("/reset-password")
+    public ResponseEntity<?> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
+        passwordResetTokenService.resetPassword(request);
+        return ResponseEntity.ok(Map.of("message", "Đặt lại mật khẩu thành công."));
+    }
 }

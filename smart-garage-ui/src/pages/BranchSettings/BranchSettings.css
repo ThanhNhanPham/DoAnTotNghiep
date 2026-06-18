@@ -1,0 +1,134 @@
+.branch-settings-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.branch-settings-hero,
+.branch-settings-card,
+.branch-settings-empty {
+  border: 1px solid #e2e8f0;
+  border-radius: 18px;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.06);
+}
+
+.branch-settings-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 22px;
+  background: linear-gradient(135deg, #f8fafc 0%, #ecfdf5 100%);
+}
+
+.branch-settings-hero-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.branch-settings-icon {
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #0f766e;
+  background: #ccfbf1;
+}
+
+.branch-settings-kicker {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: #0f766e;
+  text-transform: uppercase;
+}
+
+.branch-settings-hero h1,
+.branch-settings-empty h2 {
+  margin: 0;
+  color: #0f172a;
+}
+
+.branch-settings-hero p,
+.branch-settings-empty p {
+  margin: 6px 0 0;
+  color: #64748b;
+  line-height: 1.6;
+}
+
+.branch-settings-card .ant-card-head {
+  border-bottom-color: #e2e8f0;
+}
+
+.branch-settings-card-title {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.branch-settings-card-title svg {
+  margin-top: 2px;
+  color: #0f766e;
+}
+
+.branch-settings-card-title strong {
+  display: block;
+  color: #0f172a;
+}
+
+.branch-settings-card-title span {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #64748b;
+}
+
+.branch-settings-number {
+  width: 100%;
+}
+
+.branch-settings-note {
+  display: flex;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 12px;
+  color: #0f766e;
+  background: #f0fdfa;
+  border: 1px solid #ccfbf1;
+  line-height: 1.5;
+}
+
+.branch-settings-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.branch-settings-empty {
+  padding: 32px;
+  text-align: center;
+  background: #ffffff;
+}
+
+.branch-settings-empty svg {
+  color: #0f766e;
+}
+
+@media (max-width: 768px) {
+  .branch-settings-hero,
+  .branch-settings-hero-main,
+  .branch-settings-actions {
+    flex-direction: column;
+  }
+
+  .branch-settings-actions .ant-btn {
+    width: 100%;
+  }
+}

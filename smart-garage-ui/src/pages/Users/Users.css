@@ -1,5 +1,6 @@
 .users-page {
   width: 100%;
+  max-width: 100%;
 }
 
 .page-header {
@@ -21,7 +22,8 @@
 
 .users-card {
   border-radius: 8px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
 }
 
 .users-card .ant-card-body {
@@ -30,8 +32,10 @@
 
 .users-toolbar {
   margin-bottom: 24px;
-  padding-bottom: 24px;
-  border-bottom: 1px solid #f0f0f0;
+  padding: 16px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
 }
 
 .text-right {
@@ -53,14 +57,14 @@
   border-left: 3px solid #1890ff;
 }
 
-.stat-value {
+.users-page .stat-value {
   font-size: 24px;
   font-weight: 600;
   color: #262626;
   margin-bottom: 8px;
 }
 
-.stat-label {
+.users-page .stat-label {
   font-size: 12px;
   color: #8c8c8c;
 }
@@ -103,16 +107,35 @@
   color: #8c8c8c;
 }
 
+.user-detail-name {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-weight: 600;
+}
+
 /* Cell with icon */
 .cell-with-icon {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
+  flex-wrap: nowrap;
+  overflow-wrap: break-word;
+}
+
+.email-cell {
+  word-break: break-all;
+}
+
+.no-wrap-text {
+  white-space: nowrap;
+  word-break: keep-all;
 }
 
 .cell-with-icon svg {
   color: #1890ff;
   flex-shrink: 0;
+  margin-top: 3px;
 }
 
 /* Table styling */
@@ -139,11 +162,11 @@
     padding: 12px;
   }
 
-  .stat-value {
+  .users-page .stat-value {
     font-size: 20px;
   }
 
-  .stat-label {
+  .users-page .stat-label {
     font-size: 11px;
   }
 }

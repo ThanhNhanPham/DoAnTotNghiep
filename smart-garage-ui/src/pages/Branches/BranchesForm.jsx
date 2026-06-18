@@ -15,7 +15,7 @@ const BranchesForm = ({ visible, editingBranch, onClose, onSave }) => {
   const handleOk = async () => {
     try {
       const values = await form.validateFields();
-      onSave(values);
+      await onSave(values);
       form.resetFields();
     } catch (error) {
       console.log('Validation failed:', error);
@@ -30,7 +30,7 @@ const BranchesForm = ({ visible, editingBranch, onClose, onSave }) => {
   return (
     <Modal
       title={editingBranch ? 'Sửa chi nhánh' : 'Thêm chi nhánh mới'}
-      visible={visible}
+      open={visible}
       onOk={handleOk}
       onCancel={handleCancel}
       width={700}
@@ -75,7 +75,7 @@ const BranchesForm = ({ visible, editingBranch, onClose, onSave }) => {
           rules={[
             { required: true, message: 'Vui lòng nhập số điện thoại' },
             {
-              pattern: /^(0|\+84)[3|5|7|8|9][0-9]{8}$/,
+              pattern: /^(0|\+84)[0-9]{9,10}$/,
               message: 'Số điện thoại không hợp lệ',
             },
           ]}
@@ -104,7 +104,6 @@ const BranchesForm = ({ visible, editingBranch, onClose, onSave }) => {
           label="Trạng thái"
           name="isActive"
           rules={[{ required: true, message: 'Vui lòng chọn trạng thái' }]}
-          valuePropName="checked"
         >
           <Select
             options={[

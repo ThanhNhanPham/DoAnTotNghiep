@@ -1,38 +1,40 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, ScrollView, SafeAreaView, Dimensions, Alert, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useUnreadNotificationCount } from '@/hooks/use-unread-notification-count';
+import bookingService from '@/services/bookingService';
+import vehicleService from '@/services/vehicleService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export default function HomeScreen() {
   const router = useRouter();
+  const unreadNotificationCount = useUnreadNotificationCount();
   const [userData, setUserData] = useState<{
     email: string | null;
     fullName: string | null;
-    role: string | null;
     address: string | null;
   }>({
     email: null,
     fullName: null,
-    role: null,
     address: null,
   });
   const [isAddressExpanded, setIsAddressExpanded] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [vehicleCount, setVehicleCount] = useState(0);
+  const [bookingCount, setBookingCount] = useState(0);
 
-  useEffect(() => {
-    fetchUserData();
-  }, []);
-
-  const fetchUserData = async () => {
+  const fetchUserData = useCallback(async () => {
     try {
       const email = await AsyncStorage.getItem('userEmail');
       const fullName = await AsyncStorage.getItem('fullName');
-      const role = await AsyncStorage.getItem('userRole');
       const address = await AsyncStorage.getItem('fullAddress');
+      const userId = await AsyncStorage.getItem('userId');
+      const userRole = await AsyncStorage.getItem('userRole');
 
       if (!email) {
         // Nếu không có email (chưa đăng nhập), chuyển về trang login
@@ -40,13 +42,52 @@ export default function HomeScreen() {
         return;
       }
 
-      setUserData({ email, fullName, role, address });
+      if (userRole && userRole !== 'CUSTOMER') {
+        await AsyncStorage.clear();
+        Alert.alert(
+          'Phiên đăng nhập không phù hợp',
+          'Ứng dụng mobile chỉ dành cho tài khoản khách hàng. Vui lòng đăng nhập lại bằng tài khoản CUSTOMER.'
+        );
+        router.replace('/login');
+        return;
+      }
+
+      setUserData({ email, fullName, address });
+
+      if (userId) {
+        const [vehiclesResult, bookingsResult] = await Promise.allSettled([
+          vehicleService.getVehiclesByUserId(Number(userId)),
+          bookingService.getMyBookings(),
+        ]);
+
+        if (vehiclesResult.status === 'fulfilled') {
+          const vehicles = vehiclesResult.value;
+          setVehicleCount(Array.isArray(vehicles) ? vehicles.filter((vehicle) => vehicle.isActive !== false).length : 0);
+        } else {
+          console.error('Error fetching home vehicles:', vehiclesResult.reason);
+          setVehicleCount(0);
+        }
+
+        if (bookingsResult.status === 'fulfilled') {
+          const bookings = bookingsResult.value;
+          setBookingCount(Array.isArray(bookings) ? bookings.length : 0);
+        } else {
+          console.error('Error fetching home bookings:', bookingsResult.reason);
+          setBookingCount(0);
+        }
+      }
     } catch (error) {
       console.error('Error fetching user data:', error);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [router]);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchUserData();
+    }, [fetchUserData])
+  );
 
   const handleLogout = () => {
     Alert.alert(
@@ -89,21 +130,29 @@ export default function HomeScreen() {
               <Text style={styles.greetingText}>Xin chào,</Text>
               <Text style={styles.userNameText}>{userData.fullName || 'Người dùng'}</Text>
             </View>
-            <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-              <Ionicons name="log-out-outline" size={24} color="#FFFFFF" />
-            </TouchableOpacity>
+            <View style={styles.headerActions}>
+              <TouchableOpacity
+                style={styles.actionButton}
+                onPress={() => router.push('/notifications')}>
+                <Ionicons name="notifications-outline" size={22} color="#FFFFFF" />
+                {unreadNotificationCount > 0 ? (
+                  <View style={styles.notificationBadge}>
+                    <Text style={styles.notificationBadgeText}>
+                      {unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}
+                    </Text>
+                  </View>
+                ) : null}
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.actionButton} onPress={handleLogout}>
+                <Ionicons name="log-out-outline" size={24} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
           </View>
 
           <View style={styles.roleBadgeContainer}>
             <View style={styles.roleBadge}>
-              <Ionicons
-                name={userData.role === 'ADMIN' ? 'shield-checkmark' : 'person'}
-                size={14}
-                color="#6366F1"
-              />
-              <Text style={styles.roleText}>
-                {userData.role === 'ADMIN' ? 'Quản trị viên' : 'Khách hàng'}
-              </Text>
+              <Ionicons name="person" size={14} color="#6366F1" />
+              <Text style={styles.roleText}>Khách hàng</Text>
             </View>
           </View>
         </LinearGradient>
@@ -132,9 +181,10 @@ export default function HomeScreen() {
             <MenuCard
               icon="car-sport"
               title="Xe của tôi"
-              subtitle="2 xe đang đăng ký"
+              subtitle={vehicleCount > 0 ? `${vehicleCount} xe đang đăng ký` : 'Chưa đăng ký xe'}
               color="#EEF2FF"
               iconColor="#6366F1"
+              onPress={() => router.push('/(tabs)/vehicles')}
             />
             <MenuCard
               icon="calendar"
@@ -142,13 +192,15 @@ export default function HomeScreen() {
               subtitle="Đặt lịch sửa chữa"
               color="#ECFDF5"
               iconColor="#10B981"
+              onPress={() => router.push('/(tabs)/explore')}
             />
             <MenuCard
               icon="time"
               title="Lịch sử"
-              subtitle="15 lượt sửa chữa"
+              subtitle={bookingCount > 0 ? `${bookingCount} lịch hẹn` : 'Chưa có lịch hẹn'}
               color="#FFF7ED"
               iconColor="#F59E0B"
+              onPress={() => router.push('/booking-history')}
             />
             <MenuCard
               icon="settings"
@@ -156,22 +208,35 @@ export default function HomeScreen() {
               subtitle="Tài khoản & App"
               color="#F5F3FF"
               iconColor="#8B5CF6"
+              onPress={() => router.push('/settings')}
             />
           </View>
 
-          {/* Promotional Banner */}
+          {/* Maintenance Guide Banner */}
           <LinearGradient
-            colors={['#1F2937', '#111827']}
+            colors={['#111827', '#172033', '#0F766E']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
             style={styles.banner}
           >
             <View style={styles.bannerContent}>
+              <View style={styles.bannerBadge}>
+                <Ionicons name="book-outline" size={13} color="#A7F3D0" />
+                <Text style={styles.bannerBadgeText}>Cẩm nang chăm sóc xe</Text>
+              </View>
               <Text style={styles.bannerTitle}>Bảo dưỡng định kỳ</Text>
-              <Text style={styles.bannerSubtitle}>Giảm ngay 20% cho khách hàng mới</Text>
-              <TouchableOpacity style={styles.bannerButton}>
+              <Text style={styles.bannerText}>Hiểu đúng để xe vận hành bền bỉ, an toàn và tiết kiệm hơn.</Text>
+              <TouchableOpacity
+                style={styles.bannerButton}
+                onPress={() => router.push('/maintenance-docs')}
+                activeOpacity={0.88}>
                 <Text style={styles.bannerButtonText}>Tìm hiểu thêm</Text>
+                <Ionicons name="arrow-forward" size={14} color="#0F172A" />
               </TouchableOpacity>
             </View>
-            <Ionicons name="construct" size={80} color="rgba(255,255,255,0.1)" style={styles.bannerIcon} />
+            <View style={styles.bannerIconHalo}>
+              <Ionicons name="construct" size={64} color="rgba(255,255,255,0.16)" />
+            </View>
           </LinearGradient>
         </View>
       </ScrollView>
@@ -179,11 +244,11 @@ export default function HomeScreen() {
   );
 }
 
-function MenuCard({ icon, title, subtitle, color, iconColor }: any) {
+function MenuCard({ icon, title, subtitle, color, iconColor, onPress }: any) {
   return (
-    <TouchableOpacity style={[styles.menuCard, { backgroundColor: color }]}>
+    <TouchableOpacity style={[styles.menuCard, { backgroundColor: color }]} onPress={onPress} activeOpacity={0.85}>
       <View style={[styles.iconContainer, { backgroundColor: '#FFFFFF' }]}>
-        <Ionicons name={icon} size={24} color={iconColor} />
+        <Ionicons name={icon} size={22} color={iconColor} />
       </View>
       <Text style={styles.menuCardTitle}>{title}</Text>
       <Text style={styles.menuCardSubtitle}>{subtitle}</Text>
@@ -203,14 +268,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#F9FAFB',
   },
   scrollContent: {
-    paddingBottom: 30,
+    paddingBottom: 12,
   },
   header: {
-    paddingTop: 60,
+    paddingTop: 42,
     paddingHorizontal: 24,
-    paddingBottom: 40,
-    borderTopRightRadius: 32,
-    borderTopLeftRadius: 32,
+    paddingBottom: 30,
+    borderTopRightRadius: 28,
+    borderTopLeftRadius: 28,
   },
   headerTop: {
     flexDirection: 'row',
@@ -218,34 +283,60 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   greetingText: {
-    fontSize: 16,
+    fontSize: 14,
     color: 'rgba(255,255,255,0.8)',
     fontWeight: '500',
   },
   userNameText: {
-    fontSize: 24,
+    fontSize: 22,
     color: '#FFFFFF',
     fontWeight: '800',
     marginTop: 4,
   },
-  logoutButton: {
-    width: 44,
-    height: 44,
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  actionButton: {
+    width: 40,
+    height: 40,
     borderRadius: 12,
     backgroundColor: 'rgba(255,255,255,0.2)',
     justifyContent: 'center',
     alignItems: 'center',
+    position: 'relative',
+  },
+  notificationBadge: {
+    position: 'absolute',
+    top: -5,
+    right: -5,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#EF4444',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  notificationBadgeText: {
+    fontSize: 9,
+    lineHeight: 12,
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
   roleBadgeContainer: {
-    marginTop: 20,
+    marginTop: 16,
     flexDirection: 'row',
   },
   roleBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 11,
+    paddingVertical: 5,
     borderRadius: 20,
     gap: 6,
   },
@@ -257,14 +348,14 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     paddingHorizontal: 24,
-    marginTop: -20,
+    marginTop: -18,
   },
   addressCard: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    padding: 16,
-    borderRadius: 16,
+    padding: 13,
+    borderRadius: 14,
     gap: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
@@ -278,33 +369,36 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   sectionTitle: {
-    fontSize: 20,
+    fontSize: 19,
     fontWeight: '800',
     color: '#111827',
-    marginTop: 30,
-    marginBottom: 20,
+    marginTop: 24,
+    marginBottom: 18,
   },
   menuGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    gap: 16,
+    rowGap: 22,
+    columnGap: 12,
   },
   menuCard: {
-    width: (SCREEN_WIDTH - 48 - 16) / 2,
-    padding: 20,
-    borderRadius: 24,
+    width: (SCREEN_WIDTH - 48 - 12) / 2,
+    minHeight: 128,
+    padding: 18,
+    borderRadius: 20,
+    justifyContent: 'center',
   },
   iconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
+    width: 42,
+    height: 42,
+    borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   menuCardTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
     color: '#1F2937',
     marginBottom: 4,
@@ -314,9 +408,10 @@ const styles = StyleSheet.create({
     color: '#6B7280',
   },
   banner: {
-    marginTop: 30,
-    borderRadius: 24,
-    padding: 24,
+    marginTop: 44,
+    borderRadius: 20,
+    padding: 18,
+    minHeight: 142,
     flexDirection: 'row',
     overflow: 'hidden',
     position: 'relative',
@@ -324,33 +419,63 @@ const styles = StyleSheet.create({
   bannerContent: {
     flex: 1,
     zIndex: 1,
+    paddingRight: 72,
+    justifyContent: 'space-between',
+  },
+  bannerBadge: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+    borderRadius: 999,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    marginBottom: 10,
+  },
+  bannerBadgeText: {
+    color: '#D1FAE5',
+    fontSize: 10,
+    fontWeight: '800',
   },
   bannerTitle: {
-    fontSize: 18,
-    fontWeight: '800',
+    fontSize: 21,
+    fontWeight: '900',
     color: '#FFFFFF',
-    marginBottom: 8,
+    marginBottom: 6,
   },
-  bannerSubtitle: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.7)',
-    marginBottom: 16,
+  bannerText: {
+    fontSize: 12,
+    lineHeight: 18,
+    color: 'rgba(255,255,255,0.76)',
+    marginBottom: 14,
   },
   bannerButton: {
-    backgroundColor: '#6366F1',
-    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    backgroundColor: '#A7F3D0',
+    paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 10,
+    borderRadius: 999,
     alignSelf: 'flex-start',
   },
   bannerButtonText: {
-    color: '#FFFFFF',
+    color: '#0F172A',
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '900',
   },
-  bannerIcon: {
+  bannerIconHalo: {
     position: 'absolute',
-    right: -10,
-    bottom: -10,
+    right: -26,
+    bottom: -24,
+    width: 126,
+    height: 126,
+    borderRadius: 63,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

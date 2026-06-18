@@ -1,4 +1,5 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Card,
   Table,
@@ -12,146 +13,181 @@ import {
   Col,
   Select,
   message,
+  Descriptions,
 } from 'antd';
 import {
-  PlusOutlined,
   DeleteOutlined,
-  EditOutlined,
   SearchOutlined,
+  EyeOutlined,
 } from '@ant-design/icons';
 import { Mail, Phone, MapPin } from 'lucide-react';
-import UserForm from './UserForm';
+import userService from '../../services/userService';
 import './Users.css';
 
 const Users = () => {
-  const [users, setUsers] = useState([
-    {
-      id: 1,
-      name: 'Nguyễn Văn A',
-      email: 'nguyena@example.com',
-      phone: '0901234567',
-      address: '123 Đường Lê Lợi, TPHCM',
-      role: 'customer',
-      status: 'active',
-      joinDate: '2025-01-15',
-      avatar: null,
-    },
-    {
-      id: 2,
-      name: 'Trần Thị B',
-      email: 'tranb@example.com',
-      phone: '0912345678',
-      address: '456 Đường Nguyễn Hue, TPHCM',
-      role: 'customer',
-      status: 'active',
-      joinDate: '2025-01-20',
-      avatar: null,
-    },
-    {
-      id: 3,
-      name: 'Lê Văn C',
-      email: 'levanc@example.com',
-      phone: '0923456789',
-      address: '789 Đường Hoàng Sa, TPHCM',
-      role: 'mechanic',
-      status: 'active',
-      joinDate: '2024-12-01',
-      avatar: null,
-    },
-    {
-      id: 4,
-      name: 'Phạm Thị D',
-      email: 'phamd@example.com',
-      phone: '0934567890',
-      address: '321 Đường Võ Văn Kiệt, TPHCM',
-      role: 'customer',
-      status: 'inactive',
-      joinDate: '2025-01-10',
-      avatar: null,
-    },
-  ]);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [users, setUsers] = useState([]);
 
   const [loading, setLoading] = useState(false);
   const [searchText, setSearchText] = useState('');
-  const [roleFilter, setRoleFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [isModalVisible, setIsModalVisible] = useState(false);
-  const [editingUser, setEditingUser] = useState(null);
-  const [form, setForm] = useState(null);
+  const [roleFilter, setRoleFilter] = useState(undefined);
+  const [statusFilter, setStatusFilter] = useState(undefined);
+  const [isDetailModalVisible, setIsDetailModalVisible] = useState(false);
+  const [userDetail, setUserDetail] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const userIdFromSearch = searchParams.get('userId');
 
-  // Lọc danh sách người dùng
-  const filteredUsers = users.filter((user) => {
-    const matchSearch = user.name.toLowerCase().includes(searchText.toLowerCase()) ||
-                        user.email.toLowerCase().includes(searchText.toLowerCase()) ||
-                        user.phone.includes(searchText);
-    const matchRole = !roleFilter || user.role === roleFilter;
-    const matchStatus = !statusFilter || user.status === statusFilter;
-    return matchSearch && matchRole && matchStatus;
-  });
-
-  // Mở modal thêm người dùng
-  const handleAddUser = () => {
-    setEditingUser(null);
-    setIsModalVisible(true);
+  const getDisplayAddress = (user) => {
+    if (!user) return 'N/A';
+    if (user.fullAddress) return user.fullAddress;
+    const parts = [user.houseNumber, user.ward, user.province].filter(Boolean);
+    return parts.length > 0 ? parts.join(', ') : 'N/A';
   };
 
-  // Mở modal sửa người dùng
-  const handleEditUser = (user) => {
-    setEditingUser(user);
-    setIsModalVisible(true);
+  const getRoleConfig = (role) => {
+    const normalizedRole = role?.toLowerCase();
+    const roleConfig = {
+      customer: { color: 'blue', text: 'Khách hàng' },
+      admin: { color: 'red', text: 'Admin' },
+      superadmin: { color: 'purple', text: 'Super Admin' },
+      super_admin: { color: 'purple', text: 'Super Admin' },
+    };
+    return roleConfig[normalizedRole] || { color: 'default', text: role || 'N/A' };
   };
+
+  const getActiveValue = (user) => (
+    user?.isActive !== undefined ? user.isActive :
+    user?.active !== undefined ? user.active :
+    user?.is_active
+  );
+
+  // Fetch dữ liệu người dùng từ backend
+  const fetchUsers = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await userService.getAllUsers();
+      // Xử lý linh hoạt: Nếu là mảng trực tiếp, hoặc nằm trong trường 'content'/'data'
+      if (Array.isArray(data)) {
+        setUsers(data);
+      } else if (data && Array.isArray(data.content)) {
+        setUsers(data.content);
+      } else if (data && Array.isArray(data.data)) {
+        setUsers(data.data);
+      } else {
+        console.warn('Dữ liệu trả về không phải là mảng:', data);
+        setUsers([]);
+      }
+    } catch (error) {
+      console.error('Fetch users error:', error);
+      message.error(error.message || 'Không thể tải danh sách người dùng!');
+      setUsers([]); // Đảm bảo luôn là mảng để không crash
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchUsers();
+  }, [fetchUsers]);
+
+  // Lọc danh sách người dùng (An toàn)
+  const filteredUsers = Array.isArray(users) ? users.filter((user) => {
+    if (!user) return false;
+    
+    // Chuyển role về chữ thường để so sánh an toàn
+    const userRole = user.role?.toLowerCase();
+    const isAllowedRole = userRole === 'admin' || userRole === 'customer' || userRole === 'superadmin' || userRole === 'super_admin';
+    
+    // Tìm kiếm an toàn
+    const userName = (user.fullName || '').toLowerCase();
+    const userEmail = (user.email || '').toLowerCase();
+    const userPhone = user.phone || '';
+    
+    const matchSearch = userName.includes(searchText.toLowerCase()) ||
+                        userEmail.includes(searchText.toLowerCase()) ||
+                        userPhone.includes(searchText);
+    
+    const matchRole = !roleFilter ? isAllowedRole : userRole === roleFilter.toLowerCase();
+    const matchStatus = !statusFilter || 
+                        (statusFilter === 'active' && user.isActive === true) ||
+                        (statusFilter === 'inactive' && user.isActive === false);
+    
+    return isAllowedRole && matchSearch && matchRole && matchStatus;
+  }) : [];
+
 
   // Xóa người dùng
-  const handleDeleteUser = (userId) => {
-    setUsers(users.filter((user) => user.id !== userId));
-    message.success('Xóa người dùng thành công!');
+  const handleDeleteUser = async (userId) => {
+    try {
+      await userService.deleteUser(userId);
+      message.success('Xóa người dùng thành công!');
+      fetchUsers();
+    } catch (error) {
+      message.error(error.message || 'Lỗi khi xóa người dùng!');
+    }
   };
 
-  // Lưu người dùng
-  const handleSaveUser = (values) => {
-    if (editingUser) {
-      // Cập nhật người dùng
-      setUsers(users.map((user) =>
-        user.id === editingUser.id ? { ...user, ...values } : user
-      ));
-      message.success('Cập nhật người dùng thành công!');
-    } else {
-      // Thêm người dùng mới
-      const newUser = {
-        id: Math.max(...users.map((u) => u.id), 0) + 1,
-        ...values,
-        joinDate: new Date().toISOString().split('T')[0],
-        status: 'active',
-        avatar: null,
-      };
-      setUsers([...users, newUser]);
-      message.success('Thêm người dùng thành công!');
+  const openDetailModal = async (userId) => {
+    setIsDetailModalVisible(true);
+    setUserDetail(null);
+    setDetailLoading(true);
+    try {
+      const data = await userService.getUserById(userId);
+      setUserDetail(data);
+    } catch (error) {
+      message.error(error.message || 'Không thể tải chi tiết người dùng!');
+      setIsDetailModalVisible(false);
+    } finally {
+      setDetailLoading(false);
     }
-    setIsModalVisible(false);
   };
+
+  useEffect(() => {
+    if (!userIdFromSearch) return;
+
+    const userId = Number(userIdFromSearch);
+    if (!Number.isFinite(userId)) {
+      setSearchParams({}, { replace: true });
+      return;
+    }
+
+    openDetailModal(userId);
+    setSearchParams({}, { replace: true });
+  }, [userIdFromSearch, setSearchParams]);
+
 
   // Cấu hình cột bảng
   const columns = [
+    {
+      title: 'STT',
+      dataIndex: 'stt',
+      key: 'stt',
+      width: 60,
+      align: 'center',
+      render: (_, __, index) => index + 1,
+    },
     {
       title: 'Tên',
       dataIndex: 'name',
       key: 'name',
       width: 200,
-      render: (text, record) => (
-        <div className="user-name-cell">
-          <div className="user-avatar">
-            {record.avatar ? (
-              <img src={record.avatar} alt={text} />
-            ) : (
-              text.charAt(0).toUpperCase()
-            )}
+      render: (text, record) => {
+        const displayName = record.fullName || record.name || text || 'N/A';
+        return (
+          <div className="user-name-cell">
+            <div className="user-avatar">
+              {record.avatar ? (
+                <img src={record.avatar} alt={displayName} />
+              ) : (
+                displayName.charAt(0).toUpperCase()
+              )}
+            </div>
+            <div>
+              <div className="user-fullname">{displayName}</div>
+            </div>
           </div>
-          <div>
-            <div className="user-fullname">{text}</div>
-            <div className="user-email-small">{record.email}</div>
-          </div>
-        </div>
-      ),
+        );
+      },
     },
     {
       title: 'Email',
@@ -159,7 +195,7 @@ const Users = () => {
       key: 'email',
       width: 200,
       render: (email) => (
-        <div className="cell-with-icon">
+        <div className="cell-with-icon email-cell">
           <Mail size={14} />
           <a href={`mailto:${email}`}>{email}</a>
         </div>
@@ -171,7 +207,7 @@ const Users = () => {
       key: 'phone',
       width: 140,
       render: (phone) => (
-        <div className="cell-with-icon">
+        <div className="cell-with-icon no-wrap-text">
           <Phone size={14} />
           {phone}
         </div>
@@ -179,15 +215,17 @@ const Users = () => {
     },
     {
       title: 'Địa chỉ',
-      dataIndex: 'address',
-      key: 'address',
+      dataIndex: 'fullAddress',
+      key: 'fullAddress',
       width: 200,
-      render: (address) => (
-        <div className="cell-with-icon">
-          <MapPin size={14} />
-          <span>{address}</span>
-        </div>
-      ),
+      render: (address, record) => {
+        return (
+          <div className="cell-with-icon">
+            <MapPin size={14} />
+            <span>{getDisplayAddress(record)}</span>
+          </div>
+        );
+      },
       responsive: ['lg'],
     },
     {
@@ -196,38 +234,39 @@ const Users = () => {
       key: 'role',
       width: 120,
       render: (role) => {
-        const roleConfig = {
-          customer: { color: 'blue', text: 'Khách hàng' },
-          mechanic: { color: 'orange', text: 'Thợ sửa xe' },
-          admin: { color: 'red', text: 'Admin' },
-          staff: { color: 'green', text: 'Nhân viên' },
-        };
-        const config = roleConfig[role];
+        const config = getRoleConfig(role);
         return <Tag color={config.color}>{config.text}</Tag>;
       },
     },
     {
       title: 'Trạng thái',
-      dataIndex: 'status',
-      key: 'status',
+      dataIndex: 'isActive',
+      key: 'isActive',
       width: 110,
-      render: (status) => {
-        const statusConfig = {
-          active: { color: 'green', text: 'Hoạt động' },
-          inactive: { color: 'red', text: 'Không hoạt động' },
-          banned: { color: 'volcano', text: 'Bị khóa' },
-        };
-        const config = statusConfig[status];
-        return <Tag color={config.color}>{config.text}</Tag>;
+      render: (_, record) => {
+        const isActive = getActiveValue(record);
+        
+        if (isActive === undefined || isActive === null) {
+          return <Tag color="default">N/A</Tag>;
+        }
+
+        return (
+          <Tag color={isActive ? 'green' : 'red'}>
+            {isActive ? 'Hoạt động' : 'Không hoạt động'}
+          </Tag>
+        );
       },
     },
     {
       title: 'Ngày tham gia',
-      dataIndex: 'joinDate',
-      key: 'joinDate',
-      width: 130,
-      render: (date) => new Date(date).toLocaleDateString('vi-VN'),
-      responsive: ['md'],
+      dataIndex: 'createdAt',
+      key: 'createdAt',
+      width: 140,
+      render: (date) => date ? new Date(date).toLocaleDateString('vi-VN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }) : 'N/A',
     },
     {
       title: 'Thao tác',
@@ -237,10 +276,9 @@ const Users = () => {
       render: (_, record) => (
         <Space>
           <Button
-            type="primary"
             size="small"
-            icon={<EditOutlined />}
-            onClick={() => handleEditUser(record)}
+            icon={<EyeOutlined />}
+            onClick={() => openDetailModal(record.id)}
           />
           <Popconfirm
             title="Xóa người dùng"
@@ -259,8 +297,8 @@ const Users = () => {
   return (
     <div className="users-page">
       <div className="page-header">
-        <h1>Quản lý người dùng</h1>
-        <p>Quản lý danh sách người dùng và quyền hạn của hệ thống</p>
+        <h1>Quản lý Tài khoản</h1>
+        <p>Quản lý danh sách quản trị viên và khách hàng của hệ thống</p>
       </div>
 
       <Card className="users-card" bordered={false}>
@@ -283,11 +321,11 @@ const Users = () => {
                 value={roleFilter}
                 onChange={setRoleFilter}
                 allowClear
+                style={{ width: '100%' }}
                 options={[
                   { label: 'Khách hàng', value: 'customer' },
-                  { label: 'Thợ sửa xe', value: 'mechanic' },
-                  { label: 'Admin', value: 'admin' },
-                  { label: 'Nhân viên', value: 'staff' },
+                  { label: 'Quản trị viên (Admin)', value: 'admin' },
+                  { label: 'Super Admin', value: 'super_admin' },
                 ]}
               />
             </Col>
@@ -298,22 +336,16 @@ const Users = () => {
                 value={statusFilter}
                 onChange={setStatusFilter}
                 allowClear
+                style={{ width: '100%' }}
                 options={[
                   { label: 'Hoạt động', value: 'active' },
                   { label: 'Không hoạt động', value: 'inactive' },
-                  { label: 'Bị khóa', value: 'banned' },
                 ]}
               />
             </Col>
 
             <Col xs={24} sm={12} md={10} className="text-right">
-              <Button
-                type="primary"
-                icon={<PlusOutlined />}
-                onClick={handleAddUser}
-              >
-                Thêm người dùng
-              </Button>
+              {/* Nút thêm đã được gỡ bỏ theo yêu cầu */}
             </Col>
           </Row>
         </div>
@@ -329,25 +361,28 @@ const Users = () => {
           <Col xs={12} sm={6}>
             <div className="stat-item">
               <div className="stat-value">
-                {users.filter((u) => u.status === 'active').length}
+                {users.filter((u) => u.isActive === true).length}
               </div>
-              <div className="stat-label">Hoạt động</div>
+              <div className="stat-label">Đang hoạt động</div>
             </div>
           </Col>
           <Col xs={12} sm={6}>
             <div className="stat-item">
               <div className="stat-value">
-                {users.filter((u) => u.role === 'customer').length}
+                {users.filter((u) => u.role?.toLowerCase() === 'customer').length}
               </div>
-              <div className="stat-label">Khách hàng</div>
+              <div className="stat-label">Tổng khách hàng</div>
             </div>
           </Col>
           <Col xs={12} sm={6}>
             <div className="stat-item">
               <div className="stat-value">
-                {users.filter((u) => u.role === 'mechanic').length}
+                {users.filter((u) => {
+                  const r = u.role?.toLowerCase();
+                  return r === 'admin' || r === 'super_admin';
+                }).length}
               </div>
-              <div className="stat-label">Thợ sửa xe</div>
+              <div className="stat-label">Tổng Quản trị viên</div>
             </div>
           </Col>
         </Row>
@@ -368,13 +403,62 @@ const Users = () => {
         />
       </Card>
 
-      {/* User Form Modal */}
-      <UserForm
-        visible={isModalVisible}
-        editingUser={editingUser}
-        onClose={() => setIsModalVisible(false)}
-        onSave={handleSaveUser}
-      />
+      <Modal
+        className="detail-modal"
+        title="Chi tiết người dùng"
+        open={isDetailModalVisible}
+        onCancel={() => setIsDetailModalVisible(false)}
+        footer={null}
+        width={760}
+        loading={detailLoading}
+      >
+        {userDetail && (
+          <Descriptions bordered column={1} size="small">
+            <Descriptions.Item label="Mã người dùng">#{userDetail.id}</Descriptions.Item>
+            <Descriptions.Item label="Họ và tên">
+              <div className="user-detail-name">
+                <div className="user-avatar">
+                  {(userDetail.fullName || userDetail.name || '?').charAt(0).toUpperCase()}
+                </div>
+                <span>{userDetail.fullName || userDetail.name || 'N/A'}</span>
+              </div>
+            </Descriptions.Item>
+            <Descriptions.Item label="Email">
+              {userDetail.email ? <a href={`mailto:${userDetail.email}`}>{userDetail.email}</a> : 'N/A'}
+            </Descriptions.Item>
+            <Descriptions.Item label="Số điện thoại">
+              {userDetail.phone ? <a href={`tel:${userDetail.phone}`}>{userDetail.phone}</a> : 'N/A'}
+            </Descriptions.Item>
+            <Descriptions.Item label="Vai trò">
+              <Tag color={getRoleConfig(userDetail.role).color}>{getRoleConfig(userDetail.role).text}</Tag>
+            </Descriptions.Item>
+            <Descriptions.Item label="Trạng thái">
+              {getActiveValue(userDetail) === undefined || getActiveValue(userDetail) === null ? (
+                <Tag color="default">N/A</Tag>
+              ) : (
+                <Tag color={getActiveValue(userDetail) ? 'green' : 'red'}>
+                  {getActiveValue(userDetail) ? 'Hoạt động' : 'Không hoạt động'}
+                </Tag>
+              )}
+            </Descriptions.Item>
+            <Descriptions.Item label="Địa chỉ">{getDisplayAddress(userDetail)}</Descriptions.Item>
+            <Descriptions.Item label="Số nhà">{userDetail.houseNumber || 'N/A'}</Descriptions.Item>
+            <Descriptions.Item label="Phường/Xã">{userDetail.ward || 'N/A'}</Descriptions.Item>
+            <Descriptions.Item label="Tỉnh/Thành phố">{userDetail.province || 'N/A'}</Descriptions.Item>
+            <Descriptions.Item label="Chi nhánh">
+              {userDetail.branch?.name || 'Không thuộc chi nhánh'}
+            </Descriptions.Item>
+            <Descriptions.Item label="Số phương tiện">
+              {Array.isArray(userDetail.vehicles) ? userDetail.vehicles.length : 0}
+            </Descriptions.Item>
+            <Descriptions.Item label="Ngày tham gia">
+              {userDetail.createdAt ? new Date(userDetail.createdAt).toLocaleString('vi-VN') : 'N/A'}
+            </Descriptions.Item>
+          </Descriptions>
+        )}
+      </Modal>
+
+      {/* Form chỉnh sửa đã được gỡ bỏ theo yêu cầu */}
     </div>
   );
 };

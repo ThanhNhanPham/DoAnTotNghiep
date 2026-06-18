@@ -102,6 +102,27 @@
   max-width: 250px;
 }
 
+.part-detail-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.branch-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #475569;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.branch-cell svg {
+  color: #1677ff;
+  flex-shrink: 0;
+}
+
 /* Quantity cell */
 .quantity-cell {
   display: flex;
