@@ -214,7 +214,7 @@ export default function LoginScreen() {
                 {/* Signup Footer */}
                 <View style={styles.footerContainer}>
                   <Text style={styles.footerText}>Chưa có tài khoản? </Text>
-                  <TouchableOpacity>
+                  <TouchableOpacity onPress={() => router.push('/register')}>
                     <Text style={styles.signupText}>Đăng ký ngay</Text>
                   </TouchableOpacity>
                 </View>

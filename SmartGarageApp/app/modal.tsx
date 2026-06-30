@@ -15,6 +15,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
+import Markdown from 'react-native-markdown-display';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import bookingService, { PaymentMethod } from '@/services/bookingService';
@@ -530,7 +531,11 @@ export default function BookingModalScreen() {
           <Text style={styles.summaryLabel}>Vấn đề bạn mô tả</Text>
           <Text style={styles.summaryText}>{issue || 'Chưa có mô tả từ AI.'}</Text>
           <Text style={styles.summaryLabel}>Gợi ý từ AI</Text>
-          <Text style={styles.summaryText}>{aiSuggestion || 'Chưa có gợi ý AI.'}</Text>
+          {aiSuggestion ? (
+            <Markdown style={markdownStyles}>{aiSuggestion}</Markdown>
+          ) : (
+            <Text style={styles.summaryText}>Chưa có gợi ý AI.</Text>
+          )}
         </View>
 
         <View style={styles.card}>
@@ -1135,5 +1140,21 @@ const styles = StyleSheet.create({
   },
   disabledButton: {
     opacity: 0.75,
+  },
+});
+
+const markdownStyles = StyleSheet.create({
+  body: {
+    fontSize: 14,
+    lineHeight: 22,
+    color: '#334155',
+  },
+  paragraph: {
+    marginTop: 0,
+    marginBottom: 4,
+  },
+  strong: {
+    fontWeight: '800',
+    color: '#0F172A',
   },
 });
