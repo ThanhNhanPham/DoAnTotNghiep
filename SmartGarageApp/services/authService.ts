@@ -30,6 +30,16 @@ export interface ResetPasswordPayload {
   confirmNewPassword: string;
 }
 
+export interface RegisterPayload {
+  email: string;
+  password: string;
+  fullName: string;
+  phone: string;
+  province: string;
+  ward: string;
+  houseNumber: string;
+}
+
 const authService = {
   async getMe() {
     const response = await apiClient.get<AuthMeResponse>('/auth/me');
@@ -48,6 +58,11 @@ const authService = {
 
   async resetPassword(payload: ResetPasswordPayload) {
     const response = await apiClient.post('/auth/reset-password', payload);
+    return response.data;
+  },
+
+  async register(payload: RegisterPayload) {
+    const response = await apiClient.post('/auth/register', payload);
     return response.data;
   },
 };
