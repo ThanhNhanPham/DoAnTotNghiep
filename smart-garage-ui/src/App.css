@@ -14,6 +14,69 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background: #f3f6fb;
+  font-size: var(--app-font-size, 14px);
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.admin-layout {
+  font-size: var(--app-font-size, 14px);
+}
+
+.admin-layout .ant-card,
+.admin-layout .ant-table,
+.admin-layout .ant-form,
+.admin-layout .ant-input,
+.admin-layout .ant-input-number,
+.admin-layout .ant-select,
+.admin-layout .ant-picker,
+.admin-layout .ant-btn,
+.admin-layout .ant-tag,
+.admin-layout .ant-radio-button-wrapper,
+.admin-layout .ant-slider-mark-text,
+.admin-layout .ant-dropdown,
+.admin-layout .ant-modal {
+  font-size: var(--app-font-size, 14px);
+}
+
+.admin-layout .ant-form-item-label > label,
+.admin-layout .ant-table-thead > tr > th,
+.admin-layout .ant-table-tbody > tr > td,
+.admin-layout .ant-card-body,
+.admin-layout .ant-card-head-title,
+.admin-layout .ant-descriptions,
+.admin-layout .ant-list,
+.admin-layout .ant-tabs,
+.admin-layout .ant-select-item,
+.admin-layout .ant-picker-dropdown {
+  font-size: var(--app-font-size, 14px);
+}
+
+.admin-layout .page-header h1,
+.admin-layout .settings-hero h1 {
+  font-size: calc(30px * var(--app-font-scale, 1));
+}
+
+.admin-layout .settings-panel-title strong,
+.admin-layout .settings-preview-top h3,
+.admin-layout .header-page-title strong,
+.admin-layout .nav-item,
+.admin-layout .switch-item strong,
+.admin-layout .settings-summary-item strong {
+  font-size: calc(15px * var(--app-font-scale, 1));
+}
+
+.admin-layout .settings-panel-title span,
+.admin-layout .settings-preview-top p,
+.admin-layout .settings-summary-item span,
+.admin-layout .switch-item p,
+.admin-layout .header-page-title span,
+.admin-layout .settings-info-list,
+.admin-layout .footer-content {
+  font-size: calc(13px * var(--app-font-scale, 1));
+}
+
+.admin-layout .preview-stat-value {
+  font-size: calc(30px * var(--app-font-scale, 1));
 }
 
 /* Ant Design customizations */
@@ -142,4 +205,104 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
+}
+
+body.dark-mode {
+  color: #e5e7eb;
+  background: #0f172a;
+}
+
+body.dark-mode a {
+  color: #93c5fd;
+}
+
+body.dark-mode a:hover {
+  color: #bfdbfe;
+}
+
+body.dark-mode .admin-layout {
+  background:
+    radial-gradient(circle at top left, rgba(37, 99, 235, 0.16), transparent 32%),
+    linear-gradient(180deg, #0f172a 0%, #111827 100%);
+}
+
+body.dark-mode .admin-header,
+body.dark-mode .main-footer,
+body.dark-mode .page-header,
+body.dark-mode .users-toolbar,
+body.dark-mode .bookings-toolbar,
+body.dark-mode .mechanics-toolbar,
+body.dark-mode .services-toolbar,
+body.dark-mode .branches-toolbar,
+body.dark-mode .parts-toolbar,
+body.dark-mode .settings-preview-card,
+body.dark-mode .settings-info-card,
+body.dark-mode .settings-panel,
+body.dark-mode .ant-card,
+body.dark-mode .ant-table-wrapper,
+body.dark-mode .detail-modal .ant-descriptions,
+body.dark-mode .detail-modal .ant-descriptions-bordered .ant-descriptions-item-content {
+  background: #111827;
+  border-color: #334155;
+  color: #e5e7eb;
+}
+
+body.dark-mode .ant-card-head,
+body.dark-mode .ant-modal-content,
+body.dark-mode .ant-dropdown-menu,
+body.dark-mode .header-search-panel {
+  background: #111827;
+  border-color: #334155;
+  color: #e5e7eb;
+}
+
+body.dark-mode .page-header h1,
+body.dark-mode .header-page-title strong,
+body.dark-mode .settings-panel-title strong,
+body.dark-mode .settings-preview-top h3,
+body.dark-mode .settings-summary-item strong,
+body.dark-mode .settings-info-title,
+body.dark-mode .switch-item strong,
+body.dark-mode .ant-table-tbody > tr > td,
+body.dark-mode .detail-modal .ant-descriptions-bordered .ant-descriptions-item-content {
+  color: #e5e7eb;
+}
+
+body.dark-mode .page-header p,
+body.dark-mode .header-page-title span,
+body.dark-mode .settings-panel-title span,
+body.dark-mode .settings-preview-top p,
+body.dark-mode .settings-summary-item span,
+body.dark-mode .settings-info-list,
+body.dark-mode .switch-item p,
+body.dark-mode .footer-content,
+body.dark-mode .footer-links a {
+  color: #94a3b8;
+}
+
+body.dark-mode .switch-item,
+body.dark-mode .settings-summary-icon,
+body.dark-mode .mobile-menu-btn,
+body.dark-mode .header-icon-btn,
+body.dark-mode .header-search,
+body.dark-mode .detail-modal .ant-descriptions-bordered .ant-descriptions-item-label {
+  background: #1e293b;
+  border-color: #334155;
+  color: #cbd5e1;
+}
+
+body.dark-mode .header-search-result {
+  color: #e5e7eb;
+}
+
+body.dark-mode .header-search-result:hover {
+  background: #1e293b;
+}
+
+body.dark-mode ::-webkit-scrollbar-track {
+  background: #111827;
+}
+
+body.dark-mode ::-webkit-scrollbar-thumb {
+  background: #475569;
 }

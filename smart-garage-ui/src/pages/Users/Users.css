@@ -38,6 +38,10 @@
   border-radius: 8px;
 }
 
+.admin-account-form {
+  margin-top: 12px;
+}
+
 .text-right {
   text-align: right;
 }

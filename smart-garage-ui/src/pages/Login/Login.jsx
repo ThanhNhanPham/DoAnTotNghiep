@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Form, Input, Button, Checkbox, message } from 'antd';
-import { UserOutlined, LockOutlined, MailOutlined } from '@ant-design/icons';
-import { useNavigate } from 'react-router-dom';
+import { LockOutlined, MailOutlined } from '@ant-design/icons';
+import { Link, useNavigate } from 'react-router-dom';
 import { Wrench, Settings } from 'lucide-react';
 import authService from '../../services/authService';
 import { getFirstAllowedAdminPath } from '../../config/permissions';
@@ -32,6 +32,10 @@ const Login = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleRegisterClick = () => {
+    message.info('Vui lòng liên hệ với Super Admin để được cấp tài khoản.');
   };
 
   return (
@@ -98,9 +102,9 @@ const Login = () => {
                 <Form.Item name="remember" valuePropName="checked" noStyle>
                   <Checkbox>Ghi nhớ tài khoản</Checkbox>
                 </Form.Item>
-                <a className="forgot-password" href="#forgot">
+                <Link className="forgot-password" to="/forgot-password">
                   Quên mật khẩu?
-                </a>
+                </Link>
               </div>
             </Form.Item>
 
@@ -120,7 +124,10 @@ const Login = () => {
 
           <div className="login-footer">
             <p>
-              Chưa có tài khoản? <a href="#register">Đăng ký ngay</a>
+              Chưa có tài khoản?{' '}
+              <button type="button" className="register-link" onClick={handleRegisterClick}>
+                Đăng ký ngay
+              </button>
             </p>
           </div>
         </div>

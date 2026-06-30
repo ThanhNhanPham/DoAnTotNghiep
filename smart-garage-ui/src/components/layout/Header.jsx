@@ -176,7 +176,7 @@ const Header = ({ onMenuClick, sidebarCollapsed }) => {
           setSearchResults(data);
           setSearchOpen(true);
         }
-      } catch (error) {
+      } catch {
         if (!cancelled) {
           setSearchResults({ customers: [], bookings: [], invoices: [] });
         }

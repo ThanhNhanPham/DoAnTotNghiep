@@ -200,6 +200,31 @@ const authService = {
     }
   },
 
+  // API Gửi mã xác nhận quên mật khẩu
+  forgotPassword: async (email) => {
+    try {
+      const response = await axios.post(`${API_ENDPOINTS.auth}/forgot-password`, {
+        email,
+      });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { message: 'Gửi mã xác nhận thất bại!' };
+    }
+  },
+
+  // API Đặt lại mật khẩu bằng mã xác nhận
+  resetPassword: async (resetPasswordRequest) => {
+    try {
+      const response = await axios.post(
+        `${API_ENDPOINTS.auth}/reset-password`,
+        resetPasswordRequest
+      );
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { message: 'Đặt lại mật khẩu thất bại!' };
+    }
+  },
+
   // API Cập nhật hồ sơ
   updateProfile: async (profileData) => {
     try {

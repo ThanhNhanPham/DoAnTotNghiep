@@ -253,10 +253,25 @@
   font-size: 15px;
 }
 
-.login-footer a {
+.login-footer a,
+.register-link {
   color: #4f46e5;
   font-weight: 600;
   transition: color 0.3s;
+}
+
+.register-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+}
+
+.register-link:hover,
+.register-link:focus {
+  color: #3730a3;
+  text-decoration: underline;
 }
 
 .login-footer a:hover {
