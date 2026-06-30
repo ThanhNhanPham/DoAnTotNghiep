@@ -307,7 +307,10 @@ public class BookingService {
 
         int safePage = Math.max(page, 0);
         int safeSize = Math.min(Math.max(size, 1), 100);
-        Pageable pageable = PageRequest.of(safePage, safeSize, Sort.by(Sort.Direction.DESC, "bookingTime"));
+        Pageable pageable = PageRequest.of(safePage, safeSize, Sort.by(
+                Sort.Order.desc("createdAt"),
+                Sort.Order.desc("id")
+        ));
         String normalizedKeyword = keyword == null ? null : keyword.trim();
 
         return bookingRepository.searchAdminBookings(bookingStatus, branchId, normalizedKeyword, pageable)

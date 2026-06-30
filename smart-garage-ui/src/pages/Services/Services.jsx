@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Card,
   Table,
@@ -40,6 +40,7 @@ const Services = () => {
     pageSize: 10,
     total: 0,
   });
+  const { current: servicePage, pageSize: servicePageSize } = servicePagination;
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [editingService, setEditingService] = useState(null);
   const [isDetailModalVisible, setIsDetailModalVisible] = useState(false);
@@ -57,16 +58,12 @@ const Services = () => {
     return type || 'N/A';
   };
 
-  useEffect(() => {
-    fetchServices();
-  }, [servicePagination.current, servicePagination.pageSize, statusFilter, typeFilter, searchText]);
-
-  const fetchServices = async () => {
+  const fetchServices = useCallback(async () => {
     setLoading(true);
     try {
       const data = await serviceService.getServicesPage({
-        page: servicePagination.current,
-        size: servicePagination.pageSize,
+        page: servicePage,
+        size: servicePageSize,
         status: statusFilter,
         type: typeFilter,
         keyword: searchText,
@@ -89,7 +86,11 @@ const Services = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [servicePage, servicePageSize, statusFilter, typeFilter, searchText]);
+
+  useEffect(() => {
+    fetchServices();
+  }, [fetchServices]);
 
   const resetServicePagination = () => {
     setServicePagination((prev) => ({ ...prev, current: 1 }));
@@ -179,7 +180,7 @@ const Services = () => {
       dataIndex: 'name',
       key: 'name',
       width: 180,
-      render: (text, record) => (
+      render: (text) => (
         <div className="service-name-cell">
           <Wrench size={16} className="service-icon" />
           <div className="service-title">{text}</div>

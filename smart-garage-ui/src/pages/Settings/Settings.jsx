@@ -4,7 +4,6 @@ import {
   Form,
   Input,
   Button,
-  Switch,
   Select,
   message,
   Space,
@@ -22,7 +21,6 @@ import {
 import {
   Settings as SettingsIcon,
   Palette,
-  Bell,
   Globe,
   Sun,
   Moon,
@@ -69,6 +67,22 @@ const Settings = () => {
   const [form] = Form.useForm();
   const [themeColor, setThemeColor] = useState(DEFAULT_SETTINGS.themeColor);
   const [darkMode, setDarkMode] = useState(DEFAULT_SETTINGS.darkMode);
+  const [fontSize, setFontSize] = useState(DEFAULT_SETTINGS.fontSize);
+
+  const applyTheme = useCallback((nextThemeColor, nextDarkMode, nextFontSize = DEFAULT_SETTINGS.fontSize) => {
+    const normalizedTheme = {
+      themeColor: nextThemeColor || DEFAULT_SETTINGS.themeColor,
+      darkMode: Boolean(nextDarkMode),
+      fontSize: Number(nextFontSize) || DEFAULT_SETTINGS.fontSize,
+    };
+
+    localStorage.setItem('adminThemeSettings', JSON.stringify(normalizedTheme));
+    document.documentElement.style.setProperty('--primary-color', normalizedTheme.themeColor);
+    document.documentElement.style.setProperty('--app-font-size', `${normalizedTheme.fontSize}px`);
+    document.documentElement.style.setProperty('--app-font-scale', String(normalizedTheme.fontSize / DEFAULT_SETTINGS.fontSize));
+    document.body.classList.toggle('dark-mode', normalizedTheme.darkMode);
+    window.dispatchEvent(new CustomEvent('admin-theme-change'));
+  }, []);
 
   const loadSettings = useCallback(async () => {
     setLoading(true);
@@ -77,24 +91,27 @@ const Settings = () => {
       form.setFieldsValue(settings);
       setThemeColor(settings.themeColor || DEFAULT_SETTINGS.themeColor);
       setDarkMode(Boolean(settings.darkMode));
+      setFontSize(Number(settings.fontSize) || DEFAULT_SETTINGS.fontSize);
+      applyTheme(
+        settings.themeColor || DEFAULT_SETTINGS.themeColor,
+        Boolean(settings.darkMode),
+        settings.fontSize || DEFAULT_SETTINGS.fontSize
+      );
     } catch (error) {
       form.setFieldsValue(DEFAULT_SETTINGS);
       setThemeColor(DEFAULT_SETTINGS.themeColor);
       setDarkMode(DEFAULT_SETTINGS.darkMode);
+      setFontSize(DEFAULT_SETTINGS.fontSize);
+      applyTheme(DEFAULT_SETTINGS.themeColor, DEFAULT_SETTINGS.darkMode, DEFAULT_SETTINGS.fontSize);
       message.error(getApiErrorMessage(error, 'Không thể tải cài đặt!'));
     } finally {
       setLoading(false);
     }
-  }, [form]);
+  }, [applyTheme, form]);
 
   useEffect(() => {
     loadSettings();
   }, [loadSettings]);
-
-  const applyTheme = (nextThemeColor, nextDarkMode) => {
-    document.documentElement.style.setProperty('--primary-color', nextThemeColor);
-    document.body.classList.toggle('dark-mode', nextDarkMode);
-  };
 
   const handleSubmit = async (values) => {
     setLoading(true);
@@ -104,12 +121,21 @@ const Settings = () => {
         version: values.version ?? settingsSnapshot.version ?? DEFAULT_SETTINGS.version,
         themeColor,
         darkMode,
+        fontSize,
+        emailNotifications: settingsSnapshot.emailNotifications ?? DEFAULT_SETTINGS.emailNotifications,
+        pushNotifications: settingsSnapshot.pushNotifications ?? DEFAULT_SETTINGS.pushNotifications,
+        soundEnabled: settingsSnapshot.soundEnabled ?? DEFAULT_SETTINGS.soundEnabled,
       };
       const savedSettings = await settingsService.updateSystemSettings(payload);
       form.setFieldsValue(savedSettings);
       setThemeColor(savedSettings.themeColor || DEFAULT_SETTINGS.themeColor);
       setDarkMode(Boolean(savedSettings.darkMode));
-      applyTheme(savedSettings.themeColor || DEFAULT_SETTINGS.themeColor, Boolean(savedSettings.darkMode));
+      setFontSize(Number(savedSettings.fontSize) || DEFAULT_SETTINGS.fontSize);
+      applyTheme(
+        savedSettings.themeColor || DEFAULT_SETTINGS.themeColor,
+        Boolean(savedSettings.darkMode),
+        savedSettings.fontSize || DEFAULT_SETTINGS.fontSize
+      );
       message.success('Lưu cài đặt thành công!');
     } catch (error) {
       message.error(getApiErrorMessage(error, 'Lưu cài đặt thất bại!'));
@@ -125,7 +151,12 @@ const Settings = () => {
       form.setFieldsValue(savedSettings);
       setThemeColor(savedSettings.themeColor || DEFAULT_SETTINGS.themeColor);
       setDarkMode(Boolean(savedSettings.darkMode));
-      applyTheme(savedSettings.themeColor || DEFAULT_SETTINGS.themeColor, Boolean(savedSettings.darkMode));
+      setFontSize(Number(savedSettings.fontSize) || DEFAULT_SETTINGS.fontSize);
+      applyTheme(
+        savedSettings.themeColor || DEFAULT_SETTINGS.themeColor,
+        Boolean(savedSettings.darkMode),
+        savedSettings.fontSize || DEFAULT_SETTINGS.fontSize
+      );
       message.success('Đã khôi phục cài đặt mặc định!');
     } catch (error) {
       message.error(getApiErrorMessage(error, 'Không thể khôi phục cài đặt mặc định!'));
@@ -159,14 +190,6 @@ const Settings = () => {
         label: 'Phiên bản',
         value: `Version ${settingsSnapshot.version ?? DEFAULT_SETTINGS.version}`,
       },
-      {
-        icon: Bell,
-        label: 'Thông báo',
-        value:
-          settingsSnapshot.emailNotifications || settingsSnapshot.pushNotifications
-            ? 'Đang bật'
-            : 'Đã tắt',
-      },
     ],
     [darkMode, settingsSnapshot]
   );
@@ -181,7 +204,7 @@ const Settings = () => {
           <div>
             <span className="settings-kicker">Admin Preferences</span>
             <h1>Cài đặt hệ thống</h1>
-            <p>Quản lý giao diện, thông báo và thông tin hiển thị mặc định cho khu vực quản trị Smart Garage.</p>
+            <p>Quản lý giao diện, định dạng và thông tin hiển thị mặc định cho khu vực quản trị Smart Garage.</p>
           </div>
         </div>
         <div className="settings-hero-meta">
@@ -236,6 +259,12 @@ const Settings = () => {
                     <Slider
                       min={12}
                       max={18}
+                      value={fontSize}
+                      onChange={(value) => {
+                        setFontSize(value);
+                        form.setFieldValue('fontSize', value);
+                        applyTheme(themeColor, darkMode, value);
+                      }}
                       marks={{
                         12: '12',
                         14: '14',
@@ -313,51 +342,6 @@ const Settings = () => {
                   </Form.Item>
                 </Col>
               </Row>
-            </Card>
-
-            <Card
-              className="settings-panel"
-              title={
-                <div className="settings-panel-title">
-                  <Bell size={18} />
-                  <div>
-                    <strong>Thông báo</strong>
-                    <span>Kiểm soát cách hệ thống gửi nhắc việc và cảnh báo vận hành.</span>
-                  </div>
-                </div>
-              }
-            >
-              <div className="switch-list">
-                <Form.Item name="emailNotifications" valuePropName="checked">
-                  <div className="switch-item">
-                    <div>
-                      <strong>Thông báo Email</strong>
-                      <p>Gửi email khi có booking mới, thanh toán hoặc cảnh báo quan trọng.</p>
-                    </div>
-                    <Switch />
-                  </div>
-                </Form.Item>
-
-                <Form.Item name="pushNotifications" valuePropName="checked">
-                  <div className="switch-item">
-                    <div>
-                      <strong>Thông báo trình duyệt</strong>
-                      <p>Hiển thị nhắc việc trực tiếp trong phiên quản trị đang mở.</p>
-                    </div>
-                    <Switch />
-                  </div>
-                </Form.Item>
-
-                <Form.Item name="soundEnabled" valuePropName="checked">
-                  <div className="switch-item">
-                    <div>
-                      <strong>Âm thanh thông báo</strong>
-                      <p>Phát âm thanh khi có thông báo mới cần xử lý ngay.</p>
-                    </div>
-                    <Switch />
-                  </div>
-                </Form.Item>
-              </div>
             </Card>
 
             <Card
@@ -464,7 +448,6 @@ const Settings = () => {
               bordered={false}
             >
               <ul className="settings-info-list">
-                <li>Giữ email thông báo bật để không bỏ lỡ booking hoặc nhắc lịch bảo dưỡng.</li>
                 <li>Dùng cùng một múi giờ cho toàn bộ quản trị viên để tránh lệch lịch hẹn.</li>
                 <li>Thông tin doanh nghiệp nên khớp với hóa đơn và mẫu email tự động.</li>
               </ul>

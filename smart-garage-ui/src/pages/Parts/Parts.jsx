@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Card,
   Table,
@@ -44,6 +44,7 @@ const Parts = () => {
     pageSize: 10,
     total: 0,
   });
+  const { current: partPage, pageSize: partPageSize } = partPagination;
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [editingPart, setEditingPart] = useState(null);
   const [isDetailModalVisible, setIsDetailModalVisible] = useState(false);
@@ -54,20 +55,27 @@ const Parts = () => {
   const [stockAmount, setStockAmount] = useState(1);
   const [stockLoading, setStockLoading] = useState(false);
 
-  useEffect(() => {
-    fetchBranches();
-  }, []);
-
-  useEffect(() => {
-    fetchParts();
-  }, [partPagination.current, partPagination.pageSize, searchText, statusFilter, branchFilter, lowStockMode]);
-
   const formatCurrency = (value) => {
     const amount = Number(value || 0);
     return `${amount.toLocaleString('vi-VN')} đ`;
   };
 
-  const fetchParts = async () => {
+  const filterPartsLocally = useCallback((items) => {
+    const keyword = searchText.trim().toLowerCase();
+    return items.filter((part) => {
+      const matchesKeyword =
+        !keyword ||
+        part.name?.toLowerCase().includes(keyword) ||
+        part.description?.toLowerCase().includes(keyword);
+      const matchesStock =
+        !statusFilter ||
+        (statusFilter === 'in-stock' && part.quantity > 0) ||
+        (statusFilter === 'out-of-stock' && part.quantity === 0);
+      return matchesKeyword && matchesStock;
+    });
+  }, [searchText, statusFilter]);
+
+  const fetchParts = useCallback(async () => {
     setLoading(true);
     try {
       let data;
@@ -78,8 +86,8 @@ const Parts = () => {
         data = await partService.getPartsByBranch(branchFilter);
       } else {
         data = await partService.getPartsPage({
-          page: partPagination.current,
-          size: partPagination.pageSize,
+          page: partPage,
+          size: partPageSize,
           keyword: searchText,
           stockStatus: statusFilter,
         });
@@ -87,8 +95,8 @@ const Parts = () => {
 
       if (Array.isArray(data)) {
         const filtered = filterPartsLocally(data);
-        const start = (partPagination.current - 1) * partPagination.pageSize;
-        setParts(filtered.slice(start, start + partPagination.pageSize));
+        const start = (partPage - 1) * partPageSize;
+        setParts(filtered.slice(start, start + partPageSize));
         setPartPagination((prev) => ({ ...prev, total: filtered.length }));
       } else {
         setParts(data?.content || []);
@@ -105,9 +113,17 @@ const Parts = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [
+    branchFilter,
+    filterPartsLocally,
+    lowStockMode,
+    partPage,
+    partPageSize,
+    searchText,
+    statusFilter,
+  ]);
 
-  const fetchBranches = async () => {
+  const fetchBranches = useCallback(async () => {
     try {
       const data = await branchService.getActiveBranches();
       setBranches(data || []);
@@ -115,22 +131,15 @@ const Parts = () => {
       console.error(error);
       message.error('Không thể tải danh sách chi nhánh!');
     }
-  };
+  }, []);
 
-  const filterPartsLocally = (items) => {
-    const keyword = searchText.trim().toLowerCase();
-    return items.filter((part) => {
-      const matchesKeyword =
-        !keyword ||
-        part.name?.toLowerCase().includes(keyword) ||
-        part.description?.toLowerCase().includes(keyword);
-      const matchesStock =
-        !statusFilter ||
-        (statusFilter === 'in-stock' && part.quantity > 0) ||
-        (statusFilter === 'out-of-stock' && part.quantity === 0);
-      return matchesKeyword && matchesStock;
-    });
-  };
+  useEffect(() => {
+    fetchBranches();
+  }, [fetchBranches]);
+
+  useEffect(() => {
+    fetchParts();
+  }, [fetchParts]);
 
   const resetPartPagination = () => {
     setPartPagination((prev) => ({ ...prev, current: 1 }));

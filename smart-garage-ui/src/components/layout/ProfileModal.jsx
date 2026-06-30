@@ -1,5 +1,5 @@
 import { Modal, Form, Input, Button, message, Spin } from 'antd';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Mail, Phone, MapPin, User } from 'lucide-react';
 import authService from '../../services/authService';
 
@@ -17,13 +17,7 @@ const ProfileModal = ({ visible, onClose, userEmail }) => {
     province: '',
   });
 
-  useEffect(() => {
-    if (visible) {
-      fetchProfileData();
-    }
-  }, [visible]);
-
-  const fetchProfileData = async () => {
+  const fetchProfileData = useCallback(async () => {
     try {
       setFetchLoading(true);
       // Lấy dữ liệu từ backend
@@ -56,7 +50,13 @@ const ProfileModal = ({ visible, onClose, userEmail }) => {
     } finally {
       setFetchLoading(false);
     }
-  };
+  }, [form, userEmail]);
+
+  useEffect(() => {
+    if (visible) {
+      fetchProfileData();
+    }
+  }, [visible, fetchProfileData]);
 
   const handleEdit = () => {
     setIsEditing(true);

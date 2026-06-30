@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Card,
+  Form,
   Table,
   Button,
   Input,
@@ -16,22 +17,31 @@ import {
   Descriptions,
 } from 'antd';
 import {
+  CheckCircleOutlined,
   DeleteOutlined,
   SearchOutlined,
   EyeOutlined,
+  LockOutlined,
+  PlusOutlined,
+  StopOutlined,
 } from '@ant-design/icons';
 import { Mail, Phone, MapPin } from 'lucide-react';
 import userService from '../../services/userService';
+import branchService from '../../services/branchService';
 import './Users.css';
 
 const Users = () => {
   const [searchParams, setSearchParams] = useSearchParams();
+  const [adminForm] = Form.useForm();
   const [users, setUsers] = useState([]);
+  const [branches, setBranches] = useState([]);
 
   const [loading, setLoading] = useState(false);
+  const [createLoading, setCreateLoading] = useState(false);
   const [searchText, setSearchText] = useState('');
   const [roleFilter, setRoleFilter] = useState(undefined);
   const [statusFilter, setStatusFilter] = useState(undefined);
+  const [isCreateAdminModalVisible, setIsCreateAdminModalVisible] = useState(false);
   const [isDetailModalVisible, setIsDetailModalVisible] = useState(false);
   const [userDetail, setUserDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -45,21 +55,36 @@ const Users = () => {
   };
 
   const getRoleConfig = (role) => {
-    const normalizedRole = role?.toLowerCase();
+    const normalizedRole = normalizeRole(role);
     const roleConfig = {
       customer: { color: 'blue', text: 'Khách hàng' },
       admin: { color: 'red', text: 'Admin' },
       superadmin: { color: 'purple', text: 'Super Admin' },
-      super_admin: { color: 'purple', text: 'Super Admin' },
     };
     return roleConfig[normalizedRole] || { color: 'default', text: role || 'N/A' };
   };
+
+  const normalizeRole = (role) => String(role || '').replace(/^ROLE_/i, '').replace(/_/g, '').toLowerCase();
 
   const getActiveValue = (user) => (
     user?.isActive !== undefined ? user.isActive :
     user?.active !== undefined ? user.active :
     user?.is_active
   );
+
+  const getAccountStatus = (user) => {
+    if (user?.accountStatus) return String(user.accountStatus).toUpperCase();
+    return getActiveValue(user) === false ? 'INACTIVE' : 'ACTIVE';
+  };
+
+  const getStatusConfig = (status) => {
+    const statusConfig = {
+      ACTIVE: { color: 'green', text: 'Đang hoạt động' },
+      LOCKED: { color: 'volcano', text: 'Bị khóa' },
+      INACTIVE: { color: 'red', text: 'Ngừng hoạt động' },
+    };
+    return statusConfig[status] || { color: 'default', text: 'N/A' };
+  };
 
   // Fetch dữ liệu người dùng từ backend
   const fetchUsers = useCallback(async () => {
@@ -90,13 +115,26 @@ const Users = () => {
     fetchUsers();
   }, [fetchUsers]);
 
+  useEffect(() => {
+    const fetchBranches = async () => {
+      try {
+        const data = await branchService.getActiveBranches();
+        setBranches(Array.isArray(data) ? data : []);
+      } catch (error) {
+        message.error(error?.response?.data?.message || error.message || 'Không thể tải danh sách chi nhánh!');
+      }
+    };
+
+    fetchBranches();
+  }, []);
+
   // Lọc danh sách người dùng (An toàn)
   const filteredUsers = Array.isArray(users) ? users.filter((user) => {
     if (!user) return false;
     
     // Chuyển role về chữ thường để so sánh an toàn
-    const userRole = user.role?.toLowerCase();
-    const isAllowedRole = userRole === 'admin' || userRole === 'customer' || userRole === 'superadmin' || userRole === 'super_admin';
+    const userRole = normalizeRole(user.role);
+    const isAllowedRole = userRole === 'admin' || userRole === 'customer' || userRole === 'superadmin';
     
     // Tìm kiếm an toàn
     const userName = (user.fullName || '').toLowerCase();
@@ -107,10 +145,8 @@ const Users = () => {
                         userEmail.includes(searchText.toLowerCase()) ||
                         userPhone.includes(searchText);
     
-    const matchRole = !roleFilter ? isAllowedRole : userRole === roleFilter.toLowerCase();
-    const matchStatus = !statusFilter || 
-                        (statusFilter === 'active' && user.isActive === true) ||
-                        (statusFilter === 'inactive' && user.isActive === false);
+    const matchRole = !roleFilter ? isAllowedRole : userRole === roleFilter;
+    const matchStatus = !statusFilter || getAccountStatus(user) === statusFilter;
     
     return isAllowedRole && matchSearch && matchRole && matchStatus;
   }) : [];
@@ -124,6 +160,37 @@ const Users = () => {
       fetchUsers();
     } catch (error) {
       message.error(error.message || 'Lỗi khi xóa người dùng!');
+    }
+  };
+
+  const handleCreateAdmin = async () => {
+    try {
+      const values = await adminForm.validateFields();
+      setCreateLoading(true);
+      await userService.createAdmin(values);
+      message.success('Tạo tài khoản Admin thành công!');
+      adminForm.resetFields();
+      setIsCreateAdminModalVisible(false);
+      fetchUsers();
+    } catch (error) {
+      if (error?.errorFields) return;
+      message.error(error.message || 'Lỗi khi tạo tài khoản Admin!');
+    } finally {
+      setCreateLoading(false);
+    }
+  };
+
+  const handleUpdateAccountStatus = async (userId, accountStatus) => {
+    try {
+      await userService.updateAccountStatus(userId, accountStatus);
+      message.success('Cập nhật trạng thái tài khoản thành công!');
+      fetchUsers();
+      if (userDetail?.id === userId) {
+        const updatedDetail = await userService.getUserById(userId);
+        setUserDetail(updatedDetail);
+      }
+    } catch (error) {
+      message.error(error.message || 'Lỗi khi cập nhật trạng thái tài khoản!');
     }
   };
 
@@ -240,21 +307,12 @@ const Users = () => {
     },
     {
       title: 'Trạng thái',
-      dataIndex: 'isActive',
-      key: 'isActive',
-      width: 110,
+      dataIndex: 'accountStatus',
+      key: 'accountStatus',
+      width: 140,
       render: (_, record) => {
-        const isActive = getActiveValue(record);
-        
-        if (isActive === undefined || isActive === null) {
-          return <Tag color="default">N/A</Tag>;
-        }
-
-        return (
-          <Tag color={isActive ? 'green' : 'red'}>
-            {isActive ? 'Hoạt động' : 'Không hoạt động'}
-          </Tag>
-        );
+        const config = getStatusConfig(getAccountStatus(record));
+        return <Tag color={config.color}>{config.text}</Tag>;
       },
     },
     {
@@ -271,26 +329,67 @@ const Users = () => {
     {
       title: 'Thao tác',
       key: 'actions',
-      width: 120,
+      width: 220,
       fixed: 'right',
-      render: (_, record) => (
-        <Space>
-          <Button
-            size="small"
-            icon={<EyeOutlined />}
-            onClick={() => openDetailModal(record.id)}
-          />
-          <Popconfirm
-            title="Xóa người dùng"
-            description="Bạn có chắc muốn xóa người dùng này?"
-            onConfirm={() => handleDeleteUser(record.id)}
-            okText="Xóa"
-            cancelText="Hủy"
-          >
-            <Button type="primary" danger size="small" icon={<DeleteOutlined />} />
-          </Popconfirm>
-        </Space>
-      ),
+      render: (_, record) => {
+        const accountStatus = getAccountStatus(record);
+        const isSuperAdmin = normalizeRole(record.role) === 'superadmin';
+
+        return (
+          <Space>
+            <Button
+              size="small"
+              icon={<EyeOutlined />}
+              title="Xem chi tiết"
+              onClick={() => openDetailModal(record.id)}
+            />
+            {!isSuperAdmin && accountStatus !== 'ACTIVE' && (
+              <Popconfirm
+                title="Kích hoạt tài khoản"
+                description="Bạn có chắc muốn kích hoạt tài khoản này?"
+                onConfirm={() => handleUpdateAccountStatus(record.id, 'ACTIVE')}
+                okText="Kích hoạt"
+                cancelText="Hủy"
+              >
+                <Button size="small" icon={<CheckCircleOutlined />} title="Kích hoạt" />
+              </Popconfirm>
+            )}
+            {!isSuperAdmin && accountStatus !== 'LOCKED' && (
+              <Popconfirm
+                title="Khóa tài khoản"
+                description="Tài khoản bị khóa sẽ không thể đăng nhập."
+                onConfirm={() => handleUpdateAccountStatus(record.id, 'LOCKED')}
+                okText="Khóa"
+                cancelText="Hủy"
+              >
+                <Button size="small" icon={<LockOutlined />} title="Khóa tài khoản" />
+              </Popconfirm>
+            )}
+            {!isSuperAdmin && accountStatus !== 'INACTIVE' && (
+              <Popconfirm
+                title="Ngừng hoạt động"
+                description="Tài khoản ngừng hoạt động sẽ không thể đăng nhập."
+                onConfirm={() => handleUpdateAccountStatus(record.id, 'INACTIVE')}
+                okText="Ngừng"
+                cancelText="Hủy"
+              >
+                <Button size="small" icon={<StopOutlined />} title="Ngừng hoạt động" />
+              </Popconfirm>
+            )}
+            {!isSuperAdmin && (
+              <Popconfirm
+                title="Xóa người dùng"
+                description="Bạn có chắc muốn xóa người dùng này?"
+                onConfirm={() => handleDeleteUser(record.id)}
+                okText="Xóa"
+                cancelText="Hủy"
+              >
+                <Button type="primary" danger size="small" icon={<DeleteOutlined />} title="Xóa người dùng" />
+              </Popconfirm>
+            )}
+          </Space>
+        );
+      },
     },
   ];
 
@@ -325,7 +424,7 @@ const Users = () => {
                 options={[
                   { label: 'Khách hàng', value: 'customer' },
                   { label: 'Quản trị viên (Admin)', value: 'admin' },
-                  { label: 'Super Admin', value: 'super_admin' },
+                  { label: 'Super Admin', value: 'superadmin' },
                 ]}
               />
             </Col>
@@ -338,14 +437,21 @@ const Users = () => {
                 allowClear
                 style={{ width: '100%' }}
                 options={[
-                  { label: 'Hoạt động', value: 'active' },
-                  { label: 'Không hoạt động', value: 'inactive' },
+                  { label: 'Đang hoạt động', value: 'ACTIVE' },
+                  { label: 'Bị khóa', value: 'LOCKED' },
+                  { label: 'Ngừng hoạt động', value: 'INACTIVE' },
                 ]}
               />
             </Col>
 
             <Col xs={24} sm={12} md={10} className="text-right">
-              {/* Nút thêm đã được gỡ bỏ theo yêu cầu */}
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={() => setIsCreateAdminModalVisible(true)}
+              >
+                Tạo tài khoản Admin
+              </Button>
             </Col>
           </Row>
         </div>
@@ -361,7 +467,7 @@ const Users = () => {
           <Col xs={12} sm={6}>
             <div className="stat-item">
               <div className="stat-value">
-                {users.filter((u) => u.isActive === true).length}
+                {users.filter((u) => getAccountStatus(u) === 'ACTIVE').length}
               </div>
               <div className="stat-label">Đang hoạt động</div>
             </div>
@@ -378,8 +484,8 @@ const Users = () => {
             <div className="stat-item">
               <div className="stat-value">
                 {users.filter((u) => {
-                  const r = u.role?.toLowerCase();
-                  return r === 'admin' || r === 'super_admin';
+                  const r = normalizeRole(u.role);
+                  return r === 'admin' || r === 'superadmin';
                 }).length}
               </div>
               <div className="stat-label">Tổng Quản trị viên</div>
@@ -402,6 +508,126 @@ const Users = () => {
           scroll={{ x: 1200 }}
         />
       </Card>
+
+      <Modal
+        title="Tạo tài khoản Admin"
+        open={isCreateAdminModalVisible}
+        onOk={handleCreateAdmin}
+        onCancel={() => {
+          setIsCreateAdminModalVisible(false);
+          adminForm.resetFields();
+        }}
+        confirmLoading={createLoading}
+        okText="Tạo tài khoản"
+        cancelText="Hủy"
+        width={720}
+      >
+        <Form
+          form={adminForm}
+          layout="vertical"
+          className="admin-account-form"
+        >
+          <Row gutter={16}>
+            <Col xs={24} md={12}>
+              <Form.Item
+                label="Họ và tên"
+                name="fullName"
+                rules={[{ required: true, message: 'Vui lòng nhập họ và tên!' }]}
+              >
+                <Input placeholder="Nhập họ và tên Admin" />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item
+                label="Email"
+                name="email"
+                rules={[
+                  { required: true, message: 'Vui lòng nhập email!' },
+                  { type: 'email', message: 'Email không hợp lệ!' },
+                ]}
+              >
+                <Input placeholder="admin@smartgarage.vn" />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={16}>
+            <Col xs={24} md={12}>
+              <Form.Item
+                label="Mật khẩu"
+                name="password"
+                rules={[
+                  { required: true, message: 'Vui lòng nhập mật khẩu!' },
+                  { min: 6, message: 'Mật khẩu phải có ít nhất 6 ký tự!' },
+                ]}
+              >
+                <Input.Password placeholder="Nhập mật khẩu ban đầu" />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item
+                label="Số điện thoại"
+                name="phone"
+                rules={[
+                  { required: true, message: 'Vui lòng nhập số điện thoại!' },
+                  {
+                    pattern: /^(0|\+84)(\s|\.)?((3[2-9])|(5[689])|(7[06-9])|(8[1-689])|(9[0-46-9]))(\d)(\s|\.)?(\d{3})(\s|\.)?(\d{3})$/,
+                    message: 'Số điện thoại không đúng định dạng Việt Nam!',
+                  },
+                ]}
+              >
+                <Input placeholder="0912345678" />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Form.Item
+            label="Chi nhánh quản lý"
+            name="branchId"
+            rules={[{ required: true, message: 'Vui lòng chọn chi nhánh!' }]}
+          >
+            <Select
+              placeholder="Chọn chi nhánh cho Admin"
+              showSearch
+              optionFilterProp="label"
+              options={branches.map((branch) => ({
+                label: branch.name,
+                value: branch.id,
+              }))}
+            />
+          </Form.Item>
+
+          <Row gutter={16}>
+            <Col xs={24} md={8}>
+              <Form.Item
+                label="Tỉnh/Thành phố"
+                name="province"
+                rules={[{ required: true, message: 'Vui lòng nhập tỉnh/thành phố!' }]}
+              >
+                <Input placeholder="TP. Hồ Chí Minh" />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={8}>
+              <Form.Item
+                label="Phường/Xã"
+                name="ward"
+                rules={[{ required: true, message: 'Vui lòng nhập phường/xã!' }]}
+              >
+                <Input placeholder="Phường/Xã" />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={8}>
+              <Form.Item
+                label="Số nhà, tên đường"
+                name="houseNumber"
+                rules={[{ required: true, message: 'Vui lòng nhập số nhà, tên đường!' }]}
+              >
+                <Input placeholder="123 Nguyễn Trãi" />
+              </Form.Item>
+            </Col>
+          </Row>
+        </Form>
+      </Modal>
 
       <Modal
         className="detail-modal"
@@ -433,13 +659,9 @@ const Users = () => {
               <Tag color={getRoleConfig(userDetail.role).color}>{getRoleConfig(userDetail.role).text}</Tag>
             </Descriptions.Item>
             <Descriptions.Item label="Trạng thái">
-              {getActiveValue(userDetail) === undefined || getActiveValue(userDetail) === null ? (
-                <Tag color="default">N/A</Tag>
-              ) : (
-                <Tag color={getActiveValue(userDetail) ? 'green' : 'red'}>
-                  {getActiveValue(userDetail) ? 'Hoạt động' : 'Không hoạt động'}
-                </Tag>
-              )}
+              <Tag color={getStatusConfig(getAccountStatus(userDetail)).color}>
+                {getStatusConfig(getAccountStatus(userDetail)).text}
+              </Tag>
             </Descriptions.Item>
             <Descriptions.Item label="Địa chỉ">{getDisplayAddress(userDetail)}</Descriptions.Item>
             <Descriptions.Item label="Số nhà">{userDetail.houseNumber || 'N/A'}</Descriptions.Item>

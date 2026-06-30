@@ -45,13 +45,6 @@ const formatDateTime = (value) => {
   });
 };
 
-const formatServiceNames = (serviceNames) => {
-  if (!Array.isArray(serviceNames) || serviceNames.length === 0) {
-    return 'Chưa có';
-  }
-  return serviceNames.join(', ');
-};
-
 const renderServiceLines = (serviceNames) => {
   if (!Array.isArray(serviceNames) || serviceNames.length === 0) {
     return 'Chưa có';
