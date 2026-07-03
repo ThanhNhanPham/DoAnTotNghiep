@@ -35,9 +35,11 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -277,6 +279,41 @@ public class BookingService {
         notificationRepository.saveAll(notifications);
     }
 
+    private void notifyAdminsAboutCustomerBookingUpdate(Booking booking) {
+        List<User> admins = findAdminNotificationRecipients(booking);
+        if (admins.isEmpty()) {
+            return;
+        }
+
+        String customerName = booking.getUser() != null && booking.getUser().getFullName() != null
+                ? booking.getUser().getFullName()
+                : "Khách hàng";
+        String licensePlate = booking.getVehicle() != null && booking.getVehicle().getLicensePlate() != null
+                ? booking.getVehicle().getLicensePlate()
+                : "chưa rõ biển số";
+        String branchName = booking.getBranch() != null && booking.getBranch().getName() != null
+                ? booking.getBranch().getName()
+                : "chưa rõ chi nhánh";
+
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
+        String timeText = booking.getArrivalSlotStart() != null && booking.getArrivalSlotEnd() != null
+                ? ", khung giờ mới " + booking.getArrivalSlotStart().format(formatter)
+                + " - " + booking.getArrivalSlotEnd().format(formatter)
+                : "";
+
+        List<Notification> notifications = admins.stream().map(admin -> {
+            Notification notification = new Notification();
+            notification.setUser(admin);
+            notification.setTitle("Khách hàng cập nhật lịch");
+            notification.setContent(customerName + " vừa cập nhật lịch hẹn cho xe " + licensePlate
+                    + " tại " + branchName + timeText + ".");
+            notification.setBookingId(booking.getId());
+            return notification;
+        }).collect(Collectors.toList());
+
+        notificationRepository.saveAll(notifications);
+    }
+
     public List<BookingResponse> getAllBookings(String status) {
         List<Booking> bookings;
         if (status == null || status.isBlank()) {
@@ -388,6 +425,7 @@ public class BookingService {
                 .customerName(booking.getUser() != null ? booking.getUser().getFullName() : "Khách vãng lai")
                 .vehicleOwnerName(booking.getVehicleOwnerName())
                 .customerPhone(booking.getUser() != null ? booking.getUser().getPhone() : "N/A")
+                .vehicleId(booking.getVehicle() != null ? booking.getVehicle().getId() : null)
                 .vehicleName(booking.getVehicle() != null ?
                         booking.getVehicle().getBrand() + " " + booking.getVehicle().getModel() : "N/A")
                 .vehicleType(booking.getVehicle() != null ? booking.getVehicle().getType() : null)
@@ -396,6 +434,10 @@ public class BookingService {
                 .branchId(booking.getBranch() != null ? booking.getBranch().getId() : null)
                 .branchName(booking.getBranch() != null ? booking.getBranch().getName() : "N/A")
                 .mechanicName(booking.getMechanic() != null ? booking.getMechanic().getFullName() : "Chưa có thợ")
+                .serviceIds(bookedServices.stream()
+                        .filter(bs -> bs.getService() != null)
+                        .map(bs -> bs.getService().getId())
+                        .collect(Collectors.toList()))
                 // Lấy danh sách tên dịch vụ
                 .serviceNames(bookedServices.stream()
                         .filter(bs -> bs.getService() != null)
@@ -406,6 +448,7 @@ public class BookingService {
                         .filter(bp -> bp.getPart() != null)
                         .map(bp -> bp.getPart().getName())
                         .collect(Collectors.toList()))
+                .note(booking.getNote())
                 .cancelReason(booking.getCancelReason())
                 .vehicleConditionBeforeRepair(booking.getVehicleConditionBeforeRepair())
                 .serviceAmount(servicesTotal)
@@ -733,7 +776,9 @@ public class BookingService {
         }
 
         applyMembershipPricing(booking);
-        return mapToResponse(bookingRepository.save(booking));
+        Booking savedBooking = bookingRepository.save(booking);
+        notifyAdminsAboutCustomerBookingUpdate(savedBooking);
+        return mapToResponse(savedBooking);
     }
 
     public DashboardStatusDTO getDashboardStatus(Long branchId) {
@@ -1010,6 +1055,23 @@ public class BookingService {
                 ))
                 .collect(Collectors.joining());
 
+        BigDecimal discountAmount = booking.getMembershipDiscountAmount() != null
+                ? booking.getMembershipDiscountAmount()
+                : BigDecimal.ZERO;
+        BigDecimal discountRate = booking.getMembershipDiscountRate() != null
+                ? booking.getMembershipDiscountRate()
+                : BigDecimal.ZERO;
+        String discountRateText = discountRate.compareTo(BigDecimal.ZERO) > 0
+                ? " (" + discountRate.multiply(BigDecimal.valueOf(100)).stripTrailingZeros().toPlainString() + "%)"
+                : "";
+        String discountRow = discountAmount.compareTo(BigDecimal.ZERO) > 0
+                ? String.format(
+                "<tr><td style='padding:8px; border-bottom:1px solid #eee; color:#198754;'>Giảm giá thành viên%s</td><td style='text-align:right; color:#198754;'>-%,.0f VNĐ</td></tr>",
+                discountRateText,
+                discountAmount
+        )
+                : "";
+
         String htmlContent = "<html><body style='font-family: \"Segoe UI\", Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #444; background-color: #f9f9f9; padding: 20px;'>" +
                 "<div style='max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.1); border: 1px solid #e1e1e1;'>" +
                 // Header
@@ -1036,7 +1098,7 @@ public class BookingService {
                 "<th style='padding: 12px 0; text-align: right;'>Thành tiền</th>" +
                 "</tr>" +
                 "</thead>" +
-                "<tbody>" + serviceRows + partRows + "</tbody>" +
+                "<tbody>" + serviceRows + partRows + discountRow + "</tbody>" +
                 "</table>" +
 
                 // Total
@@ -1166,20 +1228,42 @@ public class BookingService {
             throw new BadRequestException("Bạn cần chọn ít nhất một dịch vụ.");
         }
 
-        List<com.example.smartgarage.entity.Service> selectedServices = serviceRepository.findAllById(serviceIds);
-        if (selectedServices.size() != serviceIds.size()) {
+        Set<Long> requestedServiceIds = new LinkedHashSet<>(serviceIds);
+        List<com.example.smartgarage.entity.Service> selectedServices = serviceRepository.findAllById(requestedServiceIds);
+        if (selectedServices.size() != requestedServiceIds.size()) {
             throw new BadRequestException("Có dịch vụ không tồn tại trong hệ thống.");
         }
         selectedServices.forEach(service -> validateServiceForVehicle(service, vehicle));
 
-        List<BookedService> bookedServices = selectedServices.stream()
-                .map(service -> BookedService.builder()
-                        .booking(booking)
-                        .service(service)
-                        .priceAtBooking(service.getPrice())
-                        .build())
-                .collect(Collectors.toList());
-        booking.setBookedServices(bookedServices);
+        if (booking.getBookedServices() == null) {
+            booking.setBookedServices(new ArrayList<>());
+        }
+
+        booking.getBookedServices().removeIf(bookedService ->
+                bookedService.getService() == null || !requestedServiceIds.contains(bookedService.getService().getId())
+        );
+
+        Set<Long> existingServiceIds = booking.getBookedServices().stream()
+                .filter(bookedService -> bookedService.getService() != null)
+                .map(bookedService -> bookedService.getService().getId())
+                .collect(Collectors.toSet());
+
+        selectedServices.forEach(service -> {
+            if (existingServiceIds.contains(service.getId())) {
+                booking.getBookedServices().stream()
+                        .filter(bookedService -> bookedService.getService() != null
+                                && Objects.equals(bookedService.getService().getId(), service.getId()))
+                        .findFirst()
+                        .ifPresent(bookedService -> bookedService.setPriceAtBooking(service.getPrice()));
+                return;
+            }
+
+            booking.getBookedServices().add(BookedService.builder()
+                    .booking(booking)
+                    .service(service)
+                    .priceAtBooking(service.getPrice())
+                    .build());
+        });
     }
 
     private void applyMembershipPricing(Booking booking) {

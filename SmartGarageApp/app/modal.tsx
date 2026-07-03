@@ -18,7 +18,7 @@ import * as Location from 'expo-location';
 import Markdown from 'react-native-markdown-display';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
-import bookingService, { PaymentMethod } from '@/services/bookingService';
+import bookingService, { BookingResponse, PaymentMethod } from '@/services/bookingService';
 import branchService, { Branch } from '@/services/branchService';
 import garageService, { GarageService } from '@/services/garageService';
 import vehicleService, { Vehicle } from '@/services/vehicleService';
@@ -165,13 +165,16 @@ const mapAvailableSlotToOption = (slot: { start: string; end: string; remainingC
 
 export default function BookingModalScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ issue?: string; aiSuggestion?: string }>();
+  const params = useLocalSearchParams<{ issue?: string; aiSuggestion?: string; bookingId?: string }>();
   const issue = typeof params.issue === 'string' ? params.issue : '';
   const aiSuggestion = typeof params.aiSuggestion === 'string' ? params.aiSuggestion : '';
+  const bookingId = Number(params.bookingId);
+  const isEditMode = Number.isFinite(bookingId) && bookingId > 0;
 
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [services, setServices] = useState<GarageService[]>([]);
+  const [editingBooking, setEditingBooking] = useState<BookingResponse | null>(null);
   const [selectedVehicleId, setSelectedVehicleId] = useState<number | null>(null);
   const [selectedBranchId, setSelectedBranchId] = useState<number | null>(null);
   const [selectedServiceIds, setSelectedServiceIds] = useState<number[]>([]);
@@ -187,6 +190,7 @@ export default function BookingModalScreen() {
   const [isLoadingSlots, setIsLoadingSlots] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isCreatingBooking, setIsCreatingBooking] = useState(false);
+  const [isSavingBooking, setIsSavingBooking] = useState(false);
 
   const dateOptions = useMemo(() => generateDateOptions(), []);
   const selectedVehicle = useMemo(
@@ -220,6 +224,13 @@ export default function BookingModalScreen() {
     () => slotOptions.find((slot) => slot.id === selectedSlotId) ?? null,
     [selectedSlotId, slotOptions]
   );
+  const editingSlotId = useMemo(() => {
+    if (!editingBooking?.arrivalSlotStart || !editingBooking?.arrivalSlotEnd) {
+      return null;
+    }
+
+    return `${editingBooking.arrivalSlotStart}-${editingBooking.arrivalSlotEnd}`;
+  }, [editingBooking]);
   const estimatedTotal = useMemo(
     () => selectedServices.reduce((sum, service) => sum + Number(service.price || 0), 0),
     [selectedServices]
@@ -241,7 +252,7 @@ export default function BookingModalScreen() {
     const fetchAvailableSlots = async () => {
       try {
         setIsLoadingSlots(true);
-        setSelectedSlotId(null);
+        setSelectedSlotId((current) => (current === editingSlotId ? current : null));
 
         const slotData = await bookingService.getAvailableSlots(selectedBranchId, selectedDate, 60, 60);
 
@@ -249,7 +260,29 @@ export default function BookingModalScreen() {
           return;
         }
 
-        setSlotOptions((slotData.slots || []).map(mapAvailableSlotToOption));
+        const nextSlotOptions = (slotData.slots || []).map(mapAvailableSlotToOption);
+
+        if (editingBooking?.arrivalSlotStart && editingBooking?.arrivalSlotEnd) {
+          const editingSlotDate = toDateParam(parseSlotDate(editingBooking.arrivalSlotStart));
+          const isSameBranch = !editingBooking.branchId || editingBooking.branchId === selectedBranchId;
+          const isSameDate = editingSlotDate === selectedDate;
+
+          if (isSameBranch && isSameDate && !nextSlotOptions.some((slot) => slot.id === editingSlotId)) {
+            nextSlotOptions.unshift(
+              mapAvailableSlotToOption({
+                start: editingBooking.arrivalSlotStart,
+                end: editingBooking.arrivalSlotEnd,
+                remainingCapacity: 1,
+              })
+            );
+          }
+
+          if (isSameBranch && isSameDate) {
+            setSelectedSlotId(editingSlotId);
+          }
+        }
+
+        setSlotOptions(nextSlotOptions);
       } catch (error) {
         if (!isActive) {
           return;
@@ -270,7 +303,7 @@ export default function BookingModalScreen() {
     return () => {
       isActive = false;
     };
-  }, [selectedBranchId, selectedDate]);
+  }, [editingBooking, editingSlotId, selectedBranchId, selectedDate]);
 
   useEffect(() => {
     if (!selectedVehicle) {
@@ -337,10 +370,11 @@ export default function BookingModalScreen() {
       }
 
       const parsedUserId = Number(storedUserId);
-      const [vehicleData, branchData, serviceData] = await Promise.all([
+      const [vehicleData, branchData, serviceData, bookingData] = await Promise.all([
         vehicleService.getVehiclesByUserId(parsedUserId),
         branchService.getActiveBranches(),
         garageService.getAllServices(),
+        isEditMode ? bookingService.getBookingById(bookingId) : Promise.resolve(null),
       ]);
 
       const activeVehicles = (vehicleData || []).filter((vehicle) => vehicle.isActive !== false);
@@ -348,8 +382,28 @@ export default function BookingModalScreen() {
 
       setVehicles(activeVehicles);
       setServices(Array.isArray(serviceData) ? serviceData : []);
-      setSelectedVehicleId((current) => current ?? activeVehicles[0]?.id ?? null);
       await loadNearestBranches(activeBranches);
+
+      if (bookingData) {
+        if (bookingData.status !== 'PENDING') {
+          Alert.alert('Không thể chỉnh sửa', 'Lịch hẹn này không còn ở trạng thái chờ xác nhận.');
+          router.back();
+          return;
+        }
+
+        setEditingBooking(bookingData);
+        setSelectedVehicleId(bookingData.vehicleId ?? activeVehicles[0]?.id ?? null);
+        setSelectedBranchId(bookingData.branchId ?? activeBranches[0]?.id ?? null);
+        setSelectedServiceIds(bookingData.serviceIds || []);
+        setPaymentMethod(bookingData.paymentMethod || 'CASH');
+        setNote(bookingData.note || '');
+
+        if (bookingData.arrivalSlotStart) {
+          setSelectedDate(toDateParam(parseSlotDate(bookingData.arrivalSlotStart)));
+        }
+      } else {
+        setSelectedVehicleId((current) => current ?? activeVehicles[0]?.id ?? null);
+      }
     } catch (error) {
       console.error('Bootstrap booking screen failed:', error);
       Alert.alert('Lỗi', 'Không thể tải dữ liệu đặt lịch. Vui lòng thử lại.');
@@ -439,7 +493,7 @@ export default function BookingModalScreen() {
     );
   };
 
-  const handleCreateBooking = async () => {
+  const handleSubmitBooking = async () => {
     if (!selectedVehicleId) {
       Alert.alert('Thiếu xe', 'Vui lòng chọn xe để đặt lịch.');
       return;
@@ -460,21 +514,51 @@ export default function BookingModalScreen() {
       return;
     }
 
-    Alert.alert('Xác nhận tạo booking', 'Bạn có muốn tạo lịch hẹn từ thông tin hiện tại không?', [
+    const confirmTitle = isEditMode ? 'Xác nhận cập nhật' : 'Xác nhận tạo booking';
+    const confirmMessage = isEditMode
+      ? 'Bạn có muốn lưu thay đổi cho lịch hẹn này không?'
+      : 'Bạn có muốn tạo lịch hẹn từ thông tin hiện tại không?';
+    const confirmText = isEditMode ? 'Lưu thay đổi' : 'Tạo booking';
+
+    Alert.alert(confirmTitle, confirmMessage, [
       { text: 'Huỷ', style: 'cancel' },
       {
-        text: 'Tạo booking',
+        text: confirmText,
         onPress: async () => {
-          setIsCreatingBooking(true);
+          if (isEditMode) {
+            setIsSavingBooking(true);
+          } else {
+            setIsCreatingBooking(true);
+          }
 
           try {
-            const createdBooking = await bookingService.createBooking({
+            const payload = {
               vehicleId: selectedVehicleId,
               branchId: selectedBranchId,
               arrivalSlotStart: selectedSlot.start,
               arrivalSlotEnd: selectedSlot.end,
               serviceIds: selectedServiceIds,
               note: note.trim(),
+            };
+
+            if (isEditMode) {
+              const updatedBooking = await bookingService.updateBooking(bookingId, payload);
+
+              Alert.alert('Cập nhật thành công', `Booking #${updatedBooking.id} đã được lưu thay đổi.`, [
+                {
+                  text: 'Xem chi tiết',
+                  onPress: () =>
+                    router.replace({
+                      pathname: '/booking-detail',
+                      params: { id: String(updatedBooking.id) },
+                    } as any),
+                },
+              ]);
+              return;
+            }
+
+            const createdBooking = await bookingService.createBooking({
+              ...payload,
               paymentMethod,
             });
 
@@ -484,15 +568,21 @@ export default function BookingModalScreen() {
               [{ text: 'Về trang chủ', onPress: () => router.replace('/(tabs)') }]
             );
           } catch (error: any) {
-            console.error('Create booking failed:', error);
+            console.error(isEditMode ? 'Update booking failed:' : 'Create booking failed:', error);
             const serverMessage =
               error?.response?.data?.message ||
               error?.response?.data ||
-              'Không thể tạo booking. Vui lòng kiểm tra lại thông tin.';
+              (isEditMode
+                ? 'Không thể cập nhật booking. Vui lòng kiểm tra lại thông tin.'
+                : 'Không thể tạo booking. Vui lòng kiểm tra lại thông tin.');
 
-            Alert.alert('Tạo booking thất bại', String(serverMessage));
+            Alert.alert(isEditMode ? 'Cập nhật thất bại' : 'Tạo booking thất bại', String(serverMessage));
           } finally {
-            setIsCreatingBooking(false);
+            if (isEditMode) {
+              setIsSavingBooking(false);
+            } else {
+              setIsCreatingBooking(false);
+            }
           }
         },
       },
@@ -507,6 +597,8 @@ export default function BookingModalScreen() {
     );
   }
 
+  const isSubmittingBooking = isEditMode ? isSavingBooking : isCreatingBooking;
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView
@@ -520,23 +612,27 @@ export default function BookingModalScreen() {
           />
         }>
         <LinearGradient colors={['#0F766E', '#115E59']} style={styles.heroCard}>
-          <Text style={styles.heroTitle}>Đặt lịch sửa xe</Text>
+          <Text style={styles.heroTitle}>{isEditMode ? 'Chỉnh sửa lịch hẹn' : 'Đặt lịch sửa xe'}</Text>
           <Text style={styles.heroText}>
-            Chọn xe, chi nhánh, dịch vụ và khung giờ. Gara sẽ kiểm tra xe và xác nhận báo giá sau.
+            {isEditMode
+              ? 'Bạn có thể chỉnh lịch khi booking còn chờ xác nhận. Sau khi gara xác nhận, thông tin sẽ được khóa.'
+              : 'Chọn xe, chi nhánh, dịch vụ và khung giờ. Gara sẽ kiểm tra xe và xác nhận báo giá sau.'}
           </Text>
         </LinearGradient>
 
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Kết quả AI</Text>
-          <Text style={styles.summaryLabel}>Vấn đề bạn mô tả</Text>
-          <Text style={styles.summaryText}>{issue || 'Chưa có mô tả từ AI.'}</Text>
-          <Text style={styles.summaryLabel}>Gợi ý từ AI</Text>
-          {aiSuggestion ? (
-            <Markdown style={markdownStyles}>{aiSuggestion}</Markdown>
-          ) : (
-            <Text style={styles.summaryText}>Chưa có gợi ý AI.</Text>
-          )}
-        </View>
+        {!isEditMode ? (
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Kết quả AI</Text>
+            <Text style={styles.summaryLabel}>Vấn đề bạn mô tả</Text>
+            <Text style={styles.summaryText}>{issue || 'Chưa có mô tả từ AI.'}</Text>
+            <Text style={styles.summaryLabel}>Gợi ý từ AI</Text>
+            {aiSuggestion ? (
+              <Markdown style={markdownStyles}>{aiSuggestion}</Markdown>
+            ) : (
+              <Text style={styles.summaryText}>Chưa có gợi ý AI.</Text>
+            )}
+          </View>
+        ) : null}
 
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Thông tin booking</Text>
@@ -695,27 +791,31 @@ export default function BookingModalScreen() {
             </View>
           )}
 
-          <Text style={styles.fieldLabel}>Hình thức thanh toán</Text>
-          <View style={styles.optionWrap}>
-            {PAYMENT_OPTIONS.map((option) => {
-              const isActive = paymentMethod === option.value;
+          {!isEditMode ? (
+            <>
+              <Text style={styles.fieldLabel}>Hình thức thanh toán</Text>
+              <View style={styles.optionWrap}>
+                {PAYMENT_OPTIONS.map((option) => {
+                  const isActive = paymentMethod === option.value;
 
-              return (
-                <TouchableOpacity
-                  key={option.value}
-                  style={[styles.paymentChip, isActive && styles.paymentChipActive]}
-                  onPress={() => setPaymentMethod(option.value)}>
-                  <Ionicons name={option.icon} size={18} color={isActive ? '#FFFFFF' : '#0F766E'} />
-                  <Text style={[styles.paymentChipText, isActive && styles.paymentChipTextActive]}>
-                    {option.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-          <Text style={styles.fieldHelperText}>
-            Bạn chưa thanh toán ở bước này. Gara sẽ xác nhận chi phí cuối cùng sau khi kiểm tra xe.
-          </Text>
+                  return (
+                    <TouchableOpacity
+                      key={option.value}
+                      style={[styles.paymentChip, isActive && styles.paymentChipActive]}
+                      onPress={() => setPaymentMethod(option.value)}>
+                      <Ionicons name={option.icon} size={18} color={isActive ? '#FFFFFF' : '#0F766E'} />
+                      <Text style={[styles.paymentChipText, isActive && styles.paymentChipTextActive]}>
+                        {option.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              <Text style={styles.fieldHelperText}>
+                Bạn chưa thanh toán ở bước này. Gara sẽ xác nhận chi phí cuối cùng sau khi kiểm tra xe.
+              </Text>
+            </>
+          ) : null}
 
           <Text style={styles.fieldLabel}>Ghi chú</Text>
           <TextInput
@@ -737,13 +837,15 @@ export default function BookingModalScreen() {
           </View>
 
           <TouchableOpacity
-            style={[styles.primaryButton, isCreatingBooking && styles.disabledButton]}
-            onPress={handleCreateBooking}
-            disabled={isCreatingBooking}>
-            {isCreatingBooking ? (
+            style={[styles.primaryButton, isSubmittingBooking && styles.disabledButton]}
+            onPress={handleSubmitBooking}
+            disabled={isSubmittingBooking}>
+            {isSubmittingBooking ? (
               <ActivityIndicator color="#FFFFFF" />
             ) : (
-              <Text style={styles.primaryButtonText}>Gửi yêu cầu đặt lịch</Text>
+              <Text style={styles.primaryButtonText}>
+                {isEditMode ? 'Lưu thay đổi' : 'Gửi yêu cầu đặt lịch'}
+              </Text>
             )}
           </TouchableOpacity>
         </View>
