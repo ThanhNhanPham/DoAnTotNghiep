@@ -23,6 +23,7 @@ public class Part {
     @NotBlank(message = "Tên linh kiện không được để trống")
     @Size(min = 2, max = 100, message = "Tên linh kiện phải từ 2 đến 100 ký tự")
     private String name;        // Tên linh kiện (VD: Lốp Michelin)
+    @Column(columnDefinition = "TEXT")
     private String description;// Mô tả chi tiết về linh kiện
     @NotNull(message = "Giá không được để trống")
     @DecimalMin(value = "0.0", inclusive = false, message = "Giá linh kiện phải lớn hơn 0")

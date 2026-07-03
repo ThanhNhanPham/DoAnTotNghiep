@@ -81,6 +81,7 @@ public interface BookingRepository extends JpaRepository<Booking,Long> {
             "FROM Booking b " +
             "JOIN b.bookedServices bs " +
             "JOIN bs.service s " +
+            "WHERE b.status = com.example.smartgarage.enums.BookingStatus.COMPLETED " +
             "GROUP BY s.name ORDER BY COUNT(bs) DESC")
     List<ServiceStatisticDTO> findTopServices(Pageable pageable);
 
@@ -184,6 +185,7 @@ public interface BookingRepository extends JpaRepository<Booking,Long> {
             "JOIN b.bookedServices bs " +
             "JOIN bs.service s " +
             "WHERE b.branch.id = :branchId " +
+            "AND b.status = com.example.smartgarage.enums.BookingStatus.COMPLETED " +
             "GROUP BY s.name ORDER BY COUNT(bs) DESC")
     List<ServiceStatisticDTO> findTopServicesByBranch(@Param("branchId") Long branchId, Pageable pageable);
     // tìm tất cả booking hoàn thành cách đây 6 tháng

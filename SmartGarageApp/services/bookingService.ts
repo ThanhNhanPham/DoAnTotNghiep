@@ -13,6 +13,15 @@ export interface BookingPayload {
   paymentMethod: PaymentMethod;
 }
 
+export interface UpdateBookingPayload {
+  vehicleId: number;
+  branchId: number;
+  arrivalSlotStart: string;
+  arrivalSlotEnd: string;
+  serviceIds: number[];
+  note?: string;
+}
+
 export interface BookingResponse {
   id: number;
   status?: string;
@@ -26,14 +35,18 @@ export interface BookingResponse {
   customerName?: string;
   vehicleOwnerName?: string | null;
   customerPhone?: string;
+  vehicleId?: number | null;
   vehicleName?: string;
+  vehicleType?: string | null;
   vehicleImageUrl?: string | null;
   licensePlate?: string;
   branchId?: number | null;
   branchName?: string;
   mechanicName?: string;
+  serviceIds?: number[];
   serviceNames?: string[];
   partNames?: string[];
+  note?: string | null;
   cancelReason?: string | null;
   serviceAmount?: number;
   partAmount?: number;
@@ -87,6 +100,11 @@ const bookingService = {
 
   async createBooking(payload: BookingPayload) {
     const response = await apiClient.post<BookingResponse>('/bookings', payload);
+    return response.data;
+  },
+
+  async updateBooking(id: number, payload: UpdateBookingPayload) {
+    const response = await apiClient.patch<BookingResponse>(`/bookings/${id}`, payload);
     return response.data;
   },
 };

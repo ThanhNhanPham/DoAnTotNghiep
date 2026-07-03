@@ -313,6 +313,20 @@ export default function BookingDetailScreen() {
               <Text style={styles.heroText}>
                 {booking.vehicleName || 'Xe của bạn'} · {booking.licensePlate || 'N/A'}
               </Text>
+              {booking.status === 'PENDING' ? (
+                <TouchableOpacity
+                  style={styles.editBookingButton}
+                  activeOpacity={0.85}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/modal',
+                      params: { bookingId: String(booking.id) },
+                    } as any)
+                  }>
+                  <Ionicons name="create-outline" size={18} color="#92400E" />
+                  <Text style={styles.editBookingButtonText}>Chỉnh sửa lịch hẹn</Text>
+                </TouchableOpacity>
+              ) : null}
             </LinearGradient>
 
             <View style={styles.card}>
@@ -615,6 +629,21 @@ const styles = StyleSheet.create({
   statusPillText: {
     fontSize: 12,
     fontWeight: '800',
+  },
+  editBookingButton: {
+    marginTop: 16,
+    minHeight: 46,
+    borderRadius: 16,
+    backgroundColor: '#FEF3C7',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  editBookingButtonText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#92400E',
   },
   card: {
     borderWidth: 1,

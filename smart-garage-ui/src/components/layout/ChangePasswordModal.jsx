@@ -26,7 +26,7 @@ const ChangePasswordModal = ({ visible, onClose }) => {
       const request = {
         oldPassword: values.oldPassword,
         newPassword: values.newPassword,
-        newPasswordRepeat: values.confirmPassword,
+        confirmNewPassword: values.confirmPassword,
       };
 
       await authService.changePassword(request);
@@ -104,6 +104,7 @@ const ChangePasswordModal = ({ visible, onClose }) => {
           name="newPassword"
           rules={[
             { required: true, message: 'Vui lòng nhập mật khẩu mới' },
+            { min: 8, message: 'Mật khẩu mới phải có ít nhất 8 ký tự' },
           ]}
         >
           <div style={{ position: 'relative' }}>
