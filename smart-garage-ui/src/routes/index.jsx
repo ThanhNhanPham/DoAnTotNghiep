@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { useEffect, useState } from 'react';
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import MainLayout from '../components/layout/MainLayout';
@@ -13,6 +14,7 @@ import Parts from '../pages/Parts/Parts';
 import Settings from '../pages/Settings/Settings';
 import BranchSettings from '../pages/BranchSettings/BranchSettings';
 import Login from '../pages/Login/Login';
+import ForgotPassword from '../pages/ForgotPassword/ForgotPassword';
 import Chats from '../pages/Chats/Chats';
 import Unauthorized from '../pages/Unauthorized/Unauthorized';
 import authService from '../services/authService';
@@ -76,6 +78,10 @@ const router = createBrowserRouter([
   {
     path: '/login',
     element: <Login />,
+  },
+  {
+    path: '/forgot-password',
+    element: <ForgotPassword />,
   },
   {
     path: '/unauthorized',

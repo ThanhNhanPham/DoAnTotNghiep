@@ -26,6 +26,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Service
 public class ReviewService {
@@ -102,6 +103,15 @@ public class ReviewService {
         for (User admin : userRepository.findByRoleAndBranchId(Role.ADMIN, booking.getBranch().getId())) {
             Notification notification = new Notification();
             notification.setUser(admin);
+            notification.setBookingId(booking.getId());
+            notification.setTitle(title);
+            notification.setContent(content);
+            notificationRepository.save(notification);
+        }
+
+        for (User superAdmin : userRepository.findByRoleIn(List.of(Role.SUPERADMIN))) {
+            Notification notification = new Notification();
+            notification.setUser(superAdmin);
             notification.setBookingId(booking.getId());
             notification.setTitle(title);
             notification.setContent(content);

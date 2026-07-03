@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Card,
   Table,
@@ -38,22 +38,19 @@ const Vehicles = () => {
     pageSize: 10,
     total: 0,
   });
+  const { current: vehiclePage, pageSize: vehiclePageSize } = vehiclePagination;
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [editingVehicle, setEditingVehicle] = useState(null);
   const [isDetailModalVisible, setIsDetailModalVisible] = useState(false);
   const [vehicleDetail, setVehicleDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
 
-  useEffect(() => {
-    fetchVehicles();
-  }, [vehiclePagination.current, vehiclePagination.pageSize, searchText, typeFilter, brandFilter, statusFilter]);
-
-  const fetchVehicles = async () => {
+  const fetchVehicles = useCallback(async () => {
     setLoading(true);
     try {
       const data = await vehicleService.getVehiclesPage({
-        page: vehiclePagination.current,
-        size: vehiclePagination.pageSize,
+        page: vehiclePage,
+        size: vehiclePageSize,
         keyword: searchText,
         type: typeFilter,
         brand: brandFilter,
@@ -79,7 +76,11 @@ const Vehicles = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [vehiclePage, vehiclePageSize, searchText, typeFilter, brandFilter, statusFilter]);
+
+  useEffect(() => {
+    fetchVehicles();
+  }, [fetchVehicles]);
 
   const resetVehiclePagination = () => {
     setVehiclePagination((prev) => ({ ...prev, current: 1 }));

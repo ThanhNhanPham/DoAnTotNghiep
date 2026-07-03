@@ -31,6 +31,7 @@ public class BookingResponse {
     private String customerName;
     private String vehicleOwnerName;
     private String customerPhone;
+    private Long vehicleId;
     private String vehicleName; // VD: "Honda Sh 150i"
     private VehicleType vehicleType;
     private String vehicleImageUrl;
@@ -38,8 +39,10 @@ public class BookingResponse {
     private Long branchId;
     private String branchName;
     private String mechanicName;
+    private List<Long> serviceIds;
     private List<String> serviceNames;
     private List<String> partNames;
+    private String note;
     private String cancelReason;
     private String vehicleConditionBeforeRepair;
     private BigDecimal serviceAmount;

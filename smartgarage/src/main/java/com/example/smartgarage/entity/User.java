@@ -1,6 +1,7 @@
 package com.example.smartgarage.entity;
 
 import com.example.smartgarage.enums.MembershipTier;
+import com.example.smartgarage.enums.AccountStatus;
 import com.example.smartgarage.enums.Role;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -66,6 +67,11 @@ public class User {
     private Boolean isActive;
 
     @Builder.Default
+    @Enumerated(EnumType.STRING)
+    @Column(name = "account_status", length = 20)
+    private AccountStatus accountStatus = AccountStatus.ACTIVE;
+
+    @Builder.Default
     @Column(name = "loyalty_points", nullable = false)
     private Integer loyaltyPoints = 0; // Điểm tích lũy cho khách hàng thân thiết
 
@@ -73,6 +79,17 @@ public class User {
     @Enumerated(EnumType.STRING)
     @Column(name = "membership_tier", nullable = false, length = 20)
     private MembershipTier membershipTier = MembershipTier.REGULAR; // Cấp bậc thành viên
+
+    @PostLoad
+    @PrePersist
+    @PreUpdate
+    private void syncActiveFlag() {
+        if (accountStatus == null) {
+            accountStatus = Boolean.FALSE.equals(isActive) ? AccountStatus.INACTIVE : AccountStatus.ACTIVE;
+        }
+        isActive = accountStatus == AccountStatus.ACTIVE;
+    }
+
     // Các booking của user
     public String getFullAddress() {
         if (this.province == null) return "";

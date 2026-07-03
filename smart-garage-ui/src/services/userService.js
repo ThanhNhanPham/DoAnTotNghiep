@@ -41,6 +41,30 @@ const userService = {
     }
   },
 
+  // Super Admin tạo tài khoản Admin cho chi nhánh
+  createAdmin: async (adminData) => {
+    try {
+      const response = await axios.post(`${API_ENDPOINTS.users}/admins`, adminData, {
+        headers: getAuthHeaders(),
+      });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { message: 'Lỗi khi tạo tài khoản Admin!' };
+    }
+  },
+
+  // Super Admin cập nhật trạng thái tài khoản
+  updateAccountStatus: async (id, accountStatus) => {
+    try {
+      const response = await axios.patch(`${API_ENDPOINTS.users}/${id}/status`, { accountStatus }, {
+        headers: getAuthHeaders(),
+      });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { message: 'Lỗi khi cập nhật trạng thái tài khoản!' };
+    }
+  },
+
   // Cập nhật người dùng (Admin)
   updateUser: async (id, userData) => {
     try {

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Card,
@@ -45,6 +45,8 @@ import authService from '../../services/authService';
 import { ROLES } from '../../config/permissions';
 import './Bookings.css';
 
+const BOOKING_STATUSES = ['PENDING', 'CONFIRMED', 'ARRIVED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'];
+
 const formatDistanceKm = (value) => (value == null ? '' : `${value.toFixed(2)} km`);
 
 const getBranchDistanceLabel = (branch) => {
@@ -81,6 +83,7 @@ const Bookings = () => {
   const currentUserInfo = authService.getUserInfo();
   const isBranchScopedAdmin = authService.getUserRole() === ROLES.ADMIN;
   const assignedBranchId = currentUserInfo.branchId ? Number(currentUserInfo.branchId) : undefined;
+  const assignedBranchName = currentUserInfo.branchName;
   const [bookings, setBookings] = useState([]);
   const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -92,6 +95,10 @@ const Bookings = () => {
     pageSize: 10,
     total: 0,
   });
+  const [bookingStatusCounts, setBookingStatusCounts] = useState(
+    BOOKING_STATUSES.reduce((counts, status) => ({ ...counts, [status]: 0 }), {})
+  );
+  const { current: bookingPage, pageSize: bookingPageSize } = bookingPagination;
   const [cancelForm] = Form.useForm();
   const [partForm] = Form.useForm();
   const [startBookingForm] = Form.useForm();
@@ -127,34 +134,12 @@ const Bookings = () => {
   const [nearestBranchId, setNearestBranchId] = useState(null);
   const bookingIdFromNotification = searchParams.get('bookingId');
 
-  useEffect(() => {
-    fetchBranches();
-    fetchCatalogs();
-  }, []);
-
-  useEffect(() => {
-    fetchBookings();
-  }, [bookingPagination.current, bookingPagination.pageSize, statusFilter, branchFilter, searchText]);
-
-  useEffect(() => {
-    if (!bookingIdFromNotification) return;
-
-    const bookingId = Number(bookingIdFromNotification);
-    if (!Number.isFinite(bookingId)) {
-      setSearchParams({}, { replace: true });
-      return;
-    }
-
-    openDetailModal(bookingId);
-    setSearchParams({}, { replace: true });
-  }, [bookingIdFromNotification, setSearchParams]);
-
-  const fetchBookings = async () => {
+  const fetchBookings = useCallback(async () => {
     setLoading(true);
     try {
       const data = await bookingService.getAllBookings({
-        page: bookingPagination.current,
-        size: bookingPagination.pageSize,
+        page: bookingPage,
+        size: bookingPageSize,
         status: statusFilter,
         branchId: branchFilter,
         keyword: searchText,
@@ -177,13 +162,42 @@ const Bookings = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [bookingPage, bookingPageSize, statusFilter, branchFilter, searchText]);
+
+  const fetchBookingStatusCounts = useCallback(async () => {
+    try {
+      const statusResponses = await Promise.all(
+        BOOKING_STATUSES.map(async (status) => {
+          const data = await bookingService.getAllBookings({
+            page: 1,
+            size: 1,
+            status,
+            branchId: branchFilter,
+            keyword: searchText,
+          });
+
+          return [
+            status,
+            Array.isArray(data) ? data.length : Number(data?.totalElements || 0),
+          ];
+        })
+      );
+
+      setBookingStatusCounts(Object.fromEntries(statusResponses));
+    } catch (error) {
+      console.error('Error fetching booking status counts:', error);
+    }
+  }, [branchFilter, searchText]);
+
+  const refreshBookingsData = useCallback(async () => {
+    await Promise.all([fetchBookings(), fetchBookingStatusCounts()]);
+  }, [fetchBookings, fetchBookingStatusCounts]);
 
   const resetBookingPagination = () => {
     setBookingPagination((prev) => ({ ...prev, current: 1 }));
   };
 
-  const loadDefaultBranches = async ({ showError = true } = {}) => {
+  const loadDefaultBranches = useCallback(async ({ showError = true } = {}) => {
     try {
       const data = await branchService.getActiveBranches();
       const activeBranches = (data || [])
@@ -198,21 +212,21 @@ const Bookings = () => {
       }
       return [];
     }
-  };
+  }, [assignedBranchId, isBranchScopedAdmin]);
 
-  const fetchBranches = async () => {
+  const fetchBranches = useCallback(async () => {
     await loadDefaultBranches();
     if (isBranchScopedAdmin && assignedBranchId) {
       setBranchFilter(assignedBranchId);
     }
     setBranchLocationHint('');
-  };
+  }, [assignedBranchId, isBranchScopedAdmin, loadDefaultBranches]);
 
   const locateNearbyBranches = async () => {
     if (isBranchScopedAdmin) {
       await loadDefaultBranches({ showError: false });
       setBranchFilter(assignedBranchId);
-      setBranchLocationHint(`Tài khoản admin chỉ được xem dữ liệu chi nhánh ${currentUserInfo.branchName || 'được phân công'}.`);
+      setBranchLocationHint(`Tài khoản admin chỉ được xem dữ liệu chi nhánh ${assignedBranchName || 'được phân công'}.`);
       return;
     }
 
@@ -346,7 +360,7 @@ const Bookings = () => {
     message.warning('Không thể thực hiện thao tác với đơn hàng này.');
   };
 
-  const fetchCatalogs = async () => {
+  const fetchCatalogs = useCallback(async () => {
     try {
       const [servicesData, partsData] = await Promise.all([
         serviceService.getAllServices(),
@@ -359,7 +373,7 @@ const Bookings = () => {
       console.error(error);
       message.error('Lỗi khi tải danh mục dịch vụ/linh kiện!');
     }
-  };
+  }, []);
 
   const openCancelModal = (booking) => {
     setBookingToCancel(booking);
@@ -374,7 +388,7 @@ const Bookings = () => {
       await bookingService.cancelBooking(bookingToCancel.id, values.cancelReason);
       message.success('Hủy lịch hẹn thành công!');
       setIsCancelModalVisible(false);
-      fetchBookings();
+      refreshBookingsData();
     } catch (error) {
       if (error?.errorFields) return;
       message.error('Lỗi khi hủy lịch hẹn!');
@@ -387,7 +401,7 @@ const Bookings = () => {
     try {
       await bookingService.markArrived(bookingId);
       message.success('Đã xác nhận khách tới cửa hàng!');
-      fetchBookings();
+      refreshBookingsData();
     } catch {
       message.error('Lỗi khi cập nhật trạng thái khách tới!');
     }
@@ -409,7 +423,7 @@ const Bookings = () => {
       message.success('Đã bắt đầu xử lý xe!');
       setIsStartModalVisible(false);
       startBookingForm.resetFields();
-      await fetchBookings();
+      await refreshBookingsData();
       if (bookingDetail?.id === bookingToStart?.id) {
         await refreshBookingDetail(bookingToStart.id);
       }
@@ -422,7 +436,7 @@ const Bookings = () => {
     }
   };
 
-  const openDetailModal = async (bookingId) => {
+  const openDetailModal = useCallback(async (bookingId) => {
     setIsDetailModalVisible(true);
     setDetailLoading(true);
     setReviewLoading(true);
@@ -458,13 +472,35 @@ const Bookings = () => {
       setDetailLoading(false);
       setReviewLoading(false);
     }
-  };
+  }, [partForm]);
+
+  useEffect(() => {
+    fetchBranches();
+    fetchCatalogs();
+  }, [fetchBranches, fetchCatalogs]);
+
+  useEffect(() => {
+    refreshBookingsData();
+  }, [refreshBookingsData]);
+
+  useEffect(() => {
+    if (!bookingIdFromNotification) return;
+
+    const bookingId = Number(bookingIdFromNotification);
+    if (!Number.isFinite(bookingId)) {
+      setSearchParams({}, { replace: true });
+      return;
+    }
+
+    openDetailModal(bookingId);
+    setSearchParams({}, { replace: true });
+  }, [bookingIdFromNotification, openDetailModal, setSearchParams]);
 
   const refreshBookingDetail = async (bookingId) => {
     const data = await bookingService.getBookingById(bookingId);
     setBookingDetail(data);
     setServiceToAddId(undefined);
-    await fetchBookings();
+    await refreshBookingsData();
     return data;
   };
 
@@ -639,7 +675,7 @@ const Bookings = () => {
     try {
       await bookingService.completeBooking(bookingId);
       message.success('Đánh dấu hoàn thành lịch sửa xe thành công!');
-      fetchBookings();
+      refreshBookingsData();
     } catch {
       message.error('Lỗi khi hoàn thành lịch hẹn!');
     }
@@ -657,7 +693,7 @@ const Bookings = () => {
         await paymentService.confirmBankTransferPayment(bookingId);
       }
       message.success(getPaymentConfirmText(booking).success);
-      await fetchBookings();
+      await refreshBookingsData();
       if (bookingDetail?.id === bookingId) {
         await refreshBookingDetail(bookingId);
       }
@@ -720,7 +756,7 @@ const Bookings = () => {
         message.success('Xác nhận lịch hẹn thành công!');
       }
       setIsConfirmModalVisible(false);
-      fetchBookings();
+      refreshBookingsData();
     } catch (error) {
       message.error(
         mechanicModalMode === 'reassign'
@@ -1311,7 +1347,7 @@ const Bookings = () => {
           <div>
             <div className="stat-item stat-pending">
               <div className="stat-value">
-                {bookings.filter((b) => (b.status || 'PENDING') === 'PENDING').length}
+                {bookingStatusCounts.PENDING || 0}
               </div>
               <div className="stat-label">Chờ xử lý</div>
             </div>
@@ -1319,7 +1355,7 @@ const Bookings = () => {
           <div>
             <div className="stat-item stat-confirmed">
               <div className="stat-value">
-                {bookings.filter((b) => b.status === 'CONFIRMED').length}
+                {bookingStatusCounts.CONFIRMED || 0}
               </div>
               <div className="stat-label">Đã xác nhận</div>
             </div>
@@ -1327,7 +1363,7 @@ const Bookings = () => {
           <div>
             <div className="stat-item">
               <div className="stat-value">
-                {bookings.filter((b) => b.status === 'ARRIVED').length}
+                {bookingStatusCounts.ARRIVED || 0}
               </div>
               <div className="stat-label">Đã tới</div>
             </div>
@@ -1335,7 +1371,7 @@ const Bookings = () => {
           <div>
             <div className="stat-item">
               <div className="stat-value">
-                {bookings.filter((b) => b.status === 'IN_PROGRESS').length}
+                {bookingStatusCounts.IN_PROGRESS || 0}
               </div>
               <div className="stat-label">Đang sửa</div>
             </div>
@@ -1343,7 +1379,7 @@ const Bookings = () => {
           <div>
             <div className="stat-item stat-completed">
               <div className="stat-value">
-                {bookings.filter((b) => b.status === 'COMPLETED').length}
+                {bookingStatusCounts.COMPLETED || 0}
               </div>
               <div className="stat-label">Hoàn thành</div>
             </div>
@@ -1351,7 +1387,7 @@ const Bookings = () => {
           <div>
             <div className="stat-item stat-cancelled">
               <div className="stat-value">
-                {bookings.filter((b) => b.status === 'CANCELLED').length}
+                {bookingStatusCounts.CANCELLED || 0}
               </div>
               <div className="stat-label">Đã hủy</div>
             </div>
